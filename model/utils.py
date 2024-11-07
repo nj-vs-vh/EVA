@@ -15,7 +15,7 @@ def savefig(fig: plt.Figure, filename: str, dpi: int = 300, bbox_inches: str = '
     """
     
     try:
-        fig.savefig(f'../plots/{filename}', dpi=dpi, bbox_inches=bbox_inches, pad_inches=pad_inches, transparent=transparent, format='pdf')
+        fig.savefig(f'../figures/{filename}', dpi=dpi, bbox_inches=bbox_inches, pad_inches=pad_inches, transparent=transparent, format='pdf')
         print(f'Plot successfully saved to {filename} with dpi={dpi}, bbox_inches={bbox_inches}, pad_inches={pad_inches}, transparent={transparent}')
     except Exception as e:
         print(f"Error saving plot to {filename}: {e}")
