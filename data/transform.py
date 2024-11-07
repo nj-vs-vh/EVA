@@ -178,10 +178,6 @@ def transform_CREAM_light():
     data = [compute_mean_energy(E_min, E_max), I_E, e_sta, e_sta, e_sys, e_sys]
     dump(data, "CREAM_light_energy.txt")
 
-def transform_CALET_light():
-    H = np.loadtxt(f'crdb/CREAM_H_kEnergy.txt', usecols=(0,1,2,3,4,5,6), unpack=True)
-    He = np.loadtxt(f'crdb/CREAM_He_kEnergyPerNucleon.txt', usecols=(0,1,2,3,4,5,6), unpack=True)
-
 def transform_LHAASO():
     filename = 'lake/LHAASO_all_energy.txt'
     logEmin, logEmax, I_E, e_sta, e_sys = np.loadtxt(filename, usecols=(0,1,2,3,4), unpack=True)
@@ -203,38 +199,44 @@ def transform_LHAASO():
     data = [E, lnA, e_sta, e_sta, e_sys, e_sys]
     dump(data, "LHAASO_QGSJET-II-04_lnA_energy.txt")
 
+def transform_GRAPES():
+    filename = 'lake/GRAPES_H_totalEnergy.txt'
+    E, I_E, e_sta, e_sys_up, e_sys_lo = np.loadtxt(filename, usecols=(0,1,2,3,4), unpack=True)
+    data = [E, I_E, e_sta, e_sta, e_sys_lo, e_sys_up]
+    dump(data, "GRAPES_H_energy.txt")
+
 if __name__ == "__main__":
-    # logging.info("Starting AMS02 transformation")
-    # transform_AMS02()
+    logging.info("Starting AMS02 transformation")
+    transform_AMS02()
     
-    # logging.info("Starting CALET transformation")
-    # transform_CALET()
+    logging.info("Starting CALET transformation")
+    transform_CALET()
     
-    # logging.info("Starting DAMPE transformation")
-    # transform_DAMPE()
+    logging.info("Starting DAMPE transformation")
+    transform_DAMPE()
     
-    # logging.info("Starting CREAM transformation")
-    # transform_CREAM()
+    logging.info("Starting CREAM transformation")
+    transform_CREAM()
 
     logging.info("Starting ALLPARTICLES transformation")
     transform_allParticles()
 
-    # logging.info("Starting TIBET transformation")
-    # transform_TIBET()
+    logging.info("Starting DAMPE ALL transformation")
+    transform_Cagnoli2024()
 
-    # logging.info("Starting DAMPE ALL transformation")
-    # transform_Cagnoli2024()
+    logging.info("Starting CREAM-light transformation")
+    transform_CREAM_light()
 
-    # logging.info("Starting CREAM-light transformation")
-    # transform_CREAM_light()
+    logging.info("Starting TIBET transformation")
+    transform_TIBET_all()
 
-    # logging.info("Starting DAMPE-light transformation")
-    # transform_DAMPE_light()
-
-    logging.info("Starting CALET-light transformation")
-    transform_CALET_light()
+    logging.info("Starting DAMPE-light transformation")
+    transform_DAMPE_light()
 
     logging.info("Starting LHAASO transformation")
     transform_LHAASO()
+
+    logging.info("Starting GRAPES transformation")
+    transform_GRAPES()
 
     logging.info("All transformations completed")
