@@ -1,213 +1,240 @@
 import numpy as np
+import logging
+from pathlib import Path
 
-def compute_mean_energy(R_min, R_max):
-    return np.sqrt(R_min * R_max) # TBD
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def readfile(filename):
-    x_min, x_max, y, yStaLo, yStaUp, ySysLo, ySysUp = np.loadtxt(filename, usecols=(0,1,2,3,4,5,6), unpack=True)
-    return x_min, x_max, y, yStaLo, yStaUp, ySysLo, ySysUp
-    
-def transform_R2E(R_min, R_max, I_R, eStaLo, eStaUp, eSysLo, eSysUp, Z = 1.):
-    Z = float(Z)
+def compute_mean_energy(min_values, max_values):
+    """Compute the mean energy as the geometric mean of min and max values."""
+    return np.sqrt(min_values * max_values)
+
+def readfile(filepath):
+    """Read data from a given file and return extracted columns."""
+    try:
+        logging.info("Reading data from %s", filepath)
+        x_min, x_max, y, y_sta_lo, y_sta_up, y_sys_lo, y_sys_up = np.loadtxt(
+            filepath, usecols=(0, 1, 2, 3, 4, 5, 6), unpack=True
+        )
+        logging.info("Successfully read data from %s", filepath)
+        return x_min, x_max, y, y_sta_lo, y_sta_up, y_sys_lo, y_sys_up
+    except Exception as e:
+        logging.error("Failed to read data from %s: %s", filepath, e)
+        raise
+
+def transform_R2E(R_min, R_max, I_R, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up, Z=1.0):
+    """Convert rigidity data to energy data."""
     R_mean = compute_mean_energy(R_min, R_max)
     E_mean = R_mean * Z
     I_E = I_R / Z
-    IStaLo = eStaLo / Z
-    IStaUp = eStaUp / Z
-    ISysLo = eSysLo / Z
-    ISysUp = eSysUp / Z
-    return [E_mean, I_E, IStaLo, IStaUp, ISysLo, ISysUp]
+    return [E_mean, I_E, e_sta_lo / Z, e_sta_up / Z, e_sys_lo / Z, e_sys_up / Z]
 
-def transform_T2E(T_min, T_max, I_T, eStaLo, eStaUp, eSysLo, eSysUp, A = 1.):
-    A = float(A)
+def transform_T2E(T_min, T_max, I_T, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up, A=1.0):
+    """Convert kinetic energy per nucleon data to energy data."""
     T_mean = compute_mean_energy(T_min, T_max)
     E_mean = T_mean * A
     I_E = I_T / A
-    IStaLo = eStaLo / A
-    IStaUp = eStaUp / A
-    ISysLo = eSysLo / A
-    ISysUp = eSysUp / A
-    return [E_mean, I_E, IStaLo, IStaUp, ISysLo, ISysUp]
-
-def compute_AMS02_CNO():
-    R_min_C, R_max_C, I_C, eStaLo_C, eStaUp_C, eSysLo_C, eSysUp_C = readfile('lake/AMS-02_C_rigidity.txt')
-    R_min_N, R_max_N, I_N, eStaLo_N, eStaUp_N, eSysLo_N, eSysUp_N = readfile('lake/AMS-02_N_rigidity.txt')
-    R_min_O, R_max_O, I_O, eStaLo_O, eStaUp_O, eSysLo_O, eSysUp_O = readfile('lake/AMS-02_O_rigidity.txt')
-
-    R_min = R_min_O[0:63]
-    R_max = R_max_O[0:63]
-    I_R = I_O[0:63] + I_C[1:64] # + I_N[0:63]
-    eStaLo = np.sqrt(eStaLo_C[1:64]**2. + eStaLo_O[0:63]**2.)
-    eStaUp = np.sqrt(eStaUp_C[1:64]**2. + eStaUp_O[0:63]**2.)
-    eSysLo = np.sqrt(eSysLo_C[1:64]**2. + eSysLo_O[0:63]**2.)
-    eSysUp = np.sqrt(eSysUp_C[1:64]**2. + eSysUp_O[0:63]**2.)
-
-    for i in range(62):
-        assert(R_min[i] == R_min_C[i + 1])
-        assert(R_min[i] == R_min_N[i])
-        assert(R_min[i] == R_min_O[i])
-        assert(R_max[i] == R_max_C[i + 1])
-        assert(R_max[i] == R_max_N[i])
-        assert(R_max[i] == R_max_O[i])
-
-    return R_min, R_max, I_R, eStaLo, eStaUp, eSysLo, eSysUp
-
-def compute_CALET_CNO():
-    T_min_C, T_max_C, I_C, eStaLo_C, eStaUp_C, eSysLo_C, eSysUp_C = readfile('lake/CALET_C_kEnergyPerNucleon.txt')
-    T_min_O, T_max_O, I_O, eStaLo_O, eStaUp_O, eSysLo_O, eSysUp_O = readfile('lake/CALET_O_kEnergyPerNucleon.txt')
-
-    T_min = T_min_O
-    T_max = T_max_O
-    I_T = I_O + I_C
-    eStaLo = np.sqrt(eStaLo_C**2. + eStaLo_O**2.)
-    eStaUp = np.sqrt(eStaUp_C**2. + eStaUp_O**2.)
-    eSysLo = np.sqrt(eSysLo_C**2. + eSysLo_O**2.)
-    eSysUp = np.sqrt(eSysUp_C**2. + eSysUp_O**2.)
-
-    for i in range(22):
-        assert(T_min[i] == T_min_C[i])
-        assert(T_min[i] == T_min_O[i])
-        assert(T_max[i] == T_max_C[i])
-        assert(T_max[i] == T_max_O[i])
-
-    return T_min, T_max, I_T, eStaLo, eStaUp, eSysLo, eSysUp
-
-def compute_CREAM_CNO():
-    T_min_C, T_max_C, I_C, eStaLo_C, eStaUp_C, eSysLo_C, eSysUp_C = readfile('lake/CREAM_C_kEnergyPerNucleon.txt')
-    T_min_O, T_max_O, I_O, eStaLo_O, eStaUp_O, eSysLo_O, eSysUp_O = readfile('lake/CREAM_O_kEnergyPerNucleon.txt')
-    
-    T_min = T_min_O[2:9]
-    T_max = T_max_O[2:9]
-    I_T = I_O[2:9] + I_C[2:9]
-    eStaLo = np.sqrt(eStaLo_C[2:9]**2. + eStaLo_O[2:9]**2.)
-    eStaUp = np.sqrt(eStaUp_C[2:9]**2. + eStaUp_O[2:9]**2.)
-    eSysLo = np.sqrt(eSysLo_C[2:9]**2. + eSysLo_O[2:9]**2.)
-    eSysUp = np.sqrt(eSysUp_C[2:9]**2. + eSysUp_O[2:9]**2.)
-
-    for i in range(7):
-        assert(T_min[i] == T_min_C[i + 2])
-        assert(T_min[i] == T_min_O[i + 2])
-        assert(T_max[i] == T_max_C[i + 2])
-        assert(T_max[i] == T_max_O[i + 2])
-
-    return T_min, T_max, I_T, eStaLo, eStaUp, eSysLo, eSysUp
-
-def compute_CREAM_NeMgSi():
-    T_min_Ne, T_max_Ne, I_Ne, eStaLo_Ne, eStaUp_Ne, eSysLo_Ne, eSysUp_Ne = readfile('lake/CREAM_Ne_kEnergyPerNucleon.txt')
-    T_min_Mg, T_max_Mg, I_Mg, eStaLo_Mg, eStaUp_Mg, eSysLo_Mg, eSysUp_Mg = readfile('lake/CREAM_Mg_kEnergyPerNucleon.txt')
-    T_min_Si, T_max_Si, I_Si, eStaLo_Si, eStaUp_Si, eSysLo_Si, eSysUp_Si = readfile('lake/CREAM_Si_kEnergyPerNucleon.txt')
-
-    T_min = T_min_Ne[0:7]
-    T_max = T_max_Ne[0:7]
-    I_T = I_Ne[0:7] + I_Mg[1:8] + I_Si[1:8]
-    eStaLo = np.sqrt(eStaLo_Ne[0:7]**2. + eStaLo_Mg[1:8]**2. + eStaLo_Si[1:8]**2.)
-    eStaUp = np.sqrt(eStaUp_Ne[0:7]**2. + eStaUp_Mg[1:8]**2. + eStaUp_Si[1:8]**2.)
-    eSysLo = np.sqrt(eSysLo_Ne[0:7]**2. + eSysLo_Mg[1:8]**2. + eSysLo_Si[1:8]**2.)
-    eSysUp = np.sqrt(eSysUp_Ne[0:7]**2. + eSysUp_Mg[1:8]**2. + eSysUp_Si[1:8]**2.)
-
-    for i in range(7):
-        assert(T_min[i] == T_min_Ne[i])
-        assert(T_min[i] == T_min_Mg[i + 1])
-        assert(T_min[i] == T_min_Si[i + 1])
-        assert(T_max[i] == T_max_Ne[i])
-        assert(T_max[i] == T_max_Mg[i + 1])
-        assert(T_max[i] == T_max_Si[i + 1])
-
-    return T_min, T_max, I_T, eStaLo, eStaUp, eSysLo, eSysUp
-    
-def compute_AMS02_NeMgSi():
-    R_min_Ne, R_max_Ne, I_Ne, eStaLo_Ne, eStaUp_Ne, eSysLo_Ne, eSysUp_Ne = readfile('lake/AMS-02_Ne_rigidity.txt')
-    R_min_Mg, R_max_Mg, I_Mg, eStaLo_Mg, eStaUp_Mg, eSysLo_Mg, eSysUp_Mg = readfile('lake/AMS-02_Mg_rigidity.txt')
-    R_min_Si, R_max_Si, I_Si, eStaLo_Si, eStaUp_Si, eSysLo_Si, eSysUp_Si = readfile('lake/AMS-02_Si_rigidity.txt')
-
-    R_min = R_min_Si
-    R_max = R_max_Si
-    I_R = I_Ne + I_Mg + I_Si
-    eStaLo = np.sqrt(eStaLo_Ne**2. + eStaLo_Mg**2. + eStaLo_Si**2.)
-    eStaUp = np.sqrt(eStaUp_Ne**2. + eStaUp_Mg**2. + eStaUp_Si**2.)
-    eSysLo = np.sqrt(eSysLo_Ne**2. + eSysLo_Mg**2. + eSysLo_Si**2.)
-    eSysUp = np.sqrt(eSysUp_Ne**2. + eSysUp_Mg**2. + eSysUp_Si**2.)
-
-    for i in range(66):
-        assert(R_min[i] == R_min_Ne[i])
-        assert(R_min[i] == R_min_Mg[i])
-        assert(R_min[i] == R_min_Si[i])
-        assert(R_max[i] == R_max_Ne[i])
-        assert(R_max[i] == R_max_Mg[i])
-        assert(R_max[i] == R_max_Si[i])
-
-    return R_min, R_max, I_R, eStaLo, eStaUp, eSysLo, eSysUp
+    return [E_mean, I_E, e_sta_lo / A, e_sta_up / A, e_sys_lo / A, e_sys_up / A]
 
 def dump(data, filename):
-    print(filename)
-    f = open('output/' + filename, 'w')
-    E_mean, I_E, IStaLo, IStaUp, ISysLo, ISysUp = data
-    for i,j,k,l,m,n in zip(E_mean, I_E, IStaLo, IStaUp, ISysLo, ISysUp):
-        f.write(f'{i:5.3e} {j:5.3e} {k:5.3e} {l:5.3e} {m:5.3e} {n:5.3e}\n')
-    f.close()
+    """Write transformed data to a file in the output directory."""
+    output_dir = Path('output')
+    output_dir.mkdir(parents=True, exist_ok=True)
+    filepath = output_dir / filename
+    
+    logging.info("Dumping data to %s", filepath)
+    try:
+        E_mean, I_E, I_sta_lo, I_sta_up, I_sys_lo, I_sys_up = data
+        with filepath.open('w') as f:
+            for i, j, k, l, m, n in zip(E_mean, I_E, I_sta_lo, I_sta_up, I_sys_lo, I_sys_up):
+                f.write(f'{i:5.3e} {j:5.3e} {k:5.3e} {l:5.3e} {m:5.3e} {n:5.3e}\n')
+        logging.info("Data successfully written to %s", filepath)
+    except Exception as e:
+        logging.error("Failed to write data to %s: %s", filepath, e)
+        raise
 
 def transform_AMS02():
-    R_min, R_max, I_R, eStaLo, eStaUp, eSysLo, eSysUp = readfile('lake/AMS-02_H_rigidity.txt')
-    data = transform_R2E(R_min, R_max, I_R, eStaLo, eStaUp, eSysLo, eSysUp)
-    dump(data, 'AMS-02_H_energy.txt')
+    """Transform and dump AMS02 data."""
+    datasets = [
+        ('AMS-02_H_rigidity.txt', 'AMS-02_H_energy.txt', 1),
+        ('AMS-02_He_rigidity.txt', 'AMS-02_He_energy.txt', 2),
+        ('AMS-02_C_rigidity.txt', 'AMS-02_C_energy.txt', 6),
+        ('AMS-02_O_rigidity.txt', 'AMS-02_O_energy.txt', 8),
+        ('AMS-02_Mg_rigidity.txt', 'AMS-02_Mg_energy.txt', 12),
+        ('AMS-02_Si_rigidity.txt', 'AMS-02_Si_energy.txt', 14),
+        ('AMS-02_Fe_rigidity.txt', 'AMS-02_Fe_energy.txt', 26),
+    ]
     
-    R_min, R_max, I_R, eStaLo, eStaUp, eSysLo, eSysUp = readfile('lake/AMS-02_He_rigidity.txt')
-    data = transform_R2E(R_min, R_max, I_R, eStaLo, eStaUp, eSysLo, eSysUp, 2.)
-    dump(data, 'AMS-02_He_energy.txt')
-
-    R_min, R_max, I_R, eStaLo, eStaUp, eSysLo, eSysUp = compute_AMS02_CNO()
-    data = transform_R2E(R_min, R_max, I_R, eStaLo, eStaUp, eSysLo, eSysUp, 7.)
-    dump(data, 'AMS-02_N_energy.txt')
-
-    R_min, R_max, I_R, eStaLo, eStaUp, eSysLo, eSysUp = compute_AMS02_NeMgSi()
-    data = transform_R2E(R_min, R_max, I_R, eStaLo, eStaUp, eSysLo, eSysUp, 12.)
-    dump(data, 'AMS-02_Mg_energy.txt')
-
-    R_min, R_max, I_R, eStaLo, eStaUp, eSysLo, eSysUp = readfile('lake/AMS-02_Fe_rigidity.txt')
-    data = transform_R2E(R_min, R_max, I_R, eStaLo, eStaUp, eSysLo, eSysUp, 26.)
-    dump(data, 'AMS-02_Fe_energy.txt')
+    for rigidity_file, energy_file, Z in datasets:
+        R_min, R_max, I_R, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = readfile(f'crdb/{rigidity_file}')
+        data = transform_R2E(R_min, R_max, I_R, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up, Z=Z)
+        dump(data, energy_file)
 
 def transform_CALET():
-    E_min, E_max, I_E, eStaLo, eStaUp, eSysLo, eSysUp = readfile('lake/CALET_H_kEnergy.txt')
-    data = [compute_mean_energy(E_min, E_max), I_E, eStaLo, eStaUp, eSysLo, eSysUp]
-    dump(data, 'CALET_H_energy.txt')
-
-    E_min, E_max, I_E, eStaLo, eStaUp, eSysLo, eSysUp = readfile('lake/CALET_He_kEnergy.txt')
-    data = [compute_mean_energy(E_min, E_max), I_E, eStaLo, eStaUp, eSysLo, eSysUp]
-    dump(data, 'CALET_He_energy.txt')
-
-    T_min, T_max, I_T, eStaLo, eStaUp, eSysLo, eSysUp = compute_CALET_CNO()
-    data = transform_T2E(T_min, T_max, I_T, eStaLo, eStaUp, eSysLo, eSysUp, 14.)
-    dump(data, 'CALET_N_energy.txt')
-
-    T_min, T_max, I_T, eStaLo, eStaUp, eSysLo, eSysUp = readfile('lake/CALET_Fe_kEnergyPerNucleon.txt')
-    data = transform_T2E(T_min, T_max, I_T, eStaLo, eStaUp, eSysLo, eSysUp, 56.)
-    dump(data, 'CALET_Fe_energy.txt')
+    """Transform and dump CALET data."""
+    datasets = [
+        ('CALET_H_kEnergy.txt', 'CALET_H_energy.txt', 1),
+        ('CALET_He_kEnergy.txt', 'CALET_He_energy.txt', 1),
+        ('CALET_C_kEnergyPerNucleon.txt', 'CALET_C_energy.txt', 12),
+        ('CALET_O_kEnergyPerNucleon.txt', 'CALET_O_energy.txt', 16),
+        ('CALET_Fe_kEnergyPerNucleon.txt', 'CALET_Fe_energy.txt', 56),
+    ]
     
-def transform_DAMPE():
-    E_min, E_max, I_E, eStaLo, eStaUp, eSysLo, eSysUp = readfile('lake/DAMPE_H_kEnergy.txt')
-    data = [compute_mean_energy(E_min, E_max), I_E, eStaLo, eStaUp, eSysLo, eSysUp]
-    dump(data, 'DAMPE_H_energy.txt')
+    for energy_file, output_file, A in datasets:
+        E_min, E_max, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = readfile(f'crdb/{energy_file}')
+        if A == 1:
+            data = [compute_mean_energy(E_min, E_max), I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up]
+        else:
+            data = transform_T2E(E_min, E_max, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up, A=A)
+        dump(data, output_file)
 
-    E_min, E_max, I_E, eStaLo, eStaUp, eSysLo, eSysUp = readfile('lake/DAMPE_He_kEnergy.txt')
-    data = [compute_mean_energy(E_min, E_max), I_E, eStaLo, eStaUp, eSysLo, eSysUp]
-    dump(data, 'DAMPE_He_energy.txt')
+def transform_DAMPE():
+    """Transform and dump DAMPE data."""
+    datasets = [
+        ('DAMPE_H_kEnergy.txt', 'DAMPE_H_energy.txt'),
+        ('DAMPE_He_kEnergy.txt', 'DAMPE_He_energy.txt'),
+    ]
+    
+    for energy_file, output_file in datasets:
+        E_min, E_max, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = readfile(f'crdb/{energy_file}')
+        data = [compute_mean_energy(E_min, E_max), I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up]
+        dump(data, output_file)
 
 def transform_CREAM():
-    T_min, T_max, I_T, eStaLo, eStaUp, eSysLo, eSysUp = compute_CREAM_CNO()
-    data = transform_T2E(T_min, T_max, I_T, eStaLo, eStaUp, eSysLo, eSysUp, 14.)
-    dump(data, 'CREAM_N_energy.txt')
+    """Transform and dump CREAM data."""
+    datasets = [
+        ('CREAM_H_kEnergy.txt', 'CREAM_H_energy.txt', 1),
+        ('ISS-CREAM_H_kEnergy.txt', 'ISS-CREAM_H_energy.txt', 1),
+        ('CREAM_He_kEnergyPerNucleon.txt', 'CREAM_He_energy.txt', 4),
+        ('CREAM_C_kEnergyPerNucleon.txt', 'CREAM_C_energy.txt', 12),
+        ('CREAM_O_kEnergyPerNucleon.txt', 'CREAM_O_energy.txt', 16),
+        ('CREAM_Mg_kEnergyPerNucleon.txt', 'CREAM_Mg_energy.txt', 24),
+        ('CREAM_Si_kEnergyPerNucleon.txt', 'CREAM_Si_energy.txt', 28),
+        ('CREAM_Fe_kEnergyPerNucleon.txt', 'CREAM_Fe_energy.txt', 56),
+    ]
+    
+    for file, output_file, A in datasets:
+        E_min, E_max, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = readfile(f'crdb/{file}')
+        if A == 1:
+            data = [compute_mean_energy(E_min, E_max), I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up]
+        else:
+            data = transform_T2E(E_min, E_max, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up, A=A)
+        dump(data, output_file)
 
-    T_min, T_max, I_T, eStaLo, eStaUp, eSysLo, eSysUp = compute_CREAM_NeMgSi()
-    data = transform_T2E(T_min, T_max, I_T, eStaLo, eStaUp, eSysLo, eSysUp, 22.)
-    dump(data, 'CREAM_Mg_energy.txt')
+def transform_allParticles():
+    """Transform and dump ALL PARTICLES data."""
+    datasets = ["NUCLEON_all_energy.txt",
+                "GAMMA_SIBYLL_all_energy.txt",
+                "HAWC_QGSJET-II-04_all_energy.txt",
+                "TALE_QGSJET-II-04_all_energy.txt",
+                "TUNKA-133_QGSJET-01_all_energy.txt",
+                "KASCADE_QGSJET-01_all_energy.txt",
+                "KASCADE_SIBYLL_21_all_energy.txt",
+                "KGRANDE_QGSJET-II-04_all_energy.txt",
+                "KGRANDE_SIBYLL_23_all_energy.txt",        
+                "ICETOP_QGSJET-II-04_all_energy.txt",
+                "ICETOP_SIBYLL_21_all_energy.txt",
+                "ICECUBE_SIBYLL_21_all_energy.txt",
+                "AUGER_all_energy.txt",
+                "TA_all_energy.txt",
+                "TIBET_light_energy.txt",
+    ]
 
-    T_min, T_max, I_T, eStaLo, eStaUp, eSysLo, eSysUp = readfile('lake/CREAM_Fe_kEnergyPerNucleon.txt')
-    data = transform_T2E(T_min, T_max, I_T, eStaLo, eStaUp, eSysLo, eSysUp, 56.)
-    dump(data, 'CREAM_Fe_energy.txt')
+    for file in datasets:
+        E_min, E_max, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = readfile(f'crdb/{file}')
+        data = [compute_mean_energy(E_min, E_max), I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up]
+        dump(data, file)
 
-if __name__== "__main__":
-    transform_AMS02()
-    transform_CALET()
-    transform_DAMPE()
-    transform_CREAM()
+def transform_Cagnoli2024():
+    file = 'allpart_HET_wGen26_onlyBGO_RGWeights_SatCorrp_5UnfCycle_100GeV_1PeV_2016-23.txt'
+    E_min, E_max, I_E, e_sta_lo, e_sta_up = np.loadtxt(f'lake/{file}', usecols=(2,3,4,5,6), unpack=True)
+    data = [compute_mean_energy(E_min, E_max), I_E, e_sta_lo, e_sta_up, 0. * e_sta_lo, 0. * e_sta_up]
+    dump(data, "DAMPE_all_energy.txt")
+
+def transform_TIBET_all():
+    datasets = [("Tibet_QGSJET+HD_allParticle_totalEnergy.txt", "TIBET_QGSJET+HD_all_energy.txt"),
+                ("Tibet_QGSJET+PD_allParticle_totalEnergy.txt", "TIBET_QGSJET+PD_all_energy.txt"),
+                ("Tibet_SIBYLL+HD_allParticle_totalEnergy.txt", "TIBET_SIBYLL+HD_all_energy.txt"),
+    ]
+    for file, output_file in datasets:
+        E, I_E, e_sta = np.loadtxt(f'lake/{file}', usecols=(0,1,2), unpack=True)
+        data = [E, I_E, e_sta, e_sta, 0. * e_sta, 0. * e_sta]
+        dump(data, output_file)
+
+def transform_DAMPE_light():
+    file = 'DAMPE_light_totalEnergy.txt'
+    E_min, E_max, I_E, e_sta, e_sys_ana, e_sys_had = np.loadtxt(f'lake/{file}', usecols=(1,2,3,4,5,6), unpack=True)
+    data = [compute_mean_energy(E_min, E_max), I_E, e_sta, e_sta, e_sys_ana, e_sys_ana]
+    dump(data, "DAMPE_light_energy.txt")
+
+def transform_CREAM_light():
+    H = np.loadtxt(f'crdb/CREAM_H_kEnergy.txt', usecols=(0,1,2,3,4,5,6), unpack=True)
+    He = np.loadtxt(f'crdb/CREAM_He_kEnergyPerNucleon.txt', usecols=(0,1,2,3,4,5,6), unpack=True)
+    E_min = H[0]
+    E_max = H[1]
+    I_E = H[2] + He[2] / 4.
+    e_sta = H[3] + He[3] / 4.
+    e_sys = H[5] + He[5] / 4.
+    data = [compute_mean_energy(E_min, E_max), I_E, e_sta, e_sta, e_sys, e_sys]
+    dump(data, "CREAM_light_energy.txt")
+
+def transform_CALET_light():
+    H = np.loadtxt(f'crdb/CREAM_H_kEnergy.txt', usecols=(0,1,2,3,4,5,6), unpack=True)
+    He = np.loadtxt(f'crdb/CREAM_He_kEnergyPerNucleon.txt', usecols=(0,1,2,3,4,5,6), unpack=True)
+
+def transform_LHAASO():
+    filename = 'lake/LHAASO_all_energy.txt'
+    logEmin, logEmax, I_E, e_sta, e_sys = np.loadtxt(filename, usecols=(0,1,2,3,4), unpack=True)
+    E = np.power(10., .5 * (logEmin + logEmax))
+    data = [E, I_E, e_sta, e_sta, e_sys, e_sys]
+    dump(data, "LHAASO_QGSJET-II-04_all_energy.txt")
+
+    I_E, e_sta, e_sys = np.loadtxt(filename, usecols=(5,6,7), unpack=True)
+    data = [E, I_E, e_sta, e_sta, e_sys, e_sys]
+    dump(data, "LHAASO_EPOS-LHC_all_energy.txt")
+
+    I_E, e_sta, e_sys = np.loadtxt(filename, usecols=(8,9,10), unpack=True)
+    data = [E, I_E, e_sta, e_sta, e_sys, e_sys]
+    dump(data, "LHAASO_SIBYLL-23_all_energy.txt")
+
+    filename = 'lake/LHAASO_lnA_energy.txt'
+    logEmin, logEmax, lnA, e_sta, e_sys = np.loadtxt(filename, usecols=(0,1,2,3,4), unpack=True)
+    E = np.power(10., .5 * (logEmin + logEmax))
+    data = [E, lnA, e_sta, e_sta, e_sys, e_sys]
+    dump(data, "LHAASO_QGSJET-II-04_lnA_energy.txt")
+
+if __name__ == "__main__":
+    # logging.info("Starting AMS02 transformation")
+    # transform_AMS02()
+    
+    # logging.info("Starting CALET transformation")
+    # transform_CALET()
+    
+    # logging.info("Starting DAMPE transformation")
+    # transform_DAMPE()
+    
+    # logging.info("Starting CREAM transformation")
+    # transform_CREAM()
+
+    logging.info("Starting ALLPARTICLES transformation")
+    transform_allParticles()
+
+    # logging.info("Starting TIBET transformation")
+    # transform_TIBET()
+
+    # logging.info("Starting DAMPE ALL transformation")
+    # transform_Cagnoli2024()
+
+    # logging.info("Starting CREAM-light transformation")
+    # transform_CREAM_light()
+
+    # logging.info("Starting DAMPE-light transformation")
+    # transform_DAMPE_light()
+
+    logging.info("Starting CALET-light transformation")
+    transform_CALET_light()
+
+    logging.info("Starting LHAASO transformation")
+    transform_LHAASO()
+
+    logging.info("All transformations completed")
