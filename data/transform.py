@@ -56,8 +56,10 @@ def dump(data, filename):
 def transform_AMS02():
     """Transform and dump AMS02 data."""
     datasets = [
+        ('PAMELA_H_rigidity.txt', 'PAMELA_H_energy.txt', 1),
         ('AMS-02_H_rigidity.txt', 'AMS-02_H_energy.txt', 1),
         ('AMS-02_He_rigidity.txt', 'AMS-02_He_energy.txt', 2),
+        ('PAMELA_He_rigidity.txt', 'PAMELA_He_energy.txt', 2),
         ('AMS-02_C_rigidity.txt', 'AMS-02_C_energy.txt', 6),
         ('AMS-02_O_rigidity.txt', 'AMS-02_O_energy.txt', 8),
         ('AMS-02_Mg_rigidity.txt', 'AMS-02_Mg_energy.txt', 12),
@@ -138,6 +140,7 @@ def transform_allParticles():
                 "AUGER_all_energy.txt",
                 "TA_all_energy.txt",
                 "TIBET_light_energy.txt",
+                "NUCLEON_H_energy.txt",
     ]
 
     for file in datasets:
@@ -198,6 +201,14 @@ def transform_LHAASO():
     E = np.power(10., .5 * (logEmin + logEmax))
     data = [E, lnA, e_sta, e_sta, e_sys, e_sys]
     dump(data, "LHAASO_QGSJET-II-04_lnA_energy.txt")
+
+    lnA, e_sta, e_sys = np.loadtxt(filename, usecols=(5,6,7), unpack=True)
+    data = [E, lnA, e_sta, e_sta, e_sys, e_sys]
+    dump(data, "LHAASO_EPOS-LHC_lnA_energy.txt")
+
+    lnA, e_sta, e_sys = np.loadtxt(filename, usecols=(8,9,10), unpack=True)
+    data = [E, lnA, e_sta, e_sta, e_sys, e_sys]
+    dump(data, "LHAASO_SIBYLL-23_lnA_energy.txt")
 
 def transform_GRAPES():
     filename = 'lake/GRAPES_H_totalEnergy.txt'
