@@ -36,21 +36,6 @@ class GalacticModel:
         return y
 
 
-def load_data(filename, slope, norm, min_energy, max_energy=1e20):
-    from utils import _calculate_errors, _normalize_data
-
-    path = f'data/{filename}'
-    cols = (0, 1, 2, 3, 4, 5)
-    x, y, err_sta_lo, err_sta_up, err_sys_lo, err_sys_up = np.loadtxt(path, usecols=cols, unpack=True)
-
-    err_tot_lo, err_tot_up = _calculate_errors(err_sta_lo, err_sta_up, err_sys_lo, err_sys_up)
-
-    x_norm, y_norm, y_err_lo_norm, y_err_up_norm = _normalize_data(x, y, err_tot_lo, err_tot_up, slope, norm)
-    
-    mask = (x_norm > min_energy) & (x_norm < max_energy)
-    return x_norm[mask], y_norm[mask], y_err_lo_norm[mask], y_err_up_norm[mask]
-
-
 def experiment_chi2(filename, Z, params, norm=1.):
     E, y_data, err_lo, err_up = load_data(filename, slope=2.7, norm=norm, min_energy=0.7e3 * Z, max_energy=1e5 * Z)
     model = GalacticModel(*params)
@@ -72,7 +57,7 @@ def fit_phe(initial_params):
             ('DAMPE_H_energy.txt', 1, fDAMPE),
             ('CREAM_H_energy.txt', 1, fCREAM),
             ('AMS-02_He_energy.txt', 2, 1),
-            ('CALET_He_energy.txt', 2, fCALET),
+            # ('CALET_He_energy.txt', 2, fCALET),
             ('DAMPE_He_energy.txt', 2, fDAMPE),
             ('CREAM_He_energy.txt', 2, fCREAM),
             ('AMS-02_C_energy.txt', 6, 1),
@@ -114,9 +99,9 @@ def fit_phe(initial_params):
     return m.values, m.errors, m.covariance, m.fval
 
 def dump_fluxes(values, covariance):    
-    print(f'fCREAM = {values['fCREAM']:5.3f}')
-    print(f'fCALET = {values['fCALET']:5.3f}')
-    print(f'fDAMPE = {values['fDAMPE']:5.3f}')
+    print(f'fCREAM = {values["fCREAM"]:5.3f}')
+    print(f'fCALET = {values["fCALET"]:5.3f}')
+    print(f'fDAMPE = {values["fDAMPE"]:5.3f}')
 
     def get_flux(E, Z):
         def compute_model(E, params):
@@ -229,7 +214,7 @@ def dump_lnA(values, covariance):
 
 if __name__ == "__main__":
     # Initial parameters
-    initial_params = [10e3, 9e3, 2e3, 3e3, 1e3, 1e3, 1e3, -0.11, -0.22, -0.22, 13e3, 0.21, 5., 1., 1., 1.]
+    initial_params = [10e3, 9e3, 2e3, 3e3, 1e3, 1e3, 3e3, -0.12, -0.20, -0.20, 13e3, 0.21, 5., 1., 1., 1.]
     values, errors, covariance, fval = fit_phe(initial_params)
     dump_fluxes(values, covariance)
     dump_all(values, covariance)

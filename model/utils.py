@@ -35,6 +35,20 @@ def _normalize_data(x: np.ndarray, y: np.ndarray, err_tot_lo: np.ndarray, err_to
     y_err_up_norm = scaling * err_tot_up
     return x_norm, y_norm, y_err_lo_norm, y_err_up_norm
 
+def load_data(filename, slope, norm, min_energy, max_energy=1e20):
+    from utils import _calculate_errors, _normalize_data
+
+    path = f'data/{filename}'
+    cols = (0, 1, 2, 3, 4, 5)
+    x, y, err_sta_lo, err_sta_up, err_sys_lo, err_sys_up = np.loadtxt(path, usecols=cols, unpack=True)
+
+    err_tot_lo, err_tot_up = _calculate_errors(err_sta_lo, err_sta_up, err_sys_lo, err_sys_up)
+
+    x_norm, y_norm, y_err_lo_norm, y_err_up_norm = _normalize_data(x, y, err_tot_lo, err_tot_up, slope, norm)
+    
+    mask = (x_norm > min_energy) & (x_norm < max_energy)
+    return x_norm[mask], y_norm[mask], y_err_lo_norm[mask], y_err_up_norm[mask]
+
 def plot_data(ax: plt.Axes, filename: str, slope: float, norm: float, fmt: str, color: str, label: str, zorder: int = 1) -> None:
     """
     Load data from file, normalize, and plot with error bars.
@@ -54,10 +68,7 @@ def plot_data(ax: plt.Axes, filename: str, slope: float, norm: float, fmt: str, 
     except Exception as e:
         print(f"Error loading data from {filename}: {e}")
         return
-    
-    # # Calculate combined errors
-    # err_tot_lo, err_tot_up = _calculate_errors(err_sta_lo, err_sta_up, err_sys_lo, err_sys_up)
-    
+        
     # Normalize data
     x_norm, y_norm, y_err_lo_norm, y_err_up_norm = _normalize_data(x, y, err_sta_lo, err_sta_up, slope, norm)
     
