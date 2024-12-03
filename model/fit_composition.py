@@ -1,6 +1,7 @@
 import numpy as np
 from iminuit import Minuit
 from jacobi import propagate
+from utils import load_data
 
 class GalacticModel:
     R0 = 1e3  # Constant for scaling

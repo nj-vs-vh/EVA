@@ -1,3 +1,4 @@
+from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -35,10 +36,11 @@ def _normalize_data(x: np.ndarray, y: np.ndarray, err_tot_lo: np.ndarray, err_to
     y_err_up_norm = scaling * err_tot_up
     return x_norm, y_norm, y_err_lo_norm, y_err_up_norm
 
-def load_data(filename, slope, norm, min_energy, max_energy=1e20):
-    from utils import _calculate_errors, _normalize_data
+ROOT_DIR = (Path(__file__).parent / "..").resolve()
+DATA_DIR = ROOT_DIR / "data/output"
 
-    path = f'data/{filename}'
+def load_data(filename, slope, norm, min_energy, max_energy=1e20):
+    path = str(DATA_DIR / filename)
     cols = (0, 1, 2, 3, 4, 5)
     x, y, err_sta_lo, err_sta_up, err_sys_lo, err_sys_up = np.loadtxt(path, usecols=cols, unpack=True)
 
