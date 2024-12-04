@@ -21,13 +21,13 @@ def savefig(fig: plt.Figure, filename: str, dpi: int = 300, bbox_inches: str = '
     except Exception as e:
         print(f"Error saving plot to {filename}: {e}")
 
-def _calculate_errors(err_sta_lo: np.ndarray, err_sta_up: np.ndarray, err_sys_lo: np.ndarray, err_sys_up: np.ndarray) -> tuple:
+def _calculate_errors(err_sta_lo: np.ndarray, err_sta_up: np.ndarray, err_sys_lo: np.ndarray, err_sys_up: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Calculate combined statistical and systematic errors."""
     err_tot_lo = np.sqrt(err_sta_lo**2 + err_sys_lo**2)
     err_tot_up = np.sqrt(err_sta_up**2 + err_sys_up**2)
     return err_tot_lo, err_tot_up
 
-def _normalize_data(x: np.ndarray, y: np.ndarray, err_tot_lo: np.ndarray, err_tot_up: np.ndarray, slope: float, norm: float) -> tuple:
+def _normalize_data(x: np.ndarray, y: np.ndarray, err_tot_lo: np.ndarray, err_tot_up: np.ndarray, slope: float, norm: float) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Normalize data values by given slope and normalization factor."""
     x_norm = x / norm
     scaling = norm * np.power(x_norm, slope)
@@ -39,7 +39,7 @@ def _normalize_data(x: np.ndarray, y: np.ndarray, err_tot_lo: np.ndarray, err_to
 ROOT_DIR = (Path(__file__).parent / "..").resolve()
 DATA_DIR = ROOT_DIR / "data/output"
 
-def load_data(filename, slope, norm, min_energy, max_energy=1e20):
+def load_data(filename: str, slope: float, norm: float, min_energy: float, max_energy: float=1e20) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     path = str(DATA_DIR / filename)
     cols = (0, 1, 2, 3, 4, 5)
     x, y, err_sta_lo, err_sta_up, err_sys_lo, err_sys_up = np.loadtxt(path, usecols=cols, unpack=True)
@@ -65,8 +65,9 @@ def plot_data(ax: plt.Axes, filename: str, slope: float, norm: float, fmt: str, 
     - label: Label for the plot legend.
     - zorder: Z-order for layering the plot.
     """
+    path = str(DATA_DIR / filename)
     try:
-        x, y, err_sta_lo, err_sta_up, err_sys_lo, err_sys_up = np.loadtxt(f'./data/{filename}', usecols=(0, 1, 2, 3, 4, 5), unpack=True)
+        x, y, err_sta_lo, err_sta_up, err_sys_lo, err_sys_up = np.loadtxt(path, usecols=(0, 1, 2, 3, 4, 5), unpack=True)
     except Exception as e:
         print(f"Error loading data from {filename}: {e}")
         return
