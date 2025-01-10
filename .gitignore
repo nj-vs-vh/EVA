@@ -4,3 +4,4 @@ data/crdb
 data/output
 *__pycache__/
 output
+venv

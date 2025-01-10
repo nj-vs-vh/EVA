@@ -4,6 +4,14 @@ A novel interpretation of the cosmic ray knee.
 
 ## Development
 
+### Virtual environment
+
+```bash
+python3.12 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
 ### Data preparation
 
 ```bash
