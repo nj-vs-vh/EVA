@@ -4,4 +4,16 @@ data/crdb
 data/output
 *__pycache__/
 output
+# Devenv
+.devenv*
+devenv.local.nix
+
+# direnv
+.direnv
+
+# pre-commit
+.pre-commit-config.yaml
+
 venv
+
+bayesian.back.ipynb
