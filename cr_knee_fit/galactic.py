@@ -10,7 +10,7 @@ from cr_knee_fit.types_ import Packable, Primary
 
 
 @dataclass
-class RigidityDependentBreak(Packable[None]):
+class RigidityBreak(Packable[None]):
     lg_R: float  # break rigidity, lg(R / GV)
     d_alpha: float  # PL index change at the break
     lg_sharpness: float  # 0 is very smooth, 10+ is very sharp
@@ -22,22 +22,22 @@ class RigidityDependentBreak(Packable[None]):
         return np.array([self.lg_R, self.d_alpha, self.lg_sharpness])
 
     def labels(self) -> list[str]:
-        return ["log(R_b)", "d_alpha", "log(s)"]
+        return ["lg(R_b)", "d_alpha", "log(s)"]
 
     def layout_info(self) -> None:
         return None
 
     @classmethod
-    def unpack(cls, theta: np.ndarray, layout_info: None) -> "RigidityDependentBreak":
-        return RigidityDependentBreak(*theta[:3])
+    def unpack(cls, theta: np.ndarray, layout_info: None) -> "RigidityBreak":
+        return RigidityBreak(*theta[:3])
 
 
 @dataclass
 class GalacticCR(Packable[list[Primary]]):
     components: dict[Primary, PowerLaw]
-    dampe_break: RigidityDependentBreak
+    dampe_break: RigidityBreak
 
-    def __str__(self) -> str:
+    def description(self) -> str:
         component_strs = [
             f"$ \\text{{{p.name}}} \\propto R ^{{-{pl.alpha:.2f}}} $"
             for p, pl in self.components.items()
@@ -101,7 +101,7 @@ class GalacticCR(Packable[list[Primary]]):
                 labels.append(f"{p.name}_{param_label}")
 
         for param_label in self.dampe_break.labels():
-            labels.append(f"DB {param_label}")
+            labels.append(f"B {param_label}")
         return labels
 
     def layout_info(self) -> list[Primary]:
@@ -115,7 +115,7 @@ class GalacticCR(Packable[list[Primary]]):
             component = PowerLaw.unpack(theta[offset:], None)
             components[particle] = component
             offset += component.ndim()
-        dampe_break = RigidityDependentBreak.unpack(theta[offset:], None)
+        dampe_break = RigidityBreak.unpack(theta[offset:], None)
         return GalacticCR(components=components, dampe_break=dampe_break)
 
 
@@ -126,6 +126,6 @@ if __name__ == "__main__":
             Primary.Fe: PowerLaw(1, 1),
             Primary.C: PowerLaw(5.5, 0.5),
         },
-        dampe_break=RigidityDependentBreak(lg_R=5.0, d_alpha=-0.4, lg_sharpness=0.5),
+        dampe_break=RigidityBreak(lg_R=5.0, d_alpha=-0.4, lg_sharpness=0.5),
     )
     gcr.validate_packing()
