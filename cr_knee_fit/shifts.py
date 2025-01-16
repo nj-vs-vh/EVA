@@ -25,8 +25,11 @@ class ExperimentEnergyScaleShifts(Packable[list[Experiment]]):
     def pack(self) -> np.ndarray:
         return np.array([self.lg_shifts[exp] for exp in self.experiments])
 
-    def labels(self) -> list[str]:
-        return [f"lg(f_{exp.name})" for exp in self.experiments]
+    def labels(self, latex: bool = False) -> list[str]:
+        if latex:
+            return [f"\\lg(f_\\text{{{exp.name}}})" for exp in self.experiments]
+        else:
+            return [f"lg(f_{exp.name})" for exp in self.experiments]
 
     def layout_info(self) -> list[Experiment]:
         return self.experiments

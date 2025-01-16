@@ -23,7 +23,7 @@ class Packable(Generic[LayoutInfo], abc.ABC):
         ...
 
     @abc.abstractmethod
-    def labels(self) -> list[str]:
+    def labels(self, latex: bool) -> list[str]:
         ...
 
     @abc.abstractmethod
@@ -37,7 +37,7 @@ class Packable(Generic[LayoutInfo], abc.ABC):
 
     def validate_packing(self) -> None:
         packed = self.pack()
-        labels = self.labels()
+        labels = self.labels(latex=False)
         assert len(packed) == len(labels)
         assert len(packed) == self.ndim()
         assert self.unpack(packed, layout_info=self.layout_info()) == self

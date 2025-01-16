@@ -18,8 +18,11 @@ class PowerLaw(Packable[None]):
     def ndim(self) -> int:
         return 2
 
-    def labels(self) -> list[str]:
-        return ["lg(I)", "alpha"]
+    def labels(self, latex: bool) -> list[str]:
+        if latex:
+            return ["\\lg(I)", "\\alpha"]
+        else:
+            return ["lg(I)", "alpha"]
 
     def layout_info(self) -> None:
         return None

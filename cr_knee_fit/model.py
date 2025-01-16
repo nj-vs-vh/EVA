@@ -23,8 +23,8 @@ class Model(Packable[ModelConfig]):
     def pack(self) -> np.ndarray:
         return np.hstack((self.cr.pack(), self.energy_shifts.pack()))
 
-    def labels(self) -> list[str]:
-        return self.cr.labels() + self.energy_shifts.labels()
+    def labels(self, latex: bool) -> list[str]:
+        return self.cr.labels(latex) + self.energy_shifts.labels(latex)
 
     def layout_info(self) -> ModelConfig:
         return ModelConfig(
@@ -63,7 +63,7 @@ class Model(Packable[ModelConfig]):
         return fig
 
     def format_params(self) -> str:
-        lines = [f"{label} = {value:.2e}" for label, value in zip(self.labels(), self.pack())]
+        lines = [f"{label} = {value:.2e}" for label, value in zip(self.labels(False), self.pack())]
         return "\n".join(lines)
 
 

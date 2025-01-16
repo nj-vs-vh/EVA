@@ -21,8 +21,11 @@ class RigidityBreak(Packable[None]):
     def pack(self) -> np.ndarray:
         return np.array([self.lg_R, self.d_alpha, self.lg_sharpness])
 
-    def labels(self) -> list[str]:
-        return ["lg(R_b)", "d_alpha", "log(s)"]
+    def labels(self, latex: bool) -> list[str]:
+        if latex:
+            return ["\\lg(R_b)", "\\Delta \\alpha", "\\lg(s)"]
+        else:
+            return ["lg(R_b)", "d_alpha", "lg(s)"]
 
     def layout_info(self) -> None:
         return None
@@ -65,9 +68,7 @@ class GalacticCR(Packable[list[Primary]]):
         y /= (1.0 + (R / R_break) ** s) ** (self.dampe_break.d_alpha / s)
         return y
 
-    def plot(
-        self, Emin: float, Emax: float, scale: float, axes: Axes | None = None
-    ) -> Axes:
+    def plot(self, Emin: float, Emax: float, scale: float, axes: Axes | None = None) -> Axes:
         if axes is not None:
             ax = axes
         else:
@@ -75,9 +76,7 @@ class GalacticCR(Packable[list[Primary]]):
         E_grid = np.logspace(np.log10(Emin), np.log10(Emax), 300)
         E_factor = E_grid**scale
         for p in self.components.keys():
-            ax.loglog(
-                E_grid, E_factor * self.compute(E_grid, p), label=p.name, color=p.color
-            )
+            ax.loglog(E_grid, E_factor * self.compute(E_grid, p), label=p.name, color=p.color)
         ax.legend()
         label_energy_flux(ax, scale)
         return ax
@@ -94,14 +93,14 @@ class GalacticCR(Packable[list[Primary]]):
         subvectors.append(self.dampe_break.pack())
         return np.hstack(subvectors)
 
-    def labels(self) -> list[str]:
+    def labels(self, latex: bool) -> list[str]:
         labels: list[str] = []
         for p in self.primaries:
-            for param_label in self.components[p].labels():
-                labels.append(f"{p.name}_{param_label}")
-
-        for param_label in self.dampe_break.labels():
-            labels.append(f"B {param_label}")
+            for param_label in self.components[p].labels(latex):
+                labels.append(
+                    f"{param_label}_\\text{{{p.name}}}" if latex else f"{param_label} ({p.name})"
+                )
+        labels.extend(self.dampe_break.labels(latex))
         return labels
 
     def layout_info(self) -> list[Primary]:
