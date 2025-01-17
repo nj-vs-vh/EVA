@@ -1,25 +1,38 @@
 from typing import Callable
-from scipy import stats
-import numpy as np
 
-from cr_knee_fit.galactic import GalacticCR, RigidityBreak
-from cr_knee_fit.model import ModelConfig, Model
+import numpy as np
+from scipy import stats
+
+from cr_knee_fit.cr_model import CosmicRaysModel, PowerLaw, RigidityBreak
+from cr_knee_fit.fit_data import FitData
+from cr_knee_fit.model import Model, ModelConfig
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
-from cr_knee_fit.spectrum import PowerLaw
-from cr_knee_fit.types_ import Experiment, FitData, Primary
 
 
 def logprior(model: Model) -> float:
     res = 0
 
-    # DAMPE break
-    if not 3 < model.cr.dampe_break.lg_R < 5:
+    # breaks must be ordered in R to avoid ambiguity
+    breaks_lgR = [m.lg_R for m in model.cr_model.breaks]
+    if breaks_lgR != sorted(breaks_lgR):
         return -np.inf
-    # hardening
-    if model.cr.dampe_break.d_alpha < 0:
+
+    dampe_break = model.cr_model.breaks[0]
+    if not (3 < dampe_break.lg_R < 5):
+        return -np.inf
+    # enforce softening
+    if dampe_break.d_alpha < 0:
         return -np.inf
     # "fixing" break sharpness with a very narrow prior
-    res += stats.norm.logpdf(model.cr.dampe_break.lg_sharpness, loc=np.log10(5), scale=0.01)
+    res += stats.norm.logpdf(dampe_break.lg_sharpness, loc=np.log10(5), scale=0.01)
+
+    if len(model.cr_model.breaks) > 1:
+        grapes_hardening = model.cr_model.breaks[1]
+        if not (4.5 < grapes_hardening.lg_R < 6):
+            return -np.inf
+        if grapes_hardening.d_alpha > 0:
+            return -np.inf
+        res += stats.norm.logpdf(grapes_hardening.lg_sharpness, loc=np.log10(10), scale=0.01)
 
     # energy shift priors
     # TODO: realistic priors from experiments' energy scale systematic uncertainties
@@ -37,7 +50,7 @@ def make_loglikelihood(fit_data: FitData, config: ModelConfig) -> Callable[[np.n
         for experiment, particle_data in fit_data.spectra.items():
             for particle, data in particle_data.items():
                 data = data.with_shifted_energy_scale(f=m.energy_shifts.f(experiment))
-                prediction = m.cr.compute(E=data.E, particle=particle)
+                prediction = m.cr_model.compute(E=data.E, particle=particle)
                 loglike_per_bin = -0.5 * (
                     np.where(
                         prediction > data.F,
@@ -68,19 +81,27 @@ def make_logposterior(fit_data: FitData, config: ModelConfig) -> Callable[[np.nd
 
 def initial_guess_model(config: ModelConfig) -> Model:
     return Model(
-        cr=GalacticCR(
+        cr_model=CosmicRaysModel(
             components={
                 p: PowerLaw(
                     lgI=stats.norm.rvs(loc=-4, scale=0.5) - 2.6 * np.log10(p.Z),
                     alpha=stats.norm.rvs(loc=2.7, scale=0.1),
                 )
-                for p in config.primaries
+                for p in config.cr_model_config.primaries
             },
-            dampe_break=RigidityBreak(
-                lg_R=stats.norm.rvs(loc=4.0, scale=0.5),  # DAMPE break at ~1 TeV
-                d_alpha=stats.norm.rvs(loc=0, scale=0.1) ** 2,
-                lg_sharpness=stats.norm.rvs(loc=np.log10(5), scale=0.01),
-            ),
+            breaks=[
+                # DAMPE break at ~1 TeV
+                RigidityBreak(
+                    lg_R=stats.norm.rvs(loc=4.2, scale=0.1),
+                    d_alpha=stats.norm.rvs(loc=0.3, scale=0.05),
+                    lg_sharpness=stats.norm.rvs(loc=np.log10(5), scale=0.01),
+                ),
+                RigidityBreak(
+                    lg_R=stats.norm.rvs(loc=5.3, scale=0.1),
+                    d_alpha=stats.norm.rvs(loc=-0.3, scale=0.05),
+                    lg_sharpness=stats.norm.rvs(loc=np.log10(10), scale=0.01),
+                ),
+            ],
         ),
         energy_shifts=ExperimentEnergyScaleShifts(
             lg_shifts={exp: stats.norm.rvs(loc=0, scale=0.01) for exp in config.shifted_experiments}

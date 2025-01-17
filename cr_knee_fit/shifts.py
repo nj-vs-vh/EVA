@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+
 import numpy as np
 
 from cr_knee_fit.types_ import Experiment, Packable
