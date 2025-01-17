@@ -160,7 +160,8 @@ class CRSpectrumData:
         E_factor = self.E**scale
         label = f"{self.experiment.value} {self.primary.name}"
         if not np.isclose(self.energy_scale_shift, 1.0):
-            label += f" $(E \\times {self.energy_scale_shift:.3g})$"
+            shift_percent = 100 * (self.energy_scale_shift - 1)
+            label += f" $({shift_percent:.1g} \\% E)$"
         ax.errorbar(
             self.E,
             E_factor * self.F,
