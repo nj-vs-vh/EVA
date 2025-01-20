@@ -104,13 +104,6 @@ class FitData:
     def E_max(self) -> float:
         return max([s.E.max() for s in self.all_spectra()])
 
-    def model_E_range(self) -> tuple[float, float]:
-        E_min = self.E_min()
-        E_max = self.E_max()
-        frac = E_max / E_min
-        margin = frac**0.05
-        return E_min / margin, E_max * margin
-
     @classmethod
     def load(
         cls,
