@@ -4,7 +4,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.figure import Figure
 
-from cr_knee_fit.cr_model import CosmicRaysModel, CosmicRaysModelConfig, PowerLaw, RigidityBreak
+from cr_knee_fit.cr_model import (
+    CosmicRaysModel,
+    CosmicRaysModelConfig,
+    RigidityBreak,
+    SharedPowerLaw,
+)
 from cr_knee_fit.fit_data import FitData
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 from cr_knee_fit.types_ import Experiment, Packable, Primary
@@ -61,17 +66,14 @@ class Model(Packable[ModelConfig]):
         ax.set_title(self.cr_model.description(), {"fontsize": "x-small"})
         return fig
 
-    def format_params(self) -> str:
-        lines = [f"{label} = {value:.2e}" for label, value in zip(self.labels(False), self.pack())]
-        return "\n".join(lines)
-
 
 if __name__ == "__main__":
     m = Model(
         cr_model=CosmicRaysModel(
-            components={
-                p: PowerLaw(lgI=np.random.random(), alpha=np.random.random()) for p in Primary
-            },
+            base_spectra=[
+                SharedPowerLaw.single_primary(p, np.random.random(), alpha=np.random.random())
+                for p in Primary
+            ],
             breaks=[
                 RigidityBreak(
                     lg_R=np.random.random(),

@@ -3,7 +3,7 @@ from typing import Callable
 import numpy as np
 from scipy import stats
 
-from cr_knee_fit.cr_model import CosmicRaysModel, PowerLaw, RigidityBreak
+from cr_knee_fit.cr_model import CosmicRaysModel, RigidityBreak, SharedPowerLaw
 from cr_knee_fit.fit_data import FitData
 from cr_knee_fit.model import Model, ModelConfig
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
@@ -50,7 +50,7 @@ def make_loglikelihood(fit_data: FitData, config: ModelConfig) -> Callable[[np.n
         for experiment, particle_data in fit_data.spectra.items():
             for particle, data in particle_data.items():
                 data = data.with_shifted_energy_scale(f=m.energy_shifts.f(experiment))
-                prediction = m.cr_model.compute(E=data.E, particle=particle)
+                prediction = m.cr_model.compute(E=data.E, primary=particle)
                 loglike_per_bin = -0.5 * (
                     np.where(
                         prediction > data.F,
@@ -77,33 +77,3 @@ def make_logposterior(fit_data: FitData, config: ModelConfig) -> Callable[[np.nd
         return logpi + loglike(theta)
 
     return logpost
-
-
-def initial_guess_model(config: ModelConfig) -> Model:
-    return Model(
-        cr_model=CosmicRaysModel(
-            components={
-                p: PowerLaw(
-                    lgI=stats.norm.rvs(loc=-4, scale=0.5) - 2.6 * np.log10(p.Z),
-                    alpha=stats.norm.rvs(loc=2.7, scale=0.1),
-                )
-                for p in config.cr_model_config.primaries
-            },
-            breaks=[
-                # DAMPE break at ~1 TeV
-                RigidityBreak(
-                    lg_R=stats.norm.rvs(loc=4.2, scale=0.1),
-                    d_alpha=stats.norm.rvs(loc=0.3, scale=0.05),
-                    lg_sharpness=stats.norm.rvs(loc=np.log10(5), scale=0.01),
-                ),
-                RigidityBreak(
-                    lg_R=stats.norm.rvs(loc=5.3, scale=0.1),
-                    d_alpha=stats.norm.rvs(loc=-0.3, scale=0.05),
-                    lg_sharpness=stats.norm.rvs(loc=np.log10(10), scale=0.01),
-                ),
-            ],
-        ),
-        energy_shifts=ExperimentEnergyScaleShifts(
-            lg_shifts={exp: stats.norm.rvs(loc=0, scale=0.01) for exp in config.shifted_experiments}
-        ),
-    )
