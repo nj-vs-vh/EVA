@@ -50,54 +50,63 @@ def logprior(model: Model) -> float:
         resolution_percent = 10
         lg_sigma = np.abs(np.log10(1 + resolution_percent / 100))
         res += stats.norm.logpdf(lg_shift, loc=0, scale=lg_sigma)
-    return float(res)
+
+    return res  # type: ignore
 
 
-def make_loglikelihood(fit_data: FitData, config: ModelConfig) -> Callable[[np.ndarray], float]:
-    def loglike(theta: np.ndarray) -> float:
-        m = Model.unpack(theta, layout_info=config)
-        res = 0
-        for experiment, particle_data in fit_data.spectra.items():
-            for particle, data in particle_data.items():
-                data = data.with_shifted_energy_scale(f=m.energy_shifts.f(experiment))
-                prediction = m.cr_model.compute(E=data.E, primary=particle)
-                loglike_per_bin = -0.5 * (
-                    np.where(
-                        prediction > data.F,
-                        ((prediction - data.F) / data.F_errhi) ** 2,
-                        ((prediction - data.F) / data.F_errlo) ** 2,
-                    )
+def to_model(
+    model_or_theta: Model | np.ndarray,
+    config: ModelConfig,
+) -> Model:
+    return (
+        model_or_theta
+        if isinstance(model_or_theta, Model)
+        else Model.unpack(model_or_theta, layout_info=config)
+    )
+
+
+def loglikelihood(
+    model_or_theta: Model | np.ndarray,
+    fit_data: FitData,
+    config: ModelConfig,
+) -> float:
+    m = to_model(model_or_theta, config)
+    res = 0
+    for experiment, particle_data in fit_data.spectra.items():
+        for particle, data in particle_data.items():
+            data = data.with_shifted_energy_scale(f=m.energy_shifts.f(experiment))
+            prediction = m.cr_model.compute(E=data.E, primary=particle)
+            loglike_per_bin = -0.5 * (
+                np.where(
+                    prediction > data.F,
+                    ((prediction - data.F) / data.F_errhi) ** 2,
+                    ((prediction - data.F) / data.F_errlo) ** 2,
                 )
-                if np.any(np.isnan(loglike_per_bin)):
-                    return -np.inf
-                res += float(np.sum(loglike_per_bin))
-        if config.cr_model_config.fit_all_particle:
-            for experiment, data in fit_data.all_particle_spectra.items():
-                data = data.with_shifted_energy_scale(f=m.energy_shifts.f(experiment))
-                prediction = m.cr_model.compute_all_particle(E=data.E)
-                loglike_per_bin = -0.5 * (
-                    np.where(
-                        prediction > data.F,
-                        ((prediction - data.F) / data.F_errhi) ** 2,
-                        ((prediction - data.F) / data.F_errlo) ** 2,
-                    )
-                )
-                if np.any(np.isnan(loglike_per_bin)):
-                    return -np.inf
-                res += float(np.sum(loglike_per_bin))
-        return res
-
-    return loglike
+            )
+            if np.any(np.isnan(loglike_per_bin)):
+                return -np.inf
+            res += float(np.sum(loglike_per_bin))
+    for experiment, data in fit_data.all_particle_spectra.items():
+        data = data.with_shifted_energy_scale(f=m.energy_shifts.f(experiment))
+        prediction = m.cr_model.compute_all_particle(E=data.E)
+        loglike_per_bin = -0.5 * (
+            np.where(
+                prediction > data.F,
+                ((prediction - data.F) / data.F_errhi) ** 2,
+                ((prediction - data.F) / data.F_errlo) ** 2,
+            )
+        )
+        if np.any(np.isnan(loglike_per_bin)):
+            return -np.inf
+        res += float(np.sum(loglike_per_bin))
+    return res
 
 
-def make_logposterior(fit_data: FitData, config: ModelConfig) -> Callable[[np.ndarray], float]:
-    loglike = make_loglikelihood(fit_data, config)
-
-    def logpost(theta: np.ndarray) -> float:
-        model = Model.unpack(theta, layout_info=config)
-        logpi = logprior(model)
-        if not np.isfinite(logpi):
-            return logpi
-        return logpi + loglike(theta)
-
-    return logpost
+def logposterior(
+    model_or_theta: Model | np.ndarray, fit_data: FitData, config: ModelConfig
+) -> float:
+    model = to_model(model_or_theta, config)
+    logpi = logprior(model)
+    if not np.isfinite(logpi):
+        return logpi
+    return logpi + loglikelihood(model, fit_data, config)

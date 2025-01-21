@@ -33,9 +33,14 @@ class Packable(Generic[LayoutInfo], abc.ABC):
         assert len(packed) == self.ndim()
         assert self.unpack(packed, layout_info=self.layout_info()) == self
 
-    def print_params(self):
+    def format_params(self) -> str:
+        lines: list[str] = []
         for i, (label, value) in enumerate(zip(self.labels(False), self.pack())):
-            print(f"{i + 1: >3}. {label: >32} = {value:.2e}")
+            lines.append(f"{i + 1: >3}. {label: >32} = {value:.2e}")
+        return "\n".join(lines)
+
+    def print_params(self):
+        print(self.format_params())
 
 
 _PRIMARY_CMAP = plt.colormaps["turbo"]

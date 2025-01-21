@@ -7,8 +7,8 @@ import numpy as np
 from matplotlib.axes import Axes
 from num2tex import num2tex
 
-from cr_knee_fit.plotting import label_energy_flux
 from cr_knee_fit.types_ import Packable, Primary
+from cr_knee_fit.utils import label_energy_flux
 
 
 @dataclass
@@ -113,7 +113,7 @@ class RigidityBreak(Packable[None]):
 class CosmicRaysModelConfig:
     components: Sequence[list[Primary]]
     n_breaks: int
-    fit_all_particle: bool
+    rescale_all_particle: bool
 
     def __post_init__(self) -> None:
         assert len(self.primaries) == len(set(self.primaries))
@@ -226,7 +226,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         return CosmicRaysModelConfig(
             components=[spectrum.primaries for spectrum in self.base_spectra],
             n_breaks=len(self.breaks),
-            fit_all_particle=self.all_particle_lg_shift is not None,
+            rescale_all_particle=self.all_particle_lg_shift is not None,
         )
 
     @classmethod
@@ -246,7 +246,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         return CosmicRaysModel(
             base_spectra=components,
             breaks=breaks,
-            all_particle_lg_shift=theta[offset] if layout_info.fit_all_particle else None,
+            all_particle_lg_shift=theta[offset] if layout_info.rescale_all_particle else None,
         )
 
 
