@@ -1,4 +1,5 @@
 import contextlib
+import pydantic
 import dataclasses
 import datetime
 import logging
@@ -20,7 +21,7 @@ from cr_knee_fit.cr_model import (
     SharedPowerLaw,
 )
 from cr_knee_fit.fit_data import FitData
-from cr_knee_fit.inference import loglikelihood, logposterior
+from cr_knee_fit.inference import loglikelihood, logposterior, set_global_fit_data
 from cr_knee_fit.model import Model, ModelConfig
 from cr_knee_fit.plotting import plot_credible_band
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
@@ -90,6 +91,13 @@ class McmcConfig:
     processes: int
 
 
+class FitConfig(pydantic.BaseModel):
+    name: str
+    experiments: list[Experiment]
+    model: ModelConfig
+    mcmc: McmcConfig
+
+
 def print_delim():
     print(
         "\n\n"
@@ -100,26 +108,30 @@ def print_delim():
     )
 
 
-def main(
-    name: str,
-    experiments: list[Experiment],
-    config: ModelConfig,
-    mcmc_config: McmcConfig,
-) -> None:
-    outdir = OUT_DIR / name
+def load_fit_data(config: ModelConfig, experiments: list[Experiment]) -> FitData:
+    fit_data = FitData.load(
+        experiments_detailed=[e for e in experiments if e.available_primaries()],
+        experiments_all_particle=[e for e in experiments if not e.available_primaries()],
+        primaries=config.cr_model_config.primaries,
+        R_bounds=(7e2, 1e8),
+    )
+    set_global_fit_data(fit_data)
+    return fit_data
+
+
+def main(config: FitConfig) -> None:
+    outdir = OUT_DIR / config.name
     outdir.mkdir(exist_ok=True)
+    Path(outdir / "config.json").write_text(config.model_dump_json(indent=2))
 
     logfile = outdir / "log.txt"
     with logfile.open("w") as log, contextlib.redirect_stdout(log):
         print(f"Output dir: {outdir}")
+
         print_delim()
         print("Loading fit data...")
-        fit_data = FitData.load(
-            experiments_detailed=[e for e in experiments if e.available_primaries()],
-            experiments_all_particle=[e for e in experiments if not e.available_primaries()],
-            primaries=config.cr_model_config.primaries,
-            R_bounds=(7e2, 1e8),
-        )
+
+        fit_data = load_fit_data(config.model, experiments)
 
         print("Data by primary:")
         for exp, ps in fit_data.spectra.items():
@@ -133,11 +145,11 @@ def main(
 
         print_delim()
         print("Initial guess model (example):")
-        initial_guess_model(config).print_params()
+        initial_guess_model(config.model).print_params()
 
         print_delim()
         print("Running preliminary MLE analysis...")
-        mle_config = dataclasses.replace(config, shifted_experiments={})
+        mle_config = dataclasses.replace(config.model, shifted_experiments={})
 
         def negloglike(v: np.ndarray) -> float:
             return -loglikelihood(v, fit_data, mle_config)
@@ -158,43 +170,44 @@ def main(
 
         print_delim()
         print("Running bayesian analysis...")
-        print(f"MCMC config: {mcmc_config}")
-        ndim = initial_guess_model(config).ndim()
+        print(f"MCMC config: {config.mcmc}")
+        ndim = initial_guess_model(config.model).ndim()
         print(f"N dim = {ndim}")
 
         pool_ctx = (
-            multiprocessing.Pool(processes=mcmc_config.processes)
-            if mcmc_config.processes > 1
+            multiprocessing.Pool(processes=config.mcmc.processes)
+            if config.mcmc.processes > 1
             else contextlib.nullcontext(enter_result=None)
         )
         with pool_ctx as pool:
             sampler = emcee.EnsembleSampler(
-                nwalkers=mcmc_config.n_walkers,
+                nwalkers=config.mcmc.n_walkers,
                 ndim=ndim,
                 log_prob_fn=logposterior,
-                args=(fit_data, config),
+                args=(None, config.model),
                 pool=pool,
             )
             initial_state = np.array(
-                [initial_guess_model(config).pack() for _ in range(mcmc_config.n_walkers)]
+                [initial_guess_model(config.model).pack() for _ in range(config.mcmc.n_walkers)]
             )
             sampler.run_mcmc(
                 initial_state,
-                nsteps=mcmc_config.n_steps,
+                nsteps=config.mcmc.n_steps,
                 progress=True,
             )
-            print(f"Acceptance fraction: {sampler.acceptance_fraction.mean()}")
 
-            tau = sampler.get_autocorr_time(quiet=True)
-            print(f"{tau = }")
+        print("Sampling done")
+        print(f"Acceptance fraction: {sampler.acceptance_fraction.mean()}")
+        tau = sampler.get_autocorr_time(quiet=True)
+        print(f"{tau = }")
 
-            burn_in = 5 * int(tau.max())
-            thin = 2 * int(tau.max())
+        burn_in = 5 * int(tau.max())
+        thin = 2 * int(tau.max())
 
-            print(f"Burn in: {burn_in}; Thinning: {thin}")
+        print(f"Burn in: {burn_in}; Thinning: {thin}")
 
-            theta_sample: np.ndarray = sampler.get_chain(flat=True, discard=burn_in, thin=thin)  # type: ignore
-            print(f"MCMC sample ready, shape: {theta_sample.shape}")
+        theta_sample: np.ndarray = sampler.get_chain(flat=True, discard=burn_in, thin=thin)  # type: ignore
+        print(f"MCMC sample ready, shape: {theta_sample.shape}")
 
         np.savetxt(outdir / "theta.txt", theta_sample)
 
@@ -202,7 +215,7 @@ def main(
         print("Plotting posterior")
         sample_to_plot = theta_sample
         sample_labels = [
-            "$" + label + "$" for label in initial_guess_model(config).labels(latex=True)
+            "$" + label + "$" for label in initial_guess_model(config.model).labels(latex=True)
         ]
         fig: Figure = corner.corner(
             sample_to_plot,
@@ -216,8 +229,8 @@ def main(
         print("Plotting primary fluxes with credible bands")
         fig, ax = plt.subplots(figsize=(10, 8))
 
-        model_sample = [Model.unpack(theta, layout_info=config) for theta in theta_sample]
-        median_model = Model.unpack(np.median(theta_sample, axis=0), layout_info=config)
+        model_sample = [Model.unpack(theta, layout_info=config.model) for theta in theta_sample]
+        median_model = Model.unpack(np.median(theta_sample, axis=0), layout_info=config.model)
         mle_model.print_params()
 
         for exp, data_by_particle in fit_data.spectra.items():
@@ -239,7 +252,8 @@ def main(
             plot_credible_band(
                 ax,
                 scale=E_SCALE,
-                model_sample=model_sample,
+                theta_sample=theta_sample,
+                model_config=config.model,
                 observable=lambda model, E: model.cr_model.compute(E, p),
                 color=p.color,
                 E_bounds=(Emin, Emax),
@@ -253,26 +267,27 @@ def main(
 
 
 if __name__ == "__main__":
-    # experiments = [e for e in Experiment if e.available_primaries()]
-    experiments = [Experiment.DAMPE, Experiment.AMS02]
+    experiments = [e for e in Experiment if e.available_primaries()]
     main(
-        name="pre-knee-composition",
-        experiments=experiments,
-        config=ModelConfig(
-            cr_model_config=CosmicRaysModelConfig(
-                components=[
-                    [Primary.H],
-                    [Primary.He],
-                    # sorted(p for p in Primary if p not in {Primary.H, Primary.He}),
-                ],
-                n_breaks=1,
-                rescale_all_particle=False,
+        FitConfig(
+            name="pre-knee-composition",
+            experiments=experiments,
+            model=ModelConfig(
+                cr_model_config=CosmicRaysModelConfig(
+                    components=[
+                        [Primary.H],
+                        [Primary.He],
+                        sorted(p for p in Primary if p not in {Primary.H, Primary.He}),
+                    ],
+                    n_breaks=2,
+                    rescale_all_particle=False,
+                ),
+                shifted_experiments=[e for e in experiments if e is not Experiment.AMS02],
             ),
-            shifted_experiments=[e for e in experiments if e is not Experiment.AMS02],
-        ),
-        mcmc_config=McmcConfig(
-            n_steps=10_000,
-            n_walkers=128,
-            processes=1,
-        ),
+            mcmc=McmcConfig(
+                n_steps=15_000,
+                n_walkers=128,
+                processes=4,
+            ),
+        )
     )

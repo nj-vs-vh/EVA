@@ -102,11 +102,23 @@ def loglikelihood(
     return res
 
 
+# to optimize logposterior evaluation in a multiprocessing setup
+# see https://emcee.readthedocs.io/en/stable/tutorials/parallel/#pickling-data-transfer-arguments
+fit_data_global: FitData | None = None
+
+def set_global_fit_data(fit_data: FitData):
+    global fit_data_global
+    fit_data_global = fit_data
+
+
 def logposterior(
-    model_or_theta: Model | np.ndarray, fit_data: FitData, config: ModelConfig
+    model_or_theta: Model | np.ndarray, fit_data: FitData | None, config: ModelConfig
 ) -> float:
     model = to_model(model_or_theta, config)
     logpi = logprior(model)
     if not np.isfinite(logpi):
         return logpi
-    return logpi + loglikelihood(model, fit_data, config)
+    fit_data_ = fit_data or fit_data_global
+    if fit_data_ is None:
+        raise ValueError("fit data must be either passed directly or through a global variable")
+    return logpi + loglikelihood(model, fit_data_, config)
