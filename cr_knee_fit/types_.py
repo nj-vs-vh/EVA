@@ -69,6 +69,9 @@ class Experiment(enum.StrEnum):
 
     GRAPES = "GRAPES"
 
+    TALE_QGS = "TALE_QGSJET-II-04"
+    GAMMA_SIBYLL = "GAMMA_SIBYLL"
+
     def available_primaries(self) -> list[Primary]:
         match self:
             case Experiment.AMS02:
@@ -87,6 +90,8 @@ class Experiment(enum.StrEnum):
                 return list(Primary)
             case Experiment.GRAPES:
                 return [Primary.H]
+            case _:
+                return []
 
     def marker(self) -> str:
         match self:
@@ -100,3 +105,7 @@ class Experiment(enum.StrEnum):
                 return "d"
             case Experiment.GRAPES:
                 return "x"
+            case Experiment.TALE_QGS:
+                return "p"
+            case Experiment.GAMMA_SIBYLL:
+                return "P"

@@ -3,10 +3,8 @@ from typing import Callable
 import numpy as np
 from scipy import stats
 
-from cr_knee_fit.cr_model import CosmicRaysModel, RigidityBreak, SharedPowerLaw
 from cr_knee_fit.fit_data import FitData
 from cr_knee_fit.model import Model, ModelConfig
-from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 
 
 def logprior(model: Model) -> float:
@@ -34,6 +32,18 @@ def logprior(model: Model) -> float:
             return -np.inf
         res += stats.norm.logpdf(grapes_hardening.lg_sharpness, loc=np.log10(10), scale=0.01)
 
+    if len(model.cr_model.breaks) > 2:
+        knee = model.cr_model.breaks[2]
+        if not (5.5 < knee.lg_R < 7):
+            return -np.inf
+        if knee.d_alpha < 0:
+            return -np.inf
+        res += stats.norm.logpdf(knee.lg_sharpness, loc=np.log10(5), scale=0.01)
+
+    lgK = model.cr_model.all_particle_lg_shift
+    if lgK is not None:
+        res += stats.norm.logpdf(lgK, scale=0.1)
+
     # energy shift priors
     # TODO: realistic priors from experiments' energy scale systematic uncertainties
     for _, lg_shift in model.energy_shifts.lg_shifts.items():
@@ -51,6 +61,20 @@ def make_loglikelihood(fit_data: FitData, config: ModelConfig) -> Callable[[np.n
             for particle, data in particle_data.items():
                 data = data.with_shifted_energy_scale(f=m.energy_shifts.f(experiment))
                 prediction = m.cr_model.compute(E=data.E, primary=particle)
+                loglike_per_bin = -0.5 * (
+                    np.where(
+                        prediction > data.F,
+                        ((prediction - data.F) / data.F_errhi) ** 2,
+                        ((prediction - data.F) / data.F_errlo) ** 2,
+                    )
+                )
+                if np.any(np.isnan(loglike_per_bin)):
+                    return -np.inf
+                res += float(np.sum(loglike_per_bin))
+        if config.cr_model_config.fit_all_particle:
+            for experiment, data in fit_data.all_particle_spectra.items():
+                data = data.with_shifted_energy_scale(f=m.energy_shifts.f(experiment))
+                prediction = m.cr_model.compute_all_particle(E=data.E)
                 loglike_per_bin = -0.5 * (
                     np.where(
                         prediction > data.F,

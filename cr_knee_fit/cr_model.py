@@ -113,6 +113,7 @@ class RigidityBreak(Packable[None]):
 class CosmicRaysModelConfig:
     components: Sequence[list[Primary]]
     n_breaks: int
+    fit_all_particle: bool
 
     def __post_init__(self) -> None:
         assert len(self.primaries) == len(set(self.primaries))
@@ -126,6 +127,8 @@ class CosmicRaysModelConfig:
 class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
     base_spectra: list[SharedPowerLaw]
     breaks: list[RigidityBreak]
+
+    all_particle_lg_shift: float | None  # sum of primaries * 10^shift = all particle spectrum
 
     def __post_init__(self) -> None:
         seen_primaries = set[Primary]()
@@ -152,9 +155,17 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             )
         spectrum = matching_spectra[0]
         R = E / float(primary.Z)
-        flux = spectrum.compute(R, primary=primary)
+        flux = spectrum.compute(R, primary)
         for rb in self.breaks:
             flux *= rb.compute(R)
+        return flux
+
+    def compute_all_particle(self, E: np.ndarray) -> np.ndarray:
+        flux = np.zeros_like(E)
+        for primary in self.layout_info().primaries:
+            flux += self.compute(E, primary=primary)
+        if self.all_particle_lg_shift is not None:
+            flux *= 10**self.all_particle_lg_shift
         return flux
 
     def plot(self, Emin: float, Emax: float, scale: float, axes: Axes | None = None) -> Axes:
@@ -162,21 +173,39 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             ax = axes
         else:
             _, ax = plt.subplots()
-        E_grid = np.logspace(np.log10(Emin), np.log10(Emax), 300)
+        E_grid = np.logspace(np.log10(Emin), np.log10(Emax), 100)
         E_factor = E_grid**scale
         for p in self.layout_info().primaries:
-            ax.loglog(E_grid, E_factor * self.compute(E_grid, p), label=p.name, color=p.color)
+            ax.loglog(
+                E_grid,
+                E_factor * self.compute(E_grid, p),
+                label=p.name,
+                color=p.color,
+            )
+        if self.all_particle_lg_shift:
+            ax.loglog(
+                E_grid,
+                E_factor * self.compute_all_particle(E_grid),
+                label="All particle",
+                color="black",
+            )
         ax.legend()
         label_energy_flux(ax, scale)
         return ax
 
     def ndim(self) -> int:
-        return sum(c.ndim() for c in self.base_spectra) + sum(b.ndim() for b in self.breaks)
+        return (
+            sum(c.ndim() for c in self.base_spectra)
+            + sum(b.ndim() for b in self.breaks)
+            + int(self.all_particle_lg_shift is not None)
+        )
 
     def pack(self) -> np.ndarray:
         subvectors = [spectrum.pack() for spectrum in self.base_spectra] + [
             b.pack() for b in self.breaks
         ]
+        if self.all_particle_lg_shift is not None:
+            subvectors.append(np.array([self.all_particle_lg_shift]))
         return np.hstack(subvectors)
 
     def labels(self, latex: bool) -> list[str]:
@@ -189,12 +218,15 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
                 labels.append(
                     f"{param_label}_{{{break_idx}}}" if latex else f"{param_label}_{break_idx}"
                 )
+        if self.all_particle_lg_shift is not None:
+            labels.append("\\lg(K)" if latex else "lgK")
         return labels
 
     def layout_info(self) -> CosmicRaysModelConfig:
         return CosmicRaysModelConfig(
             components=[spectrum.primaries for spectrum in self.base_spectra],
             n_breaks=len(self.breaks),
+            fit_all_particle=self.all_particle_lg_shift is not None,
         )
 
     @classmethod
@@ -210,9 +242,11 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             b = RigidityBreak.unpack(theta[offset:], None)
             breaks.append(b)
             offset += b.ndim()
+
         return CosmicRaysModel(
             base_spectra=components,
             breaks=breaks,
+            all_particle_lg_shift=theta[offset] if layout_info.fit_all_particle else None,
         )
 
 
@@ -234,5 +268,6 @@ if __name__ == "__main__":
             RigidityBreak(lg_R=5.0, d_alpha=-0.4, lg_sharpness=0.5),
             RigidityBreak(lg_R=5.0, d_alpha=-0.4, lg_sharpness=0.5),
         ],
+        all_particle_lg_shift=0.0,
     )
     gcr.validate_packing()

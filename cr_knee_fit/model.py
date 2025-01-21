@@ -57,13 +57,14 @@ class Model(Packable[ModelConfig]):
                     ax=ax,
                     add_label=True,
                 )
+        for _, data in fit_data.all_particle_spectra.items():
+            data.plot(scale=scale, ax=ax)
 
         self.cr_model.plot(Emin=fit_data.E_min(), Emax=fit_data.E_max(), scale=scale, axes=ax)
 
         ax.legend(fontsize="xx-small")
         ax.set_xscale("log")
         ax.set_yscale("log")
-        ax.set_title(self.cr_model.description(), {"fontsize": "x-small"})
         return fig
 
 
@@ -82,6 +83,7 @@ if __name__ == "__main__":
                 )
                 for _ in range(5)
             ],
+            all_particle_lg_shift=np.random.random(),
         ),
         energy_shifts=ExperimentEnergyScaleShifts(
             lg_shifts={e: np.random.random() for e in Experiment}
