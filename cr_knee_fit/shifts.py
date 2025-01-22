@@ -2,7 +2,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from cr_knee_fit.types_ import Experiment, Packable
+from cr_knee_fit.experiments import Experiment
+from cr_knee_fit.types_ import Packable
 
 
 @dataclass
@@ -18,7 +19,7 @@ class ExperimentEnergyScaleShifts(Packable[list[Experiment]]):
 
     @property
     def experiments(self) -> list[Experiment]:
-        return sorted(self.lg_shifts.keys())
+        return sorted(self.lg_shifts.keys(), key=lambda exp: exp.name)
 
     def ndim(self) -> int:
         return len(self.experiments)
@@ -46,5 +47,7 @@ class ExperimentEnergyScaleShifts(Packable[list[Experiment]]):
 
 
 if __name__ == "__main__":
-    s = ExperimentEnergyScaleShifts({e: np.random.random() for e in Experiment})
+    from cr_knee_fit.experiments import ams02, dampe
+
+    s = ExperimentEnergyScaleShifts({e: np.random.random() for e in [ams02, dampe]})
     s.validate_packing()

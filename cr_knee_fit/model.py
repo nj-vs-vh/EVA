@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from matplotlib import container, lines
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.figure import Figure
@@ -10,9 +11,10 @@ from cr_knee_fit.cr_model import (
     RigidityBreak,
     SharedPowerLaw,
 )
+from cr_knee_fit.experiments import Experiment
 from cr_knee_fit.fit_data import FitData
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
-from cr_knee_fit.types_ import Experiment, Packable, Primary
+from cr_knee_fit.types_ import Packable, Primary
 
 
 @dataclass
@@ -55,14 +57,25 @@ class Model(Packable[ModelConfig]):
                 data.with_shifted_energy_scale(f=self.energy_shifts.f(exp)).plot(
                     scale=scale,
                     ax=ax,
-                    add_label=True,
+                    add_label=False,
                 )
         for _, data in fit_data.all_particle_spectra.items():
-            data.plot(scale=scale, ax=ax)
+            data.plot(scale=scale, ax=ax, add_label=False)
 
         self.cr_model.plot(Emin=fit_data.E_min(), Emax=fit_data.E_max(), scale=scale, axes=ax)
-
-        ax.legend(fontsize="xx-small")
+        handles, labels = ax.get_legend_handles_labels()
+        experiments = sorted(
+            set(fit_data.spectra.keys()).union(fit_data.all_particle_spectra.keys()),
+            key=lambda e: e.name,
+        )
+        handles.extend(
+            [
+                lines.Line2D([], [], color="gray", marker=exp.marker, linestyle="none")
+                for exp in experiments
+            ]
+        )
+        labels.extend([exp.name for exp in experiments])
+        ax.legend(handles, labels, fontsize="xx-small")
         ax.set_xscale("log")
         ax.set_yscale("log")
         return fig
@@ -86,7 +99,7 @@ if __name__ == "__main__":
             all_particle_lg_shift=np.random.random(),
         ),
         energy_shifts=ExperimentEnergyScaleShifts(
-            lg_shifts={e: np.random.random() for e in Experiment}
+            lg_shifts={e: np.random.random() for e in [Experiment("a"), Experiment("b")]}
         ),
     )
     m.validate_packing()

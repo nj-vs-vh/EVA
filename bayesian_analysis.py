@@ -20,12 +20,13 @@ from cr_knee_fit.cr_model import (
     RigidityBreak,
     SharedPowerLaw,
 )
+from cr_knee_fit.experiments import Experiment
 from cr_knee_fit.fit_data import FitData
 from cr_knee_fit.inference import loglikelihood, logposterior, set_global_fit_data
 from cr_knee_fit.model import Model, ModelConfig
 from cr_knee_fit.plotting import plot_credible_band
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
-from cr_knee_fit.types_ import Experiment, Primary
+from cr_knee_fit.types_ import Primary
 from cr_knee_fit.utils import add_log_margin
 
 # as recommended by emceee parallelization guide
@@ -95,7 +96,8 @@ class McmcConfig:
 
 class FitConfig(pydantic.BaseModel):
     name: str
-    experiments: list[Experiment]
+    experiments_detailed: list[Experiment]
+    experiments_all_particle: list[Experiment]
     model: ModelConfig
     mcmc: McmcConfig
 
@@ -110,11 +112,11 @@ def print_delim():
     )
 
 
-def load_fit_data(config: ModelConfig, experiments: list[Experiment]) -> FitData:
+def load_fit_data(config: FitConfig) -> FitData:
     fit_data = FitData.load(
-        experiments_detailed=[e for e in experiments if e.available_primaries()],
-        experiments_all_particle=[e for e in experiments if not e.available_primaries()],
-        primaries=config.cr_model_config.primaries,
+        experiments_detailed=config.experiments_detailed,
+        experiments_all_particle=config.experiments_all_particle,
+        primaries=config.model.cr_model_config.primaries,
         R_bounds=(7e2, 1e8),
     )
     set_global_fit_data(fit_data)
@@ -141,7 +143,7 @@ def main(config: FitConfig) -> None:
         print_delim()
         print("Loading fit data...")
 
-        fit_data = load_fit_data(config.model, experiments)
+        fit_data = load_fit_data(config)
 
         print("Data by primary:")
         for exp, ps in fit_data.spectra.items():
@@ -287,11 +289,15 @@ def main(config: FitConfig) -> None:
 
 
 if __name__ == "__main__":
-    experiments = [e for e in Experiment if e.available_primaries()]
+    from cr_knee_fit.experiments import direct_experiments, grapes, ams02
+
+    experiments_detailed = direct_experiments + [grapes]
+
     main(
         FitConfig(
             name="composition",
-            experiments=experiments,
+            experiments_detailed=experiments_detailed,
+            experiments_all_particle=[],
             model=ModelConfig(
                 cr_model_config=CosmicRaysModelConfig(
                     components=[
@@ -302,7 +308,7 @@ if __name__ == "__main__":
                     n_breaks=2,
                     rescale_all_particle=False,
                 ),
-                shifted_experiments=[e for e in experiments if e is not Experiment.AMS02],
+                shifted_experiments=[e for e in experiments_detailed if e != ams02],
             ),
             mcmc=McmcConfig(
                 n_steps=20_000,

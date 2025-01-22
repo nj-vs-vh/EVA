@@ -1,4 +1,4 @@
-from typing import Callable, Iterable
+from typing import Callable
 
 import numpy as np
 from matplotlib.axes import Axes
@@ -17,6 +17,7 @@ def plot_credible_band(
     observable: Observable,
     color: str,
     add_median: bool = False,
+    label: str | None = None,
 ) -> None:
     x_min, x_max = bounds
     x_grid = np.logspace(np.log10(x_min), np.log10(x_max), 100)
@@ -34,6 +35,7 @@ def plot_credible_band(
         color=color,
         alpha=0.3,
         edgecolor="none",
+        label=label,
     )
 
     if add_median:

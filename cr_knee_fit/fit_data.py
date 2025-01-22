@@ -1,13 +1,14 @@
 import abc
 import enum
 from dataclasses import dataclass
-from typing import Any, Generic, Iterable, Type, TypeVar
+from typing import Any, Iterable
 
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.axes import Axes
 
-from cr_knee_fit.types_ import Experiment, Primary
+from cr_knee_fit.experiments import Experiment
+from cr_knee_fit.types_ import Primary
 from cr_knee_fit.utils import label_energy_flux
 from model.utils import load_data
 
@@ -39,7 +40,7 @@ class CRSpectrumData:
     @classmethod
     def load(cls, exp: Experiment, p: Primary, R_bounds: tuple[float, float]) -> "CRSpectrumData":
         data = load_data(
-            filename=f"{exp.value}_{p.name}_energy.txt",
+            filename=exp.primary_filename(p),
             slope=0,  # multiplying data by E^0 = leaving as-is
             norm=1,  # no renormalizing
             min_energy=R_bounds[0] * p.Z,
@@ -55,12 +56,13 @@ class CRSpectrumData:
         )
 
     @classmethod
-    def load_all_particle(cls, exp: Experiment) -> "CRSpectrumData":
+    def load_all_particle(cls, exp: Experiment, max_energy: float | None = None) -> "CRSpectrumData":
         data = load_data(
-            filename=f"{exp.value}_all_energy.txt",
+            filename=exp.all_particle_filename(),
             slope=0,  # multiplying data by E^0 = leaving as-is
             norm=1,  # no renormalizing
             min_energy=1e3,  # 1 TeV
+            max_energy=max_energy or 1e12,
         )
         return CRSpectrumData(
             E=data[0],
@@ -72,9 +74,7 @@ class CRSpectrumData:
         )
 
     def plot_label(self) -> str:
-        label = (
-            f"{self.experiment.value} {self.primary.name if self.primary is not None else 'all'}"
-        )
+        label = f"{self.experiment.name} {self.primary.name if self.primary is not None else 'all'}"
         if not np.isclose(self.energy_scale_shift, 1.0):
             shift_percent = abs(100 * (self.energy_scale_shift - 1))
             shift_sign = "+" if self.energy_scale_shift > 1 else "-"
@@ -100,10 +100,11 @@ class CRSpectrumData:
             markersize=4.0,
             elinewidth=0.75,
             capsize=2.0,
-            fmt=self.experiment.marker(),
+            fmt=self.experiment.marker,
         )
         label_energy_flux(ax, scale)
-        ax.legend()
+        if add_label:
+            ax.legend()
         return ax
 
 
@@ -146,5 +147,10 @@ def load_spectra(
     primaries: list[Primary],
     R_bounds: tuple[float, float],
 ) -> dict[Primary, "CRSpectrumData"]:
-    primaries = sorted(set(primaries).intersection(experiment.available_primaries()))
-    return {p: CRSpectrumData.load(experiment, p, R_bounds=R_bounds) for p in primaries}
+    res = dict[Primary, CRSpectrumData]()
+    for p in primaries:
+        try:
+            res[p] = CRSpectrumData.load(experiment, p, R_bounds)
+        except Exception:
+            pass
+    return res

@@ -185,21 +185,19 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         E_grid = np.logspace(np.log10(Emin), np.log10(Emax), 100)
         E_factor = E_grid**scale
         for p in self.layout_info().primaries:
-            ax.loglog(
+            ax.plot(
                 E_grid,
                 E_factor * self.compute(E_grid, p),
                 label=p.name,
                 color=p.color,
             )
         if self.all_particle_lg_shift:
-            ax.loglog(
+            ax.plot(
                 E_grid,
                 E_factor * self.compute_all_particle(E_grid),
                 label="All particle",
                 color="black",
             )
-        ax.legend()
-        label_energy_flux(ax, scale)
         return ax
 
     def ndim(self) -> int:
