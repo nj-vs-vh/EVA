@@ -14,17 +14,21 @@ class Packable(Generic[LayoutInfo], abc.ABC):
         return self.pack().size
 
     @abc.abstractmethod
-    def pack(self) -> np.ndarray: ...
+    def pack(self) -> np.ndarray:
+        ...
 
     @abc.abstractmethod
-    def labels(self, latex: bool) -> list[str]: ...
+    def labels(self, latex: bool) -> list[str]:
+        ...
 
     @abc.abstractmethod
-    def layout_info(self) -> LayoutInfo: ...
+    def layout_info(self) -> LayoutInfo:
+        ...
 
     @classmethod
     @abc.abstractmethod
-    def unpack(cls: Type[T], theta: np.ndarray, layout_info: LayoutInfo) -> T: ...
+    def unpack(cls: Type[T], theta: np.ndarray, layout_info: LayoutInfo) -> T:
+        ...
 
     def validate_packing(self) -> None:
         packed = self.pack()
@@ -71,6 +75,7 @@ class Experiment(enum.StrEnum):
     CALET = "CALET"
     DAMPE = "DAMPE"
     CREAM = "CREAM"
+    ISS_CREAM = "ISS-CREAM"
 
     GRAPES = "GRAPES"
 
@@ -93,6 +98,8 @@ class Experiment(enum.StrEnum):
                 return [Primary.H, Primary.He]
             case Experiment.CREAM:
                 return list(Primary)
+            case Experiment.ISS_CREAM:
+                return [Primary.H]
             case Experiment.GRAPES:
                 return [Primary.H]
             case _:
@@ -107,6 +114,8 @@ class Experiment(enum.StrEnum):
             case Experiment.DAMPE:
                 return "v"
             case Experiment.CREAM:
+                return "d"
+            case Experiment.ISS_CREAM:
                 return "d"
             case Experiment.GRAPES:
                 return "x"

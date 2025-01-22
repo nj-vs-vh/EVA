@@ -28,7 +28,8 @@ from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 from cr_knee_fit.types_ import Experiment, Primary
 from cr_knee_fit.utils import add_log_margin
 
-# as recommended by emceee parallelization guide https://emcee.readthedocs.io/en/stable/tutorials/parallel/#parallelization
+# as recommended by emceee parallelization guide
+# see https://emcee.readthedocs.io/en/stable/tutorials/parallel/#parallelization
 os.environ["OMP_NUM_THREADS"] = "1"
 
 logging.basicConfig(level=logging.INFO)
@@ -36,7 +37,7 @@ logging.basicConfig(level=logging.INFO)
 OUT_DIR = Path(__file__).parent / "out"
 OUT_DIR.mkdir(exist_ok=True)
 
-E_SCALE = 2.6
+E_SCALE = 2.6  # for plots only
 
 
 def initial_guess_model(config: ModelConfig) -> Model:
@@ -46,7 +47,7 @@ def initial_guess_model(config: ModelConfig) -> Model:
                 (
                     SharedPowerLaw(
                         lgI_per_primary={
-                            primary: stats.norm.rvs(loc=-4, scale=0.5) - 2.6 * np.log10(primary.Z)
+                            primary: stats.norm.rvs(loc=-3, scale=0.5) - 2.6 * np.log10(primary.Z)
                             for primary in component
                         },
                         alpha=stats.norm.rvs(loc=2.7, scale=0.1),
@@ -89,6 +90,7 @@ class McmcConfig:
     n_steps: int
     n_walkers: int
     processes: int
+    reuse_saved: bool = True
 
 
 class FitConfig(pydantic.BaseModel):
@@ -122,11 +124,19 @@ def load_fit_data(config: ModelConfig, experiments: list[Experiment]) -> FitData
 def main(config: FitConfig) -> None:
     outdir = OUT_DIR / config.name
     outdir.mkdir(exist_ok=True)
-    Path(outdir / "config.json").write_text(config.model_dump_json(indent=2))
 
     logfile = outdir / "log.txt"
-    with logfile.open("w") as log, contextlib.redirect_stdout(log):
+    with logfile.open("w") as log, contextlib.redirect_stdout(new_target=log):
         print(f"Output dir: {outdir}")
+
+        config_path = Path(outdir / "config.json")
+        if config_path.exists():
+            previous_config = FitConfig.model_validate_json(config_path.read_text())
+            is_config_updated = config == previous_config
+            print(f"Found previous config in output dir, is updated = {is_config_updated}")
+        else:
+            is_config_updated = True
+        config_path.write_text(config.model_dump_json(indent=2))
 
         print_delim()
         print("Loading fit data...")
@@ -146,6 +156,8 @@ def main(config: FitConfig) -> None:
         print_delim()
         print("Initial guess model (example):")
         initial_guess_model(config.model).print_params()
+
+        # initial_guess_model(config.model).plot(fit_data, scale=E_SCALE).savefig(outdir / "test.png")
 
         print_delim()
         print("Running preliminary MLE analysis...")
@@ -174,42 +186,51 @@ def main(config: FitConfig) -> None:
         ndim = initial_guess_model(config.model).ndim()
         print(f"N dim = {ndim}")
 
-        pool_ctx = (
-            multiprocessing.Pool(processes=config.mcmc.processes)
-            if config.mcmc.processes > 1
-            else contextlib.nullcontext(enter_result=None)
-        )
-        with pool_ctx as pool:
-            sampler = emcee.EnsembleSampler(
-                nwalkers=config.mcmc.n_walkers,
-                ndim=ndim,
-                log_prob_fn=logposterior,
-                args=(None, config.model),
-                pool=pool,
+        sample_path = outdir / "theta.txt"
+
+        if config.mcmc.reuse_saved and not is_config_updated and sample_path.exists():
+            print("Loading saved theta sample")
+            theta_sample = np.loadtxt(sample_path)
+            assert theta_sample.ndim == 2
+            assert theta_sample.shape[1] == ndim
+        else:
+            print("Sampling theta...")
+            pool_ctx = (
+                multiprocessing.Pool(processes=config.mcmc.processes)
+                if config.mcmc.processes > 1
+                else contextlib.nullcontext(enter_result=None)
             )
-            initial_state = np.array(
-                [initial_guess_model(config.model).pack() for _ in range(config.mcmc.n_walkers)]
-            )
-            sampler.run_mcmc(
-                initial_state,
-                nsteps=config.mcmc.n_steps,
-                progress=True,
-            )
+            with pool_ctx as pool:
+                sampler = emcee.EnsembleSampler(
+                    nwalkers=config.mcmc.n_walkers,
+                    ndim=ndim,
+                    log_prob_fn=logposterior,
+                    args=(None, config.model),
+                    pool=pool,
+                )
+                initial_state = np.array(
+                    [initial_guess_model(config.model).pack() for _ in range(config.mcmc.n_walkers)]
+                )
+                sampler.run_mcmc(
+                    initial_state,
+                    nsteps=config.mcmc.n_steps,
+                    progress=True,
+                )
 
-        print("Sampling done")
-        print(f"Acceptance fraction: {sampler.acceptance_fraction.mean()}")
-        tau = sampler.get_autocorr_time(quiet=True)
-        print(f"{tau = }")
+            print("Sampling done")
+            print(f"Acceptance fraction: {sampler.acceptance_fraction.mean()}")
+            tau = sampler.get_autocorr_time(quiet=True)
+            print(f"{tau = }")
 
-        burn_in = 5 * int(tau.max())
-        thin = 2 * int(tau.max())
+            burn_in = 5 * int(tau.max())
+            thin = 2 * int(tau.max())
 
-        print(f"Burn in: {burn_in}; Thinning: {thin}")
+            print(f"Burn in: {burn_in}; Thinning: {thin}")
 
-        theta_sample: np.ndarray = sampler.get_chain(flat=True, discard=burn_in, thin=thin)  # type: ignore
+            theta_sample: np.ndarray = sampler.get_chain(flat=True, discard=burn_in, thin=thin)  # type: ignore
+            np.savetxt(sample_path, theta_sample)
+
         print(f"MCMC sample ready, shape: {theta_sample.shape}")
-
-        np.savetxt(outdir / "theta.txt", theta_sample)
 
         print_delim()
         print("Plotting posterior")
@@ -223,15 +244,14 @@ def main(config: FitConfig) -> None:
             show_titles=True,
             quantiles=[0.05, 0.5, 0.95],
         )
-        fig.savefig(outdir / "corner.pdf")
+        fig.savefig(outdir / "corner.png")
 
         print_delim()
         print("Plotting primary fluxes with credible bands")
         fig, ax = plt.subplots(figsize=(10, 8))
 
-        model_sample = [Model.unpack(theta, layout_info=config.model) for theta in theta_sample]
         median_model = Model.unpack(np.median(theta_sample, axis=0), layout_info=config.model)
-        mle_model.print_params()
+        median_model.print_params()
 
         for exp, data_by_particle in fit_data.spectra.items():
             for _, spectrum in data_by_particle.items():
@@ -256,7 +276,7 @@ def main(config: FitConfig) -> None:
                 model_config=config.model,
                 observable=lambda model, E: model.cr_model.compute(E, p),
                 color=p.color,
-                E_bounds=(Emin, Emax),
+                bounds=(Emin, Emax),
             )
 
         ax.legend(fontsize="xx-small")
@@ -270,7 +290,7 @@ if __name__ == "__main__":
     experiments = [e for e in Experiment if e.available_primaries()]
     main(
         FitConfig(
-            name="pre-knee-composition",
+            name="composition",
             experiments=experiments,
             model=ModelConfig(
                 cr_model_config=CosmicRaysModelConfig(
@@ -285,9 +305,10 @@ if __name__ == "__main__":
                 shifted_experiments=[e for e in experiments if e is not Experiment.AMS02],
             ),
             mcmc=McmcConfig(
-                n_steps=15_000,
+                n_steps=20_000,
                 n_walkers=128,
-                processes=4,
+                processes=8,
+                reuse_saved=True,
             ),
         )
     )

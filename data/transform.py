@@ -5,7 +5,7 @@ from pathlib import Path
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def compute_mean_energy(min_values, max_values):
+def geom_mean(min_values, max_values):
     """Compute the mean energy as the geometric mean of min and max values."""
     return np.sqrt(min_values * max_values)
 
@@ -24,14 +24,14 @@ def readfile(filepath):
 
 def transform_R2E(R_min, R_max, I_R, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up, Z=1.0):
     """Convert rigidity data to energy data."""
-    R_mean = compute_mean_energy(R_min, R_max)
+    R_mean = geom_mean(R_min, R_max)
     E_mean = R_mean * Z
     I_E = I_R / Z
     return [E_mean, I_E, e_sta_lo / Z, e_sta_up / Z, e_sys_lo / Z, e_sys_up / Z]
 
 def transform_T2E(T_min, T_max, I_T, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up, A=1.0):
     """Convert kinetic energy per nucleon data to energy data."""
-    T_mean = compute_mean_energy(T_min, T_max)
+    T_mean = geom_mean(T_min, T_max)
     E_mean = T_mean * A
     I_E = I_T / A
     return [E_mean, I_E, e_sta_lo / A, e_sta_up / A, e_sys_lo / A, e_sys_up / A]
@@ -52,6 +52,10 @@ def dump(data, filename):
     except Exception as e:
         logging.error("Failed to write data to %s: %s", filepath, e)
         raise
+    
+def _transform_p_He_ratio(filename: str) -> None:
+    R_min, R_max, ratio, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = readfile(f"crdb/{filename}")
+    dump([geom_mean(R_min, R_max), ratio, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up], filename)
 
 def transform_AMS02():
     """Transform and dump AMS02 data."""
@@ -71,7 +75,9 @@ def transform_AMS02():
         R_min, R_max, I_R, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = readfile(f'crdb/{rigidity_file}')
         data = transform_R2E(R_min, R_max, I_R, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up, Z=Z)
         dump(data, energy_file)
-
+    
+    _transform_p_He_ratio("AMS-02_p_He_ratio_rigidity.txt")
+        
 def transform_CALET():
     """Transform and dump CALET data."""
     datasets = [
@@ -85,10 +91,12 @@ def transform_CALET():
     for energy_file, output_file, A in datasets:
         E_min, E_max, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = readfile(f'crdb/{energy_file}')
         if A == 1:
-            data = [compute_mean_energy(E_min, E_max), I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up]
+            data = [geom_mean(E_min, E_max), I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up]
         else:
             data = transform_T2E(E_min, E_max, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up, A=A)
         dump(data, output_file)
+
+    _transform_p_He_ratio("CALET_p_He_ratio_rigidity.txt")
 
 def transform_DAMPE():
     """Transform and dump DAMPE data."""
@@ -99,7 +107,7 @@ def transform_DAMPE():
     
     for energy_file, output_file in datasets:
         E_min, E_max, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = readfile(f'crdb/{energy_file}')
-        data = [compute_mean_energy(E_min, E_max), I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up]
+        data = [geom_mean(E_min, E_max), I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up]
         dump(data, output_file)
 
 def transform_CREAM():
@@ -118,7 +126,7 @@ def transform_CREAM():
     for file, output_file, A in datasets:
         E_min, E_max, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = readfile(f'crdb/{file}')
         if A == 1:
-            data = [compute_mean_energy(E_min, E_max), I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up]
+            data = [geom_mean(E_min, E_max), I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up]
         else:
             data = transform_T2E(E_min, E_max, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up, A=A)
         dump(data, output_file)
@@ -145,13 +153,13 @@ def transform_allParticles():
 
     for file in datasets:
         E_min, E_max, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = readfile(f'crdb/{file}')
-        data = [compute_mean_energy(E_min, E_max), I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up]
+        data = [geom_mean(E_min, E_max), I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up]
         dump(data, file)
 
 def transform_Cagnoli2024():
     file = 'allpart_HET_wGen26_onlyBGO_RGWeights_SatCorrp_5UnfCycle_100GeV_1PeV_2016-23.txt'
     E_min, E_max, I_E, e_sta_lo, e_sta_up = np.loadtxt(f'lake/{file}', usecols=(2,3,4,5,6), unpack=True)
-    data = [compute_mean_energy(E_min, E_max), I_E, e_sta_lo, e_sta_up, 0. * e_sta_lo, 0. * e_sta_up]
+    data = [geom_mean(E_min, E_max), I_E, e_sta_lo, e_sta_up, 0. * e_sta_lo, 0. * e_sta_up]
     dump(data, "DAMPE_all_energy.txt")
 
 def transform_TIBET_all():
@@ -167,7 +175,7 @@ def transform_TIBET_all():
 def transform_DAMPE_light():
     file = 'DAMPE_light_totalEnergy.txt'
     E_min, E_max, I_E, e_sta, e_sys_ana, e_sys_had = np.loadtxt(f'lake/{file}', usecols=(1,2,3,4,5,6), unpack=True)
-    data = [compute_mean_energy(E_min, E_max), I_E, e_sta, e_sta, e_sys_ana, e_sys_ana]
+    data = [geom_mean(E_min, E_max), I_E, e_sta, e_sta, e_sys_ana, e_sys_ana]
     dump(data, "DAMPE_light_energy.txt")
 
 def transform_CREAM_light():
@@ -178,7 +186,7 @@ def transform_CREAM_light():
     I_E = H[2] + He[2] / 4.
     e_sta = H[3] + He[3] / 4.
     e_sys = H[5] + He[5] / 4.
-    data = [compute_mean_energy(E_min, E_max), I_E, e_sta, e_sta, e_sys, e_sys]
+    data = [geom_mean(E_min, E_max), I_E, e_sta, e_sta, e_sys, e_sys]
     dump(data, "CREAM_light_energy.txt")
 
 def transform_LHAASO():
@@ -249,5 +257,7 @@ if __name__ == "__main__":
 
     logging.info("Starting GRAPES transformation")
     transform_GRAPES()
+
+    _transform_p_He_ratio("NUCLEON_p_He_ratio_rigidity.txt")
 
     logging.info("All transformations completed")

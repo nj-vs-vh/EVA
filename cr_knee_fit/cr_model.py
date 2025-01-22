@@ -13,7 +13,11 @@ from cr_knee_fit.utils import label_energy_flux
 
 @dataclass
 class SharedPowerLaw(Packable[list[Primary]]):
-    lgI_per_primary: dict[Primary, float]  # log10(I / (GeV m^2 s sr)^-1) at R0
+    """
+    Power law spectrum in rigidity with a single index and per-primary normalization
+    """
+
+    lgI_per_primary: dict[Primary, float]  # log10(I / (GV m^2 s sr)^-1) at R0
     alpha: float  # power law index
 
     R0: ClassVar[float] = 1e3  # reference rigidity
@@ -147,18 +151,23 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             )
         )
 
-    def compute(self, E: np.ndarray, primary: Primary) -> np.ndarray:
-        matching_spectra = [pl for pl in self.base_spectra if primary in pl.primaries]
-        if not matching_spectra:
+    def compute_rigidity(self, R: np.ndarray, primary: Primary) -> np.ndarray:
+        matches = [pl for pl in self.base_spectra if primary in pl.primaries]
+        if not matches:
             raise ValueError(
                 f"Unsupported primary: {primary}, this model includes: {self.layout_info().primaries}"
             )
-        spectrum = matching_spectra[0]
-        R = E / float(primary.Z)
+        spectrum = matches[0]
         flux = spectrum.compute(R, primary)
         for rb in self.breaks:
             flux *= rb.compute(R)
         return flux
+
+    def compute(self, E: np.ndarray, primary: Primary) -> np.ndarray:
+        R = E / float(primary.Z)
+        dNdR = self.compute_rigidity(R, primary=primary)
+        dNdE = dNdR / primary.Z
+        return dNdE
 
     def compute_all_particle(self, E: np.ndarray) -> np.ndarray:
         flux = np.zeros_like(E)
