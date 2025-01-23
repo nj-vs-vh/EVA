@@ -68,12 +68,7 @@ class Model(Packable[ModelConfig]):
             set(fit_data.spectra.keys()).union(fit_data.all_particle_spectra.keys()),
             key=lambda e: e.name,
         )
-        handles.extend(
-            [
-                lines.Line2D([], [], color="gray", marker=exp.marker, linestyle="none")
-                for exp in experiments
-            ]
-        )
+        handles.extend([exp.legend_handle() for exp in experiments])
         labels.extend([exp.name for exp in experiments])
         ax.legend(handles, labels, fontsize="xx-small")
         ax.set_xscale("log")

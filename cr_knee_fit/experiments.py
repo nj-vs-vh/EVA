@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from matplotlib import lines
 import itertools
 
 from cr_knee_fit.types_ import Primary
@@ -22,6 +23,9 @@ class Experiment:
 
     def __hash__(self):
         return hash(self.name)
+
+    def legend_handle(self):
+        return lines.Line2D([], [], color="gray", marker=self.marker, linestyle="none")
 
     @property
     def filename_stem_(self) -> str:

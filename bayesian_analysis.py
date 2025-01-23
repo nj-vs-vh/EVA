@@ -1,4 +1,5 @@
 import contextlib
+from matplotlib.axes import Axes
 import pydantic
 import dataclasses
 import datetime
@@ -59,6 +60,21 @@ def initial_guess_break(bc: RigidityBreakConfig, break_idx: int) -> RigidityBrea
     )
 
 
+initial_guess_lgI = {
+    Primary.H: -4,
+    Primary.He: -4.65,
+    Primary.C: -6.15,
+    Primary.O: -6.1,
+    Primary.Mg: -6.85,
+    Primary.Si: -6.9,
+    Primary.Fe: -6.9,
+}
+initial_guess_alpha = {
+    Primary.H: 2.6,
+    Primary.He: 2.5,
+}
+
+
 def initial_guess_model(config: ModelConfig) -> Model:
     return Model(
         cr_model=CosmicRaysModel(
@@ -66,10 +82,13 @@ def initial_guess_model(config: ModelConfig) -> Model:
                 (
                     SharedPowerLaw(
                         lgI_per_primary={
-                            primary: stats.norm.rvs(loc=-3, scale=0.5) - 2.6 * np.log10(primary.Z)
+                            primary: stats.norm.rvs(loc=initial_guess_lgI[primary], scale=0.05)
                             for primary in component
                         },
-                        alpha=stats.norm.rvs(loc=2.7, scale=0.1),
+                        alpha=stats.norm.rvs(
+                            loc=2.6 if component == [Primary.H] else 2.5,
+                            scale=0.05,
+                        ),
                     )
                 )
                 for component in config.cr_model_config.components
@@ -79,7 +98,7 @@ def initial_guess_model(config: ModelConfig) -> Model:
                 for i, bc in enumerate(config.cr_model_config.breaks)
             ],
             all_particle_lg_shift=(
-                np.log10(stats.uniform.rvs(loc=1, scale=1.5))
+                np.log10(stats.uniform.rvs(loc=1.1, scale=1.3))
                 if config.cr_model_config.rescale_all_particle
                 else None
             ),
@@ -88,6 +107,16 @@ def initial_guess_model(config: ModelConfig) -> Model:
             lg_shifts={exp: stats.norm.rvs(loc=0, scale=0.01) for exp in config.shifted_experiments}
         ),
     )
+
+
+def safe_initial_guess_model(config: ModelConfig, fit_data: FitData) -> Model:
+    n_try = 1000
+    for _ in range(n_try):
+        m = initial_guess_model(config)
+        if np.isfinite(logposterior(m, fit_data, config)):
+            return m
+    else:
+        raise ValueError(f"Failed to generate valid model in {n_try} tries")
 
 
 @dataclasses.dataclass
@@ -138,7 +167,7 @@ def main(config: FitConfig) -> None:
         config_path = Path(outdir / "config.json")
         if config_path.exists():
             previous_config = FitConfig.model_validate_json(config_path.read_text())
-            is_config_updated = config == previous_config
+            is_config_updated = config != previous_config
             print(f"Found previous config in output dir, is updated = {is_config_updated}")
         else:
             is_config_updated = True
@@ -160,13 +189,24 @@ def main(config: FitConfig) -> None:
             s.plot(scale=E_SCALE, ax=ax)
         ax.set_xscale("log")
         ax.set_yscale("log")
+        ax.legend(fontsize="xx-small")
         fig.savefig(outdir / "data.png")
 
         print_delim()
         print("Initial guess model (example):")
-        initial_guess_model(config.model).print_params()
+        initial_guess = safe_initial_guess_model(config.model, fit_data)
+        initial_guess.plot(fit_data, scale=E_SCALE).savefig(outdir / "initial_guess.png")
+        initial_guess.print_params()
+        print(
+            "Logposterior value:",
+            logposterior(
+                initial_guess,
+                fit_data=fit_data,
+                config=config.model,
+            ),
+        )
 
-        # initial_guess_model(config.model).plot(fit_data, scale=E_SCALE).savefig(outdir / "test.png")
+        # safe_initial_guess_model(config.model, fit_data).plot(fit_data, scale=E_SCALE).savefig(outdir / "test.png")
 
         print_delim()
         print("Running preliminary MLE analysis...")
@@ -177,7 +217,7 @@ def main(config: FitConfig) -> None:
 
         res = optimize.minimize(
             negloglike,
-            x0=initial_guess_model(mle_config).pack(),
+            x0=safe_initial_guess_model(mle_config, fit_data).pack(),
             method="Nelder-Mead",
             options={
                 "maxiter": 100_000,
@@ -192,7 +232,7 @@ def main(config: FitConfig) -> None:
         print_delim()
         print("Running bayesian analysis...")
         print(f"MCMC config: {config.mcmc}")
-        ndim = initial_guess_model(config.model).ndim()
+        ndim = safe_initial_guess_model(config.model, fit_data).ndim()
         print(f"N dim = {ndim}")
 
         sample_path = outdir / "theta.txt"
@@ -218,7 +258,10 @@ def main(config: FitConfig) -> None:
                     pool=pool,
                 )
                 initial_state = np.array(
-                    [initial_guess_model(config.model).pack() for _ in range(config.mcmc.n_walkers)]
+                    [
+                        safe_initial_guess_model(config.model, fit_data).pack()
+                        for _ in range(config.mcmc.n_walkers)
+                    ]
                 )
                 sampler.run_mcmc(
                     initial_state,
@@ -257,41 +300,71 @@ def main(config: FitConfig) -> None:
 
         print_delim()
         print("Plotting primary fluxes with credible bands")
-        fig, ax = plt.subplots(figsize=(10, 8))
+        fig, axes = plt.subplots(figsize=(15, 7), ncols=2)
 
         median_model = Model.unpack(np.median(theta_sample, axis=0), layout_info=config.model)
+        print("Median model:")
         median_model.print_params()
 
+        ax_comp: Axes = axes[0]
+        ax_comp.set_title("Composition")
         for exp, data_by_particle in fit_data.spectra.items():
             for _, spectrum in data_by_particle.items():
                 spectrum.with_shifted_energy_scale(f=median_model.energy_shifts.f(exp)).plot(
-                    scale=E_SCALE, ax=ax
+                    scale=E_SCALE,
+                    ax=ax_comp,
+                    add_label=False,
                 )
-
-        for exp, spectrum in fit_data.all_particle_spectra.items():
-            spectrum.with_shifted_energy_scale(f=median_model.energy_shifts.f(exp)).plot(
-                scale=E_SCALE, ax=ax
-            )
-
         primaries = median_model.cr_model.layout_info().primaries
         Emin, Emax = add_log_margin(fit_data.E_min(), fit_data.E_max())
-        median_model.cr_model.plot(Emin, Emax, scale=E_SCALE, axes=ax)
-
         for p in primaries:
             plot_credible_band(
-                ax,
+                ax_comp,
                 scale=E_SCALE,
                 theta_sample=theta_sample,
                 model_config=config.model,
                 observable=lambda model, E: model.cr_model.compute(E, p),
                 color=p.color,
                 bounds=(Emin, Emax),
+                add_median=True,
+                label=p.name,
             )
+        handles, labels = ax_comp.get_legend_handles_labels()
+        exps = sorted(fit_data.spectra.keys(), key=lambda e: e.name)
+        handles.extend([exp.legend_handle() for exp in exps])
+        labels.extend([exp.name for exp in exps])
+        ax_comp.legend(handles, labels, fontsize="xx-small")
 
-        ax.legend(fontsize="xx-small")
-        ax.set_xscale("log")
-        ax.set_yscale("log")
-        ax.set_xlim(Emin, Emax)
+        ax_all: Axes = axes[1]
+        ax_all.set_title("All particle")
+        for exp, spectrum in fit_data.all_particle_spectra.items():
+            spectrum.with_shifted_energy_scale(f=median_model.energy_shifts.f(exp)).plot(
+                scale=E_SCALE,
+                ax=ax_all,
+                add_label=False,
+            )
+        plot_credible_band(
+            ax_all,
+            scale=E_SCALE,
+            theta_sample=theta_sample,
+            model_config=config.model,
+            observable=lambda model, E: model.cr_model.compute_all_particle(E),
+            color="red",
+            bounds=(Emin, Emax),
+            add_median=True,
+            label="Sum of primaries $\\times$ K"
+        )
+        handles, labels = ax_all.get_legend_handles_labels()
+        exps = sorted(fit_data.all_particle_spectra.keys(), key=lambda e: e.name)
+        handles.extend([exp.legend_handle() for exp in exps])
+        labels.extend([exp.name for exp in exps])
+        ax_all.legend(handles, labels, fontsize="xx-small")
+
+        for ax in axes:
+            ax.set_xscale("log")
+            ax.set_yscale("log")
+            ax.set_xlim(Emin, Emax)
+
         fig.savefig(outdir / "fluxes.pdf")
 
 
@@ -299,12 +372,12 @@ if __name__ == "__main__":
     from cr_knee_fit import experiments
 
     experiments_detailed = experiments.direct_experiments + [experiments.grapes]
-    # experiments_all_particle = [experiments.hawc, experiments.dampe]
-    experiments_all_particle = []
+    experiments_all_particle = [experiments.hawc, experiments.dampe]
+    # experiments_all_particle = []
 
     main(
         FitConfig(
-            name="composition",
+            name="below-knee",
             experiments_detailed=experiments_detailed,
             experiments_all_particle=experiments_all_particle,
             model=ModelConfig(
@@ -319,13 +392,13 @@ if __name__ == "__main__":
                         RigidityBreakConfig(fixed_lg_sharpness=np.log10(10)),
                         # RigidityBreakConfig(fixed_lg_sharpness=np.log10(5)),
                     ],
-                    rescale_all_particle=False,
+                    rescale_all_particle=True,
                 ),
                 shifted_experiments=[e for e in experiments_detailed if e != experiments.ams02],
             ),
             mcmc=McmcConfig(
-                n_steps=15_000,
-                n_walkers=128,
+                n_steps=30_000,
+                n_walkers=256,
                 processes=8,
                 reuse_saved=True,
             ),
