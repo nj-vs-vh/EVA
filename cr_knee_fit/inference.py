@@ -1,8 +1,17 @@
 import numpy as np
 from scipy import stats
 
+from cr_knee_fit.cr_model import RigidityBreak
 from cr_knee_fit.fit_data import FitData
 from cr_knee_fit.model import Model, ModelConfig
+
+
+def break_prior(b: RigidityBreak, lg_R_min: float, lg_R_max: float, is_softening: bool) -> float:
+    if not (lg_R_min < b.lg_R < lg_R_max):
+        return -np.inf
+    if (b.d_alpha > 0) != is_softening:
+        return -np.inf
+    return 0
 
 
 def logprior(model: Model) -> float:
@@ -13,34 +22,19 @@ def logprior(model: Model) -> float:
     if breaks_lgR != sorted(breaks_lgR):
         return -np.inf
 
-    dampe_break = model.cr_model.breaks[0]
-    if not (3 < dampe_break.lg_R < 5):
-        return -np.inf
-    # enforce softening
-    if dampe_break.d_alpha < 0:
-        return -np.inf
-    # "fixing" break sharpness with a very narrow prior
-    res += stats.norm.logpdf(dampe_break.lg_sharpness, loc=np.log10(5), scale=0.01)
-
+    # dampe break
+    res += break_prior(model.cr_model.breaks[0], lg_R_min=3, lg_R_max=5, is_softening=True)
     if len(model.cr_model.breaks) > 1:
-        grapes_hardening = model.cr_model.breaks[1]
-        if not (4.5 < grapes_hardening.lg_R < 6):
-            return -np.inf
-        if grapes_hardening.d_alpha > 0:
-            return -np.inf
-        res += stats.norm.logpdf(grapes_hardening.lg_sharpness, loc=np.log10(10), scale=0.01)
-
+        # grapes hardening
+        res += break_prior(model.cr_model.breaks[1], lg_R_min=4.5, lg_R_max=6, is_softening=False)
     if len(model.cr_model.breaks) > 2:
-        knee = model.cr_model.breaks[2]
-        if not (5.5 < knee.lg_R < 7):
-            return -np.inf
-        if knee.d_alpha < 0:
-            return -np.inf
-        res += stats.norm.logpdf(knee.lg_sharpness, loc=np.log10(5), scale=0.01)
+        # all-particle knee
+        res += break_prior(model.cr_model.breaks[2], lg_R_min=5.5, lg_R_max=7, is_softening=True)
 
     lgK = model.cr_model.all_particle_lg_shift
     if lgK is not None:
-        res += stats.norm.logpdf(lgK, scale=0.1)
+        if not (1 <= 10**lgK <= 1.5):
+            return -np.inf
 
     # energy shift priors
     # TODO: realistic priors from experiments' energy scale systematic uncertainties
@@ -103,6 +97,7 @@ def loglikelihood(
 # to optimize logposterior evaluation in a multiprocessing setup
 # see https://emcee.readthedocs.io/en/stable/tutorials/parallel/#pickling-data-transfer-arguments
 fit_data_global: FitData | None = None
+
 
 def set_global_fit_data(fit_data: FitData):
     global fit_data_global

@@ -18,6 +18,7 @@ from cr_knee_fit.cr_model import (
     CosmicRaysModel,
     CosmicRaysModelConfig,
     RigidityBreak,
+    RigidityBreakConfig,
     SharedPowerLaw,
 )
 from cr_knee_fit.experiments import Experiment
@@ -41,6 +42,23 @@ OUT_DIR.mkdir(exist_ok=True)
 E_SCALE = 2.6  # for plots only
 
 
+def initial_guess_break(bc: RigidityBreakConfig, break_idx: int) -> RigidityBreak:
+    if bc.fixed_lg_sharpness:
+        lg_s = bc.fixed_lg_sharpness
+    else:
+        lg_s = stats.norm.rvs(loc=np.log10(5), scale=0.01)
+
+    break_pos_guesses = [4.2, 5.3, 6.5]
+    d_alpha_guesses = [0.3, -0.3, 0.5]
+
+    return RigidityBreak(
+        lg_R=stats.norm.rvs(loc=break_pos_guesses[break_idx], scale=0.1),
+        d_alpha=stats.norm.rvs(loc=d_alpha_guesses[break_idx], scale=0.05),
+        lg_sharpness=lg_s,
+        fix_sharpness=bc.fixed_lg_sharpness is not None,
+    )
+
+
 def initial_guess_model(config: ModelConfig) -> Model:
     return Model(
         cr_model=CosmicRaysModel(
@@ -57,27 +75,13 @@ def initial_guess_model(config: ModelConfig) -> Model:
                 for component in config.cr_model_config.components
             ],
             breaks=[
-                # dampe softening
-                RigidityBreak(
-                    lg_R=stats.norm.rvs(loc=4.2, scale=0.1),
-                    d_alpha=stats.norm.rvs(loc=0.3, scale=0.05),
-                    lg_sharpness=stats.norm.rvs(loc=np.log10(5), scale=0.01),
-                ),
-                # grapes hardening
-                RigidityBreak(
-                    lg_R=stats.norm.rvs(loc=5.3, scale=0.1),
-                    d_alpha=stats.norm.rvs(loc=-0.3, scale=0.05),
-                    lg_sharpness=stats.norm.rvs(loc=np.log10(10), scale=0.01),
-                ),
-                # knee
-                RigidityBreak(
-                    lg_R=stats.norm.rvs(loc=6.5, scale=0.2),
-                    d_alpha=stats.norm.rvs(loc=0.5, scale=0.05),
-                    lg_sharpness=stats.norm.rvs(loc=np.log10(5), scale=0.01),
-                ),
-            ][: config.cr_model_config.n_breaks],
+                initial_guess_break(bc, break_idx=i)
+                for i, bc in enumerate(config.cr_model_config.breaks)
+            ],
             all_particle_lg_shift=(
-                stats.norm.rvs(scale=0.2) if config.cr_model_config.rescale_all_particle else None
+                np.log10(stats.uniform.rvs(loc=1, scale=1.5))
+                if config.cr_model_config.rescale_all_particle
+                else None
             ),
         ),
         energy_shifts=ExperimentEnergyScaleShifts(
@@ -142,18 +146,21 @@ def main(config: FitConfig) -> None:
 
         print_delim()
         print("Loading fit data...")
-
         fit_data = load_fit_data(config)
-
+        fig, ax = plt.subplots()
         print("Data by primary:")
         for exp, ps in fit_data.spectra.items():
-            print(exp)
+            print(exp.name)
             for p, s in ps.items():
                 print(f"  {p.name}: {s.E.size} points from {s.E.min():.1e} to {s.E.max():.1e} GeV")
-
+                s.plot(scale=E_SCALE, ax=ax)
         print("All particle data:")
         for exp, s in fit_data.all_particle_spectra.items():
-            print(f"{exp}: {s.E.size} points from {s.E.min():.1e} to {s.E.max():.1e} GeV")
+            print(f"{exp.name}: {s.E.size} points from {s.E.min():.1e} to {s.E.max():.1e} GeV")
+            s.plot(scale=E_SCALE, ax=ax)
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        fig.savefig(outdir / "data.png")
 
         print_delim()
         print("Initial guess model (example):")
@@ -289,15 +296,17 @@ def main(config: FitConfig) -> None:
 
 
 if __name__ == "__main__":
-    from cr_knee_fit.experiments import direct_experiments, grapes, ams02
+    from cr_knee_fit import experiments
 
-    experiments_detailed = direct_experiments + [grapes]
+    experiments_detailed = experiments.direct_experiments + [experiments.grapes]
+    # experiments_all_particle = [experiments.hawc, experiments.dampe]
+    experiments_all_particle = []
 
     main(
         FitConfig(
             name="composition",
             experiments_detailed=experiments_detailed,
-            experiments_all_particle=[],
+            experiments_all_particle=experiments_all_particle,
             model=ModelConfig(
                 cr_model_config=CosmicRaysModelConfig(
                     components=[
@@ -305,13 +314,17 @@ if __name__ == "__main__":
                         [Primary.He],
                         sorted(p for p in Primary if p not in {Primary.H, Primary.He}),
                     ],
-                    n_breaks=2,
+                    breaks=[
+                        RigidityBreakConfig(fixed_lg_sharpness=np.log10(5)),
+                        RigidityBreakConfig(fixed_lg_sharpness=np.log10(10)),
+                        # RigidityBreakConfig(fixed_lg_sharpness=np.log10(5)),
+                    ],
                     rescale_all_particle=False,
                 ),
-                shifted_experiments=[e for e in experiments_detailed if e != ams02],
+                shifted_experiments=[e for e in experiments_detailed if e != experiments.ams02],
             ),
             mcmc=McmcConfig(
-                n_steps=20_000,
+                n_steps=15_000,
                 n_walkers=128,
                 processes=8,
                 reuse_saved=True,

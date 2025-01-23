@@ -64,29 +64,45 @@ class SharedPowerLaw(Packable[list[Primary]]):
 
 
 @dataclass
-class RigidityBreak(Packable[None]):
+class RigidityBreakConfig:
+    fixed_lg_sharpness: float | None
+
+
+@dataclass
+class RigidityBreak(Packable[RigidityBreakConfig]):
     lg_R: float  # break rigidity, lg(R / GV)
     d_alpha: float  # PL index change at the break
     lg_sharpness: float  # 0 is very smooth, 10+ is very sharp
 
+    fix_sharpness: bool = False
+
     def ndim(self) -> int:
-        return 3
+        return 2 if self.fix_sharpness else 3
 
     def pack(self) -> np.ndarray:
-        return np.array([self.lg_R, self.d_alpha, self.lg_sharpness])
+        return np.array([self.lg_R, self.d_alpha, self.lg_sharpness][: self.ndim()])
 
     def labels(self, latex: bool) -> list[str]:
         if latex:
-            return ["\\lg(R_b)", "\\Delta \\alpha", "\\lg(s)"]
+            labels = ["\\lg(R_b)", "\\Delta \\alpha", "\\lg(s)"]
         else:
-            return ["lg(R_b)", "d_alpha", "lg(s)"]
+            labels = ["lg(R_b)", "d_alpha", "lg(s)"]
+        return labels[: self.ndim()]
 
-    def layout_info(self) -> None:
-        return None
+    def layout_info(self) -> RigidityBreakConfig:
+        return RigidityBreakConfig(
+            fixed_lg_sharpness=self.lg_sharpness if self.fix_sharpness else None
+        )
 
     @classmethod
-    def unpack(cls, theta: np.ndarray, layout_info: None) -> "RigidityBreak":
-        return RigidityBreak(*theta[:3])
+    def unpack(cls, theta: np.ndarray, layout_info: RigidityBreakConfig) -> "RigidityBreak":
+        lg_R, d_alpha = theta[:2]
+        return RigidityBreak(
+            lg_R=lg_R,
+            d_alpha=d_alpha,
+            lg_sharpness=layout_info.fixed_lg_sharpness or theta[2],
+            fix_sharpness=layout_info.fixed_lg_sharpness is not None,
+        )
 
     def compute(self, R: np.ndarray) -> np.ndarray:
         R_b = 10**self.lg_R
@@ -116,7 +132,7 @@ class RigidityBreak(Packable[None]):
 @dataclass
 class CosmicRaysModelConfig:
     components: Sequence[list[Primary]]
-    n_breaks: int
+    breaks: Sequence[RigidityBreakConfig]
     rescale_all_particle: bool
 
     def __post_init__(self) -> None:
@@ -232,7 +248,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
     def layout_info(self) -> CosmicRaysModelConfig:
         return CosmicRaysModelConfig(
             components=[spectrum.primaries for spectrum in self.base_spectra],
-            n_breaks=len(self.breaks),
+            breaks=[b.layout_info() for b in self.breaks],
             rescale_all_particle=self.all_particle_lg_shift is not None,
         )
 
@@ -245,8 +261,8 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             components.append(spectrum)
             offset += spectrum.ndim()
         breaks: list[RigidityBreak] = []
-        for _ in range(layout_info.n_breaks):
-            b = RigidityBreak.unpack(theta[offset:], None)
+        for break_config in layout_info.breaks:
+            b = RigidityBreak.unpack(theta[offset:], break_config)
             breaks.append(b)
             offset += b.ndim()
 
@@ -272,7 +288,7 @@ if __name__ == "__main__":
         ],
         breaks=[
             RigidityBreak(lg_R=5.0, d_alpha=-0.4, lg_sharpness=0.5),
-            RigidityBreak(lg_R=5.0, d_alpha=-0.4, lg_sharpness=0.5),
+            RigidityBreak(lg_R=5.0, d_alpha=-0.4, lg_sharpness=0.5, fix_sharpness=True),
             RigidityBreak(lg_R=5.0, d_alpha=-0.4, lg_sharpness=0.5),
         ],
         all_particle_lg_shift=0.0,
