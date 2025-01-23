@@ -53,9 +53,9 @@ def dump(data, filename):
         logging.error("Failed to write data to %s: %s", filepath, e)
         raise
     
-def _transform_p_He_ratio(filename: str) -> None:
-    R_min, R_max, ratio, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = readfile(f"crdb/{filename}")
-    dump([geom_mean(R_min, R_max), ratio, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up], filename)
+def transform_simple(filename: str) -> None:
+    x_min, x_max, value, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = readfile(f"crdb/{filename}")
+    dump([geom_mean(x_min, x_max), value, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up], filename)
 
 def transform_AMS02():
     """Transform and dump AMS02 data."""
@@ -76,7 +76,7 @@ def transform_AMS02():
         data = transform_R2E(R_min, R_max, I_R, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up, Z=Z)
         dump(data, energy_file)
     
-    _transform_p_He_ratio("AMS-02_p_He_ratio_rigidity.txt")
+    transform_simple("AMS-02_p_He_ratio_rigidity.txt")
         
 def transform_CALET():
     """Transform and dump CALET data."""
@@ -96,7 +96,7 @@ def transform_CALET():
             data = transform_T2E(E_min, E_max, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up, A=A)
         dump(data, output_file)
 
-    _transform_p_He_ratio("CALET_p_He_ratio_rigidity.txt")
+    transform_simple("CALET_p_He_ratio_rigidity.txt")
 
 def transform_DAMPE():
     """Transform and dump DAMPE data."""
@@ -258,6 +258,6 @@ if __name__ == "__main__":
     logging.info("Starting GRAPES transformation")
     transform_GRAPES()
 
-    _transform_p_He_ratio("NUCLEON_p_He_ratio_rigidity.txt")
+    transform_simple("NUCLEON_p_He_ratio_rigidity.txt")
 
     logging.info("All transformations completed")
