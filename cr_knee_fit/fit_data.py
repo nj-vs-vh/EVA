@@ -22,7 +22,7 @@ class CRSpectrumData:
     F_errhi: np.ndarray
 
     experiment: Experiment
-    primary: Primary | None
+    primary: Primary | None | tuple[Primary, ...]
 
     energy_scale_shift: float = 1.0
 
@@ -56,7 +56,9 @@ class CRSpectrumData:
         )
 
     @classmethod
-    def load_all_particle(cls, exp: Experiment, max_energy: float | None = None) -> "CRSpectrumData":
+    def load_all_particle(
+        cls, exp: Experiment, max_energy: float | None = None
+    ) -> "CRSpectrumData":
         data = load_data(
             filename=exp.all_particle_filename(),
             slope=0,  # multiplying data by E^0 = leaving as-is
@@ -74,7 +76,13 @@ class CRSpectrumData:
         )
 
     def plot_label(self) -> str:
-        label = f"{self.experiment.name} {self.primary.name if self.primary is not None else 'all'}"
+        if self.primary is None:
+            primary_label = "all"
+        elif isinstance(self.primary, tuple):
+            primary_label = "+".join(p.name for p in self.primary)
+        else:
+            primary_label = self.primary.name
+        label = f"{self.experiment.name} {primary_label}"
         if not np.isclose(self.energy_scale_shift, 1.0):
             shift_percent = abs(100 * (self.energy_scale_shift - 1))
             shift_sign = "+" if self.energy_scale_shift > 1 else "-"
@@ -95,7 +103,14 @@ class CRSpectrumData:
             self.E,
             E_factor * self.F,
             yerr=[E_factor * self.F_errlo, E_factor * self.F_errhi],
-            color=color or (self.primary.color if self.primary else "black"),
+            color=(
+                color
+                or (
+                    self.primary.color
+                    if isinstance(self.primary, Primary)
+                    else ("black" if self.primary is None else None)
+                )
+            ),
             label=self.plot_label() if add_label else None,
             markersize=4.0,
             elinewidth=0.75,
