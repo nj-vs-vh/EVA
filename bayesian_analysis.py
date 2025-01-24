@@ -1,4 +1,5 @@
 import contextlib
+import sys
 from matplotlib.axes import Axes
 import pydantic
 import dataclasses
@@ -254,7 +255,12 @@ def main(config: FitConfig) -> None:
                     nwalkers=config.mcmc.n_walkers,
                     ndim=ndim,
                     log_prob_fn=logposterior,
-                    args=(None, config.model),
+                    args=(
+                        # on macos passing fit data through a global variable doesn't work
+                        # probably because it's using "spawn" multiprocessing method
+                        fit_data if sys.platform == "darwin" else None,
+                        config.model,
+                    ),
                     pool=pool,
                 )
                 initial_state = np.array(
@@ -352,7 +358,7 @@ def main(config: FitConfig) -> None:
             color="red",
             bounds=(Emin, Emax),
             add_median=True,
-            label="Sum of primaries $\\times$ K"
+            label="Sum of primaries $\\times$ K",
         )
         handles, labels = ax_all.get_legend_handles_labels()
         exps = sorted(fit_data.all_particle_spectra.keys(), key=lambda e: e.name)
@@ -372,12 +378,12 @@ if __name__ == "__main__":
     from cr_knee_fit import experiments
 
     experiments_detailed = experiments.direct_experiments + [experiments.grapes]
-    experiments_all_particle = [experiments.hawc, experiments.dampe]
+    experiments_all_particle = [experiments.lhaaso_sibyll]
     # experiments_all_particle = []
 
     main(
         FitConfig(
-            name="below-knee",
+            name="composition+lhaaso (sibyll)",
             experiments_detailed=experiments_detailed,
             experiments_all_particle=experiments_all_particle,
             model=ModelConfig(
@@ -390,14 +396,14 @@ if __name__ == "__main__":
                     breaks=[
                         RigidityBreakConfig(fixed_lg_sharpness=np.log10(5)),
                         RigidityBreakConfig(fixed_lg_sharpness=np.log10(10)),
-                        # RigidityBreakConfig(fixed_lg_sharpness=np.log10(5)),
+                        RigidityBreakConfig(fixed_lg_sharpness=np.log10(5)),
                     ],
                     rescale_all_particle=True,
                 ),
                 shifted_experiments=[e for e in experiments_detailed if e != experiments.ams02],
             ),
             mcmc=McmcConfig(
-                n_steps=30_000,
+                n_steps=80_000,
                 n_walkers=256,
                 processes=8,
                 reuse_saved=True,

@@ -50,5 +50,6 @@ hawc = Experiment("HAWC", filename_stem="HAWC_QGSJET-II-04")
 grapes = Experiment("GRAPES")
 tale = Experiment("TALE (QGS)", filename_stem="TALE_QGSJET-II-04")
 gamma = Experiment("GAMMA (SIBYLL)", filename_stem="GAMMA_SIBYLL")
-
-indirect_experiments = [grapes, tale, gamma]
+lhaaso_epos = Experiment("LHAASO (EPOS)", filename_stem="LHAASO_EPOS-LHC")
+lhaaso_sibyll = Experiment("LHAASO (QGSJET-II-04)", filename_stem="LHAASO_QGSJET-II-04")
+lhaaso_qgsjet = Experiment("LHAASO (SIBYLL)", filename_stem="LHAASO_SIBYLL")
