@@ -21,21 +21,18 @@ class Experiment:
             markers_cache[self.name] = marker
         self.marker = marker
 
+    def __gt__(self, other: "Experiment") -> bool:
+        return self.name > other.name
+
     def __hash__(self):
         return hash(self.name)
 
-    def legend_handle(self):
+    def legend_artist(self):
         return lines.Line2D([], [], color="gray", marker=self.marker, linestyle="none")
 
     @property
-    def filename_stem_(self) -> str:
+    def filename_prefix(self) -> str:
         return self.filename_stem or self.name
-
-    def primary_filename(self, primary: Primary) -> str:
-        return f"{self.filename_stem_}_{primary.name}_energy.txt"
-
-    def all_particle_filename(self) -> str:
-        return f"{self.filename_stem_}_all_energy.txt"
 
 
 ams02 = Experiment("AMS-02")
@@ -52,4 +49,4 @@ tale = Experiment("TALE (QGS)", filename_stem="TALE_QGSJET-II-04")
 gamma = Experiment("GAMMA (SIBYLL)", filename_stem="GAMMA_SIBYLL")
 lhaaso_epos = Experiment("LHAASO (EPOS)", filename_stem="LHAASO_EPOS-LHC")
 lhaaso_sibyll = Experiment("LHAASO (QGSJET-II-04)", filename_stem="LHAASO_QGSJET-II-04")
-lhaaso_qgsjet = Experiment("LHAASO (SIBYLL)", filename_stem="LHAASO_SIBYLL")
+lhaaso_qgsjet = Experiment("LHAASO (SIBYLL)", filename_stem="LHAASO_SIBYLL-23")

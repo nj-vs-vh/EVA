@@ -1,9 +1,10 @@
 import abc
 import enum
-from typing import Any, Generic, Type, TypeVar
+from typing import Annotated, Any, Generic, Type, TypeVar
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pydantic
 
 T = TypeVar("T")
 LayoutInfo = TypeVar("LayoutInfo")
@@ -14,21 +15,17 @@ class Packable(Generic[LayoutInfo], abc.ABC):
         return self.pack().size
 
     @abc.abstractmethod
-    def pack(self) -> np.ndarray:
-        ...
+    def pack(self) -> np.ndarray: ...
 
     @abc.abstractmethod
-    def labels(self, latex: bool) -> list[str]:
-        ...
+    def labels(self, latex: bool) -> list[str]: ...
 
     @abc.abstractmethod
-    def layout_info(self) -> LayoutInfo:
-        ...
+    def layout_info(self) -> LayoutInfo: ...
 
     @classmethod
     @abc.abstractmethod
-    def unpack(cls: Type[T], theta: np.ndarray, layout_info: LayoutInfo) -> T:
-        ...
+    def unpack(cls: Type[T], theta: np.ndarray, layout_info: LayoutInfo) -> T: ...
 
     def validate_packing(self) -> None:
         packed = self.pack()
@@ -62,6 +59,18 @@ class Primary(enum.IntEnum):
     @property
     def Z(self) -> int:
         return self.value
+
+    @property
+    def A(self) -> int:
+        return {
+            Primary.H: 1,
+            Primary.He: 4,
+            Primary.C: 12,
+            Primary.O: 16,
+            Primary.Mg: 24,
+            Primary.Si: 28,
+            Primary.Fe: 56,
+        }[self]
 
     @property
     def color(self) -> Any:

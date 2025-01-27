@@ -8,9 +8,51 @@ import numpy as np
 from matplotlib.axes import Axes
 
 from cr_knee_fit.experiments import Experiment
-from cr_knee_fit.types_ import Primary
+from cr_knee_fit.types_ import Primary, Primary
 from cr_knee_fit.utils import label_energy_flux
 from model.utils import load_data
+
+
+@dataclass
+class GenericExperimentData:
+    x: np.ndarray  # typically GV or GeV
+
+    y: np.ndarray
+    y_errlo: np.ndarray
+    y_errhi: np.ndarray
+
+    experiment: Experiment
+
+    label: str | None = None
+
+    def plot(
+        self,
+        ax: Axes | None = None,
+        color: Any | None = None,
+        add_label: bool = True,
+        scale: float = 0,
+    ) -> Axes:
+        if ax is None:
+            _, ax = plt.subplots()
+        x_factor = self.x**scale
+        label = self.experiment.name
+        if self.label is not None:
+            label += " " + self.label
+        ax.errorbar(
+            self.x,
+            x_factor * self.y,
+            yerr=[x_factor * self.y_errlo, x_factor * self.y_errhi],
+            color=color,
+            markersize=4.0,
+            elinewidth=0.75,
+            capsize=2.0,
+            label=label,
+            fmt=self.experiment.marker,
+        )
+        label_energy_flux(ax, scale)
+        if add_label:
+            ax.legend()
+        return ax
 
 
 @dataclass
@@ -40,7 +82,7 @@ class CRSpectrumData:
     @classmethod
     def load(cls, exp: Experiment, p: Primary, R_bounds: tuple[float, float]) -> "CRSpectrumData":
         data = load_data(
-            filename=exp.primary_filename(p),
+            filename=f"{exp.filename_prefix}_{p.name}_energy.txt",
             slope=0,  # multiplying data by E^0 = leaving as-is
             norm=1,  # no renormalizing
             min_energy=R_bounds[0] * p.Z,
@@ -60,7 +102,7 @@ class CRSpectrumData:
         cls, exp: Experiment, max_energy: float | None = None
     ) -> "CRSpectrumData":
         data = load_data(
-            filename=exp.all_particle_filename(),
+            filename=f"{exp.filename_prefix}_all_energy.txt",
             slope=0,  # multiplying data by E^0 = leaving as-is
             norm=1,  # no renormalizing
             min_energy=1e3,  # 1 TeV
@@ -128,6 +170,9 @@ class FitData:
     spectra: dict[Experiment, dict[Primary, CRSpectrumData]]
     all_particle_spectra: dict[Experiment, CRSpectrumData]
     R_bounds: tuple[float, float]
+
+    def all_experiments(self) -> list[Experiment]:
+        return sorted(set(self.spectra.keys()).union(self.all_particle_spectra.keys()))
 
     def all_spectra(self) -> Iterable[CRSpectrumData]:
         for primary_spectra in self.spectra.values():

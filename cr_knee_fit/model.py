@@ -15,6 +15,7 @@ from cr_knee_fit.experiments import Experiment
 from cr_knee_fit.fit_data import FitData
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 from cr_knee_fit.types_ import Packable, Primary
+from cr_knee_fit.utils import legend_with_added_items
 
 
 @dataclass
@@ -63,14 +64,11 @@ class Model(Packable[ModelConfig]):
             data.plot(scale=scale, ax=ax, add_label=False)
 
         self.cr_model.plot(Emin=fit_data.E_min(), Emax=fit_data.E_max(), scale=scale, axes=ax)
-        handles, labels = ax.get_legend_handles_labels()
-        experiments = sorted(
-            set(fit_data.spectra.keys()).union(fit_data.all_particle_spectra.keys()),
-            key=lambda e: e.name,
+        legend_with_added_items(
+            ax,
+            [(e.legend_artist(), e.name) for e in fit_data.all_experiments()],
+            fontsize="x-small",
         )
-        handles.extend([exp.legend_handle() for exp in experiments])
-        labels.extend([exp.name for exp in experiments])
-        ax.legend(handles, labels, fontsize="xx-small")
         ax.set_xscale("log")
         ax.set_yscale("log")
         return fig

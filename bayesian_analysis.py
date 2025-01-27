@@ -1,5 +1,6 @@
 import contextlib
 import sys
+from typing import Sequence
 from matplotlib.axes import Axes
 import pydantic
 import dataclasses
@@ -30,7 +31,7 @@ from cr_knee_fit.model import Model, ModelConfig
 from cr_knee_fit.plotting import plot_credible_band
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 from cr_knee_fit.types_ import Primary
-from cr_knee_fit.utils import add_log_margin
+from cr_knee_fit.utils import legend_with_added_items, add_log_margin
 
 # as recommended by emceee parallelization guide
 # see https://emcee.readthedocs.io/en/stable/tutorials/parallel/#parallelization
@@ -307,12 +308,13 @@ def main(config: FitConfig) -> None:
         print_delim()
         print("Plotting primary fluxes with credible bands")
         fig, axes = plt.subplots(figsize=(15, 7), ncols=2)
+        axes: Sequence[Axes]
 
         median_model = Model.unpack(np.median(theta_sample, axis=0), layout_info=config.model)
         print("Median model:")
         median_model.print_params()
 
-        ax_comp: Axes = axes[0]
+        ax_comp = axes[0]
         ax_comp.set_title("Composition")
         for exp, data_by_particle in fit_data.spectra.items():
             for _, spectrum in data_by_particle.items():
@@ -335,13 +337,13 @@ def main(config: FitConfig) -> None:
                 add_median=True,
                 label=p.name,
             )
-        handles, labels = ax_comp.get_legend_handles_labels()
-        exps = sorted(fit_data.spectra.keys(), key=lambda e: e.name)
-        handles.extend([exp.legend_handle() for exp in exps])
-        labels.extend([exp.name for exp in exps])
-        ax_comp.legend(handles, labels, fontsize="xx-small")
+        legend_with_added_items(
+            ax_comp,
+            [(exp.legend_artist(), exp.name) for exp in sorted(fit_data.spectra.keys())],
+            fontsize="x-small",
+        )
 
-        ax_all: Axes = axes[1]
+        ax_all = axes[1]
         ax_all.set_title("All particle")
         for exp, spectrum in fit_data.all_particle_spectra.items():
             spectrum.with_shifted_energy_scale(f=median_model.energy_shifts.f(exp)).plot(
@@ -360,11 +362,14 @@ def main(config: FitConfig) -> None:
             add_median=True,
             label="Sum of primaries $\\times$ K",
         )
-        handles, labels = ax_all.get_legend_handles_labels()
-        exps = sorted(fit_data.all_particle_spectra.keys(), key=lambda e: e.name)
-        handles.extend([exp.legend_handle() for exp in exps])
-        labels.extend([exp.name for exp in exps])
-        ax_all.legend(handles, labels, fontsize="xx-small")
+        legend_with_added_items(
+            ax_all,
+            [
+                (exp.legend_artist(), exp.name)
+                for exp in sorted(fit_data.all_particle_spectra.keys(), key=lambda e: e.name)
+            ],
+            fontsize="x-small",
+        )
 
         for ax in axes:
             ax.set_xscale("log")
