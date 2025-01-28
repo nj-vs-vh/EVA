@@ -7,11 +7,16 @@ from cr_knee_fit.model import Model, ModelConfig
 
 
 def break_prior(b: RigidityBreak, lg_R_min: float, lg_R_max: float, is_softening: bool) -> float:
+    res = 0
     if not (lg_R_min < b.lg_R < lg_R_max):
         return -np.inf
     if (b.d_alpha > 0) != is_softening:
         return -np.inf
-    return 0
+    if not b.fix_sharpness:
+        s = 10 ** b.lg_sharpness
+        if not (0.1 < s < 20):
+            return -np.inf
+    return res
 
 
 def logprior(model: Model) -> float:
@@ -33,7 +38,7 @@ def logprior(model: Model) -> float:
 
     lgK = model.cr_model.all_particle_lg_shift
     if lgK is not None:
-        if not (1 <= 10**lgK <= 1.5):
+        if not (1 <= 10**lgK <= 2):
             return -np.inf
 
     # energy shift priors

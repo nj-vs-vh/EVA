@@ -48,7 +48,7 @@ logging.basicConfig(level=logging.INFO)
 OUT_DIR = Path(__file__).parent / "out"
 OUT_DIR.mkdir(exist_ok=True)
 
-E_SCALE = 2.6  # for plots only
+E_SCALE = 2.8  # for plots only
 
 
 def initial_guess_break(bc: RigidityBreakConfig, break_idx: int) -> RigidityBreak:
@@ -458,7 +458,7 @@ if __name__ == "__main__":
                     breaks=[
                         RigidityBreakConfig(fixed_lg_sharpness=np.log10(5)),
                         RigidityBreakConfig(fixed_lg_sharpness=np.log10(10)),
-                        RigidityBreakConfig(fixed_lg_sharpness=np.log10(5)),
+                        RigidityBreakConfig(fixed_lg_sharpness=None),
                     ],
                     rescale_all_particle=True,
                 ),
