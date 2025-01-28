@@ -1,14 +1,13 @@
-import abc
-import enum
-from dataclasses import dataclass
-from typing import Any, Iterable
+import itertools
+from dataclasses import dataclass, field
+from typing import Any, Iterable, Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.axes import Axes
 
 from cr_knee_fit.experiments import Experiment
-from cr_knee_fit.types_ import Primary, Primary
+from cr_knee_fit.types_ import Primary
 from cr_knee_fit.utils import label_energy_flux
 from model.utils import load_data
 
@@ -24,6 +23,30 @@ class GenericExperimentData:
     experiment: Experiment
 
     label: str | None = None
+
+    @classmethod
+    def load(
+        cls,
+        exp: Experiment,
+        suffix: str,
+        x_bounds: tuple[float, float],
+        label: str | None = None,
+    ) -> "GenericExperimentData":
+        data = load_data(
+            filename=f"{exp.filename_prefix}_{suffix}.txt",
+            slope=0,  # multiplying data by E^0 = leaving as-is
+            norm=1,  # no renormalizing
+            min_energy=x_bounds[0],
+            max_energy=x_bounds[1],
+        )
+        return GenericExperimentData(
+            x=data[0],
+            y=data[1],
+            y_errlo=data[2],
+            y_errhi=data[3],
+            experiment=exp,
+            label=label,
+        )
 
     def plot(
         self,
@@ -46,10 +69,9 @@ class GenericExperimentData:
             markersize=4.0,
             elinewidth=0.75,
             capsize=2.0,
-            label=label,
+            label=label if add_label else None,
             fmt=self.experiment.marker,
         )
-        label_energy_flux(ax, scale)
         if add_label:
             ax.legend()
         return ax
@@ -171,8 +193,17 @@ class FitData:
     all_particle_spectra: dict[Experiment, CRSpectrumData]
     R_bounds: tuple[float, float]
 
+    lnA: dict[Experiment, GenericExperimentData] = field(default_factory=dict)
+
     def all_experiments(self) -> list[Experiment]:
-        return sorted(set(self.spectra.keys()).union(self.all_particle_spectra.keys()))
+        all = set[Experiment]()
+        for e in itertools.chain(
+            self.spectra.keys(),
+            self.all_particle_spectra.keys(),
+            self.lnA.keys(),
+        ):
+            all.add(e)
+        return sorted(all)
 
     def all_spectra(self) -> Iterable[CRSpectrumData]:
         for primary_spectra in self.spectra.values():
@@ -190,6 +221,7 @@ class FitData:
         cls,
         experiments_detailed: list[Experiment],
         experiments_all_particle: list[Experiment],
+        experiments_lnA: list[Experiment],
         primaries: list[Primary],
         R_bounds: tuple[float, float],
     ) -> "FitData":
@@ -197,6 +229,15 @@ class FitData:
             spectra={exp: load_spectra(exp, primaries, R_bounds) for exp in experiments_detailed},
             all_particle_spectra={
                 exp: CRSpectrumData.load_all_particle(exp) for exp in experiments_all_particle
+            },
+            lnA={
+                exp: GenericExperimentData.load(
+                    exp,
+                    suffix="lnA_energy",
+                    x_bounds=(0, np.inf),
+                    label="$ \\langle \\ln A \\rangle $",
+                )
+                for exp in experiments_lnA
             },
             R_bounds=R_bounds,
         )

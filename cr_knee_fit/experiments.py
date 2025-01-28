@@ -1,9 +1,9 @@
-from dataclasses import dataclass
-from matplotlib import lines
 import itertools
+from dataclasses import dataclass
+
+from matplotlib import lines
 
 from cr_knee_fit.types_ import Primary
-
 
 markers_iter = itertools.cycle(["o", "v", "^", "<", ">", "s", "p", "P", "8", "X", "D"])
 markers_cache: dict[str, str] = {}

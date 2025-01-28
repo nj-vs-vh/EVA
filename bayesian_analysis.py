@@ -1,4 +1,5 @@
 import contextlib
+import itertools
 import sys
 from typing import Sequence
 from matplotlib.axes import Axes
@@ -31,7 +32,12 @@ from cr_knee_fit.model import Model, ModelConfig
 from cr_knee_fit.plotting import plot_credible_band
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 from cr_knee_fit.types_ import Primary
-from cr_knee_fit.utils import legend_with_added_items, add_log_margin
+from cr_knee_fit.utils import (
+    E_GEV_LABEL,
+    label_energy_flux,
+    legend_with_added_items,
+    add_log_margin,
+)
 
 # as recommended by emceee parallelization guide
 # see https://emcee.readthedocs.io/en/stable/tutorials/parallel/#parallelization
@@ -133,6 +139,7 @@ class FitConfig(pydantic.BaseModel):
     name: str
     experiments_detailed: list[Experiment]
     experiments_all_particle: list[Experiment]
+    experiments_lnA: list[Experiment]
     model: ModelConfig
     mcmc: McmcConfig
 
@@ -151,6 +158,7 @@ def load_fit_data(config: FitConfig) -> FitData:
     fit_data = FitData.load(
         experiments_detailed=config.experiments_detailed,
         experiments_all_particle=config.experiments_all_particle,
+        experiments_lnA=config.experiments_lnA,
         primaries=config.model.cr_model_config.primaries,
         R_bounds=(7e2, 1e8),
     )
@@ -178,20 +186,27 @@ def main(config: FitConfig) -> None:
         print_delim()
         print("Loading fit data...")
         fit_data = load_fit_data(config)
-        fig, ax = plt.subplots()
+        fig, axes = plt.subplots(ncols=2, figsize=(12, 5))
+        axes: Sequence[Axes]
         print("Data by primary:")
         for exp, ps in fit_data.spectra.items():
             print(exp.name)
             for p, s in ps.items():
                 print(f"  {p.name}: {s.E.size} points from {s.E.min():.1e} to {s.E.max():.1e} GeV")
-                s.plot(scale=E_SCALE, ax=ax)
+                s.plot(scale=E_SCALE, ax=axes[0])
         print("All particle data:")
         for exp, s in fit_data.all_particle_spectra.items():
             print(f"{exp.name}: {s.E.size} points from {s.E.min():.1e} to {s.E.max():.1e} GeV")
-            s.plot(scale=E_SCALE, ax=ax)
-        ax.set_xscale("log")
-        ax.set_yscale("log")
-        ax.legend(fontsize="xx-small")
+            s.plot(scale=E_SCALE, ax=axes[0])
+        print("lnA data:")
+        for exp, s in fit_data.lnA.items():
+            print(f"{exp.name}: {s.x.size} points from {s.x.min():.1e} to {s.x.max():.1e} GeV")
+            s.plot(ax=axes[1])
+        [ax.set_xscale("log") for ax in axes]
+        [ax.legend(fontsize="xx-small") for ax in axes]
+        axes[0].set_yscale("log")
+        label_energy_flux(axes[1], scale=0)
+        axes[1].set_ylabel("$ \\langle \\ln A \\rangle $")
         fig.savefig(outdir / "data.png")
 
         print_delim()
@@ -207,8 +222,6 @@ def main(config: FitConfig) -> None:
                 config=config.model,
             ),
         )
-
-        # safe_initial_guess_model(config.model, fit_data).plot(fit_data, scale=E_SCALE).savefig(outdir / "test.png")
 
         print_delim()
         print("Running preliminary MLE analysis...")
@@ -290,6 +303,9 @@ def main(config: FitConfig) -> None:
             np.savetxt(sample_path, theta_sample)
 
         print(f"MCMC sample ready, shape: {theta_sample.shape}")
+        median_model = Model.unpack(np.median(theta_sample, axis=0), layout_info=config.model)
+        print("Median model:")
+        median_model.print_params()
 
         print_delim()
         print("Plotting posterior")
@@ -306,13 +322,10 @@ def main(config: FitConfig) -> None:
         fig.savefig(outdir / "corner.png")
 
         print_delim()
-        print("Plotting primary fluxes with credible bands")
-        fig, axes = plt.subplots(figsize=(15, 7), ncols=2)
-        axes: Sequence[Axes]
+        print("Plotting credible bands on all model predictions")
 
-        median_model = Model.unpack(np.median(theta_sample, axis=0), layout_info=config.model)
-        print("Median model:")
-        median_model.print_params()
+        fig, axes = plt.subplots(figsize=(18, 6), ncols=3)
+        axes: Sequence[Axes]
 
         ax_comp = axes[0]
         ax_comp.set_title("Composition")
@@ -324,7 +337,15 @@ def main(config: FitConfig) -> None:
                     add_label=False,
                 )
         primaries = median_model.cr_model.layout_info().primaries
-        Emin, Emax = add_log_margin(fit_data.E_min(), fit_data.E_max())
+        E_comp_all = np.hstack(
+            [
+                s.E
+                for s in itertools.chain.from_iterable(
+                    ps.values() for ps in fit_data.spectra.values()
+                )
+            ]
+        )
+        Emin, Emax = add_log_margin(E_comp_all.min(), E_comp_all.max())
         for p in primaries:
             plot_credible_band(
                 ax_comp,
@@ -345,6 +366,7 @@ def main(config: FitConfig) -> None:
 
         ax_all = axes[1]
         ax_all.set_title("All particle")
+        E_all_all = np.hstack([s.E for s in fit_data.all_particle_spectra.values()])
         for exp, spectrum in fit_data.all_particle_spectra.items():
             spectrum.with_shifted_energy_scale(f=median_model.energy_shifts.f(exp)).plot(
                 scale=E_SCALE,
@@ -358,9 +380,8 @@ def main(config: FitConfig) -> None:
             model_config=config.model,
             observable=lambda model, E: model.cr_model.compute_all_particle(E),
             color="red",
-            bounds=(Emin, Emax),
+            bounds=add_log_margin(E_all_all.min(), E_all_all.max()),
             add_median=True,
-            label="Sum of primaries $\\times$ K",
         )
         legend_with_added_items(
             ax_all,
@@ -371,11 +392,43 @@ def main(config: FitConfig) -> None:
             fontsize="x-small",
         )
 
-        for ax in axes:
+        ax_lnA = axes[2]
+        ax_lnA.set_title("$ \\langle \\ln A \\rangle $")
+        for exp, data in fit_data.lnA.items():
+            data = dataclasses.replace(data, x=data.x * median_model.energy_shifts.f(exp))
+            data.plot(
+                scale=0,
+                ax=ax_lnA,
+                add_label=False,
+            )
+        E_lnA_all = np.hstack([s.x for s in fit_data.lnA.values()])
+        plot_credible_band(
+            ax_lnA,
+            scale=0,
+            theta_sample=theta_sample,
+            model_config=config.model,
+            observable=lambda model, E: model.cr_model.compute_lnA(E),
+            color="blue",
+            bounds=add_log_margin(E_lnA_all.min(), E_lnA_all.max()),
+            add_median=True,
+        )
+        legend_with_added_items(
+            ax_lnA,
+            [
+                (exp.legend_artist(), exp.name)
+                for exp in sorted(fit_data.lnA.keys(), key=lambda e: e.name)
+            ],
+            fontsize="x-small",
+        )
+        ax_lnA.set_xscale("log")
+        ax_lnA.set_xlabel(E_GEV_LABEL)
+        ax_lnA.set_ylabel("$ \\langle \\ln A \\rangle $")
+
+        for ax in (ax_comp, ax_all):
             ax.set_xscale("log")
             ax.set_yscale("log")
-            ax.set_xlim(Emin, Emax)
 
+        fig.tight_layout()
         fig.savefig(outdir / "fluxes.pdf")
 
 
@@ -383,14 +436,18 @@ if __name__ == "__main__":
     from cr_knee_fit import experiments
 
     experiments_detailed = experiments.direct_experiments + [experiments.grapes]
-    experiments_all_particle = [experiments.lhaaso_sibyll]
-    # experiments_all_particle = []
+
+    lhaaso = experiments.lhaaso_epos
+    suffix = "epos"
+    experiments_all_particle = [lhaaso]
+    experiments_lnA = [lhaaso]
 
     main(
         FitConfig(
-            name="composition+lhaaso (sibyll)",
+            name=f"composition+lhaaso ({suffix}) v2",
             experiments_detailed=experiments_detailed,
             experiments_all_particle=experiments_all_particle,
+            experiments_lnA=experiments_lnA,
             model=ModelConfig(
                 cr_model_config=CosmicRaysModelConfig(
                     components=[
@@ -408,8 +465,8 @@ if __name__ == "__main__":
                 shifted_experiments=[e for e in experiments_detailed if e != experiments.ams02],
             ),
             mcmc=McmcConfig(
-                n_steps=80_000,
-                n_walkers=256,
+                n_steps=100_000,
+                n_walkers=64,
                 processes=8,
                 reuse_saved=True,
             ),

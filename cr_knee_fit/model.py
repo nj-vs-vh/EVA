@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 
-from matplotlib import lines
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.figure import Figure

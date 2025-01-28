@@ -57,6 +57,16 @@ def to_model(
     )
 
 
+def chi_squared_loglikelihood(
+    prediction: np.ndarray, y: np.ndarray, errlo: np.ndarray, errhi: np.ndarray
+) -> float:
+    residual = prediction - y
+    loglike_per_bin = -0.5 * (
+        np.where(residual > 0, (residual / errhi) ** 2, (residual / errlo) ** 2)
+    )
+    return np.sum(loglike_per_bin)
+
+
 def loglikelihood(
     model_or_theta: Model | np.ndarray,
     fit_data: FitData,
@@ -64,33 +74,35 @@ def loglikelihood(
 ) -> float:
     m = to_model(model_or_theta, config)
     res = 0
-    for experiment, particle_data in fit_data.spectra.items():
-        for particle, data in particle_data.items():
-            data = data.with_shifted_energy_scale(f=m.energy_shifts.f(experiment))
-            prediction = m.cr_model.compute(E=data.E, primary=particle)
-            loglike_per_bin = -0.5 * (
-                np.where(
-                    prediction > data.F,
-                    ((prediction - data.F) / data.F_errhi) ** 2,
-                    ((prediction - data.F) / data.F_errlo) ** 2,
-                )
+    for exp, particle_data in fit_data.spectra.items():
+        for primary, data in particle_data.items():
+            data = data.with_shifted_energy_scale(f=m.energy_shifts.f(exp))
+            res += chi_squared_loglikelihood(
+                prediction=m.cr_model.compute(data.E, primary),
+                y=data.F,
+                errhi=data.F_errhi,
+                errlo=data.F_errlo,
             )
-            if np.any(np.isnan(loglike_per_bin)):
-                return -np.inf
-            res += float(np.sum(loglike_per_bin))
-    for experiment, data in fit_data.all_particle_spectra.items():
-        data = data.with_shifted_energy_scale(f=m.energy_shifts.f(experiment))
-        prediction = m.cr_model.compute_all_particle(E=data.E)
-        loglike_per_bin = -0.5 * (
-            np.where(
-                prediction > data.F,
-                ((prediction - data.F) / data.F_errhi) ** 2,
-                ((prediction - data.F) / data.F_errlo) ** 2,
-            )
+    for exp, data in fit_data.all_particle_spectra.items():
+        data = data.with_shifted_energy_scale(f=m.energy_shifts.f(exp))
+        res += chi_squared_loglikelihood(
+            prediction=m.cr_model.compute_all_particle(data.E),
+            y=data.F,
+            errhi=data.F_errhi,
+            errlo=data.F_errlo,
         )
-        if np.any(np.isnan(loglike_per_bin)):
-            return -np.inf
-        res += float(np.sum(loglike_per_bin))
+    for exp, data in fit_data.lnA.items():
+        f = m.energy_shifts.f(exp)
+        E_exp = data.x
+        E_true = E_exp * f
+        res += chi_squared_loglikelihood(
+            # for lnA, energy scale shift does not affect values as they include dE in num. and denom.
+            prediction=m.cr_model.compute_lnA(E_true),
+            y=data.y,
+            errhi=data.y_errhi,
+            errlo=data.y_errlo,
+        )
+
     return res
 
 

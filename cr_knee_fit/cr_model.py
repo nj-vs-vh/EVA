@@ -185,6 +185,11 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         dNdE = dNdR / primary.Z
         return dNdE
 
+    def compute_lnA(self, E: np.ndarray) -> np.ndarray:
+        spectra = np.vstack([self.compute(E, primary) for primary in Primary])
+        lnA = np.array([np.log(p.A) for p in Primary])
+        return np.sum(spectra * np.expand_dims(lnA, axis=1), axis=0) / np.sum(spectra, axis=0)
+
     def compute_all_particle(self, E: np.ndarray) -> np.ndarray:
         flux = np.zeros_like(E)
         for primary in self.layout_info().primaries:
