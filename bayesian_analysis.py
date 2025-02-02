@@ -290,7 +290,7 @@ def main(config: FitConfig) -> None:
                 sampler.run_mcmc(
                     initial_state,
                     nsteps=config.mcmc.n_steps,
-                    progress=True,
+                    progress=os.environ.get("CRKNEES_NOPROGRESS") != "1",
                 )
 
             print("Sampling done")
