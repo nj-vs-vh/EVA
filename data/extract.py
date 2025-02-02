@@ -2,6 +2,7 @@ import argparse
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+import traceback
 
 import crdb
 
@@ -134,5 +135,5 @@ if __name__ == "__main__":
             dump_datafile(dataset, skip_existing=args.new_only)
         logging.info("All datasets processed successfully.")
     except Exception as e:
-        logging.critical("Processing stopped due to error: %s", e)
+        logging.critical("Processing stopped due to error", exc_info=True)
         logging.info("Program terminated due to a critical error.")
