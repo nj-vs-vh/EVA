@@ -1,8 +1,19 @@
 [tool.black]
 line-length = 100
+extend-exclude = '''
+(
+    ^/(model|data)/.*
+)
+'''
+
 
 [tool.isort]
 profile = 'black'
-extend-exclude = '''
-^/model
-'''
+extend_skip = ["model", "data"]
+
+
+[tool.mypy]
+exclude = [
+    "^model",
+    "^data",
+]

@@ -1,20 +1,20 @@
 import contextlib
-import itertools
-import sys
-from typing import Sequence, cast
-from matplotlib.axes import Axes
-import pydantic
 import dataclasses
 import datetime
+import itertools
 import logging
 import multiprocessing
 import os
+import sys
 from pathlib import Path
+from typing import Sequence, cast
 
 import corner  # type: ignore
 import emcee  # type: ignore
 import numpy as np
+import pydantic
 from matplotlib import pyplot as plt
+from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from scipy import optimize, stats  # type: ignore
 
@@ -34,9 +34,9 @@ from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 from cr_knee_fit.types_ import Primary
 from cr_knee_fit.utils import (
     E_GEV_LABEL,
+    add_log_margin,
     label_energy_flux,
     legend_with_added_items,
-    add_log_margin,
 )
 
 # as recommended by emceee parallelization guide
