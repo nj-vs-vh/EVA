@@ -495,7 +495,7 @@ if __name__ == "__main__":
                 ],
             ),
             mcmc=McmcConfig(
-                n_steps=100_000,
+                n_steps=300_000,
                 n_walkers=64,
                 processes=8,
                 reuse_saved=True,
