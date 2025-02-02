@@ -488,7 +488,11 @@ if __name__ == "__main__":
                     ],
                     rescale_all_particle=False,
                 ),
-                shifted_experiments=[e for e in experiments_detailed if e != experiments.ams02],
+                shifted_experiments=[
+                    e
+                    for e in experiments_detailed + experiments_all_particle
+                    if e != experiments.ams02
+                ],
             ),
             mcmc=McmcConfig(
                 n_steps=100_000,

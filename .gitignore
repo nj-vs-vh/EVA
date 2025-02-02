@@ -18,3 +18,4 @@ venv
 
 bayesian.back.ipynb
 out/
+data/sync.sh
