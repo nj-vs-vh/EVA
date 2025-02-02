@@ -113,7 +113,7 @@ def plot_data_statonly(ax: plt.Axes, filename: str, slope: float, norm: float, f
     ax.errorbar(x_norm, y_norm, yerr=[y_err_lo_norm, y_err_up_norm], fmt=fmt, markeredgecolor=color, color=color, 
                 label=label, capsize=4.0, markersize=5.8, elinewidth=1.8, capthick=1.8, zorder=zorder)
     
-def set_axes(ax: plt.Axes, xlabel: str, ylabel: str, xscale: str = 'linear', yscale: str = 'linear', xlim: tuple = None, ylim: tuple = None) -> None:
+def set_axes(ax: plt.Axes, xlabel: str, ylabel: str, xscale: str = 'linear', yscale: str = 'linear', xlim: tuple | None = None, ylim: tuple | None = None) -> None:
     """
     Set the properties for the axes of a plot.
     

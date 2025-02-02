@@ -89,6 +89,7 @@ if __name__ == "__main__":
                 for _ in range(5)
             ],
             all_particle_lg_shift=np.random.random(),
+            unobserved_component_effective_Z=np.random.random(),
         ),
         energy_shifts=ExperimentEnergyScaleShifts(
             lg_shifts={e: np.random.random() for e in [Experiment("a"), Experiment("b")]}

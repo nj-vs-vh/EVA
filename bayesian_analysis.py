@@ -1,7 +1,7 @@
 import contextlib
 import itertools
 import sys
-from typing import Sequence
+from typing import Sequence, cast
 from matplotlib.axes import Axes
 import pydantic
 import dataclasses
@@ -11,12 +11,12 @@ import multiprocessing
 import os
 from pathlib import Path
 
-import corner
-import emcee
+import corner  # type: ignore
+import emcee  # type: ignore
 import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
-from scipy import optimize, stats
+from scipy import optimize, stats  # type: ignore
 
 from cr_knee_fit.cr_model import (
     CosmicRaysModel,
@@ -76,10 +76,7 @@ initial_guess_lgI = {
     Primary.Mg: -6.85,
     Primary.Si: -6.9,
     Primary.Fe: -6.9,
-}
-initial_guess_alpha = {
-    Primary.H: 2.6,
-    Primary.He: 2.5,
+    Primary.Unobserved: -8,
 }
 
 
@@ -106,8 +103,13 @@ def initial_guess_model(config: ModelConfig) -> Model:
                 for i, bc in enumerate(config.cr_model_config.breaks)
             ],
             all_particle_lg_shift=(
-                np.log10(stats.uniform.rvs(loc=1.1, scale=1.3))
+                np.log10(stats.uniform.rvs(loc=1.1, scale=0.9))
                 if config.cr_model_config.rescale_all_particle
+                else None
+            ),
+            unobserved_component_effective_Z=(
+                stats.uniform.rvs(loc=14, scale=26 - 14)
+                if config.cr_model_config.add_unobserved_component
                 else None
             ),
         ),
@@ -187,7 +189,7 @@ def main(config: FitConfig) -> None:
         print("Loading fit data...")
         fit_data = load_fit_data(config)
         fig, axes = plt.subplots(ncols=2, figsize=(12, 5))
-        axes: Sequence[Axes]
+        axes = cast(Sequence[Axes], axes)
         print("Data by primary:")
         for exp, ps in fit_data.spectra.items():
             print(exp.name)
@@ -199,9 +201,11 @@ def main(config: FitConfig) -> None:
             print(f"{exp.name}: {s.E.size} points from {s.E.min():.1e} to {s.E.max():.1e} GeV")
             s.plot(scale=E_SCALE, ax=axes[0])
         print("lnA data:")
-        for exp, s in fit_data.lnA.items():
-            print(f"{exp.name}: {s.x.size} points from {s.x.min():.1e} to {s.x.max():.1e} GeV")
-            s.plot(ax=axes[1])
+        for exp, lnA_data in fit_data.lnA.items():
+            print(
+                f"{exp.name}: {lnA_data.x.size} points from {lnA_data.x.min():.1e} to {lnA_data.x.max():.1e} GeV"
+            )
+            lnA_data.plot(ax=axes[1])
         [ax.set_xscale("log") for ax in axes]
         [ax.legend(fontsize="xx-small") for ax in axes]
         axes[0].set_yscale("log")
@@ -225,7 +229,7 @@ def main(config: FitConfig) -> None:
 
         print_delim()
         print("Running preliminary MLE analysis...")
-        mle_config = dataclasses.replace(config.model, shifted_experiments={})
+        mle_config = dataclasses.replace(config.model, shifted_experiments=[])
 
         def negloglike(v: np.ndarray) -> float:
             return -loglikelihood(v, fit_data, mle_config)
@@ -313,19 +317,19 @@ def main(config: FitConfig) -> None:
         sample_labels = [
             "$" + label + "$" for label in initial_guess_model(config.model).labels(latex=True)
         ]
-        fig: Figure = corner.corner(
+        fig_corner: Figure = corner.corner(
             sample_to_plot,
             labels=sample_labels,
             show_titles=True,
             quantiles=[0.05, 0.5, 0.95],
         )
-        fig.savefig(outdir / "corner.png")
+        fig_corner.savefig(outdir / "corner.png")
 
         print_delim()
         print("Plotting credible bands on all model predictions")
 
         fig, axes = plt.subplots(figsize=(18, 6), ncols=3)
-        axes: Sequence[Axes]
+        axes = cast(Sequence[Axes], axes)
 
         ax_comp = axes[0]
         ax_comp.set_title("Composition")
@@ -355,7 +359,7 @@ def main(config: FitConfig) -> None:
                 observable=lambda model, E: model.cr_model.compute(E, p),
                 color=p.color,
                 bounds=(Emin, Emax),
-                add_median=True,
+                add_median=False,
                 label=p.name,
             )
         legend_with_added_items(
@@ -367,6 +371,7 @@ def main(config: FitConfig) -> None:
         ax_all = axes[1]
         ax_all.set_title("All particle")
         E_all_all = np.hstack([s.E for s in fit_data.all_particle_spectra.values()])
+        E_bounds_all = add_log_margin(E_all_all.min(), E_all_all.max())
         for exp, spectrum in fit_data.all_particle_spectra.items():
             spectrum.with_shifted_energy_scale(f=median_model.energy_shifts.f(exp)).plot(
                 scale=E_SCALE,
@@ -380,14 +385,28 @@ def main(config: FitConfig) -> None:
             model_config=config.model,
             observable=lambda model, E: model.cr_model.compute_all_particle(E),
             color="red",
-            bounds=add_log_margin(E_all_all.min(), E_all_all.max()),
-            add_median=True,
+            bounds=E_bounds_all,
+            add_median=False,
         )
+        for p in primaries:
+            plot_credible_band(
+                ax_all,
+                scale=E_SCALE,
+                theta_sample=theta_sample,
+                model_config=config.model,
+                observable=lambda model, E: model.cr_model.compute(E, p),
+                color=p.color,
+                bounds=E_bounds_all,
+                add_median=False,
+                label=p.name,
+            )
         legend_with_added_items(
             ax_all,
             [
                 (exp.legend_artist(), exp.name)
-                for exp in sorted(fit_data.all_particle_spectra.keys(), key=lambda e: e.name)
+                for exp in (
+                    sorted(fit_data.all_particle_spectra.keys()) + sorted(fit_data.spectra.keys())
+                )
             ],
             fontsize="x-small",
         )
@@ -444,7 +463,7 @@ if __name__ == "__main__":
 
     main(
         FitConfig(
-            name=f"composition+lhaaso ({suffix}) v2",
+            name=f"composition+lhaaso ({suffix}) v3",
             experiments_detailed=experiments_detailed,
             experiments_all_particle=experiments_all_particle,
             experiments_lnA=experiments_lnA,
@@ -453,14 +472,21 @@ if __name__ == "__main__":
                     components=[
                         [Primary.H],
                         [Primary.He],
-                        sorted(p for p in Primary if p not in {Primary.H, Primary.He}),
+                        [
+                            Primary.C,
+                            Primary.O,
+                            Primary.Mg,
+                            Primary.Si,
+                            Primary.Fe,
+                            Primary.Unobserved,
+                        ],
                     ],
                     breaks=[
                         RigidityBreakConfig(fixed_lg_sharpness=np.log10(5)),
                         RigidityBreakConfig(fixed_lg_sharpness=np.log10(10)),
                         RigidityBreakConfig(fixed_lg_sharpness=None),
                     ],
-                    rescale_all_particle=True,
+                    rescale_all_particle=False,
                 ),
                 shifted_experiments=[e for e in experiments_detailed if e != experiments.ams02],
             ),

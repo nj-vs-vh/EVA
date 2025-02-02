@@ -5,9 +5,9 @@ from typing import ClassVar, Sequence
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.axes import Axes
-from num2tex import num2tex
+from num2tex import num2tex  # type: ignore
 
-from cr_knee_fit.types_ import Packable, Primary
+from cr_knee_fit.types_ import Packable, Primary, most_abundant_stable_izotope_A
 from cr_knee_fit.utils import label_energy_flux
 
 
@@ -139,6 +139,10 @@ class CosmicRaysModelConfig:
         assert len(self.primaries) == len(set(self.primaries))
 
     @property
+    def add_unobserved_component(self) -> bool:
+        return Primary.Unobserved in self.primaries
+
+    @property
     def primaries(self) -> list[Primary]:
         return sorted(itertools.chain.from_iterable(self.components))
 
@@ -149,6 +153,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
     breaks: list[RigidityBreak]
 
     all_particle_lg_shift: float | None  # sum of primaries * 10^shift = all particle spectrum
+    unobserved_component_effective_Z: float | None
 
     def __post_init__(self) -> None:
         seen_primaries = set[Primary]()
@@ -158,6 +163,13 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
                     "Ambiguous base spectra, at least one primary specified in several components"
                 )
             seen_primaries.update(s.primaries)
+        if (
+            self.unobserved_component_effective_Z is not None
+            and Primary.Unobserved not in self.layout_info().primaries
+        ):
+            raise ValueError(
+                "Unobserved primary must be present as a primary if it's effective Z is used as a param"
+            )
 
     def description(self) -> str:
         return "; ".join(
@@ -179,15 +191,25 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             flux *= rb.compute(R)
         return flux
 
+    def _primary_Z(self, primary: Primary) -> float:
+        if primary is Primary.Unobserved:
+            if self.unobserved_component_effective_Z is None:
+                raise ValueError(
+                    f"Attempted to get unobserved primary Z but it's not included in the model"
+                )
+            return self.unobserved_component_effective_Z
+        else:
+            return primary.Z
+
     def compute(self, E: np.ndarray, primary: Primary) -> np.ndarray:
-        R = E / float(primary.Z)
+        Z = self._primary_Z(primary)
+        R = E / Z
         dNdR = self.compute_rigidity(R, primary=primary)
-        dNdE = dNdR / primary.Z
-        return dNdE
+        return dNdR / Z
 
     def compute_lnA(self, E: np.ndarray) -> np.ndarray:
         spectra = np.vstack([self.compute(E, primary) for primary in Primary])
-        lnA = np.array([np.log(p.A) for p in Primary])
+        lnA = np.array([most_abundant_stable_izotope_A(round(self._primary_Z(p))) for p in Primary])
         return np.sum(spectra * np.expand_dims(lnA, axis=1), axis=0) / np.sum(spectra, axis=0)
 
     def compute_all_particle(self, E: np.ndarray) -> np.ndarray:
@@ -226,6 +248,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             sum(c.ndim() for c in self.base_spectra)
             + sum(b.ndim() for b in self.breaks)
             + int(self.all_particle_lg_shift is not None)
+            + int(self.unobserved_component_effective_Z is not None)
         )
 
     def pack(self) -> np.ndarray:
@@ -234,6 +257,8 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         ]
         if self.all_particle_lg_shift is not None:
             subvectors.append(np.array([self.all_particle_lg_shift]))
+        if self.unobserved_component_effective_Z:
+            subvectors.append(np.array([self.unobserved_component_effective_Z]))
         return np.hstack(subvectors)
 
     def labels(self, latex: bool) -> list[str]:
@@ -248,6 +273,8 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
                 )
         if self.all_particle_lg_shift is not None:
             labels.append("\\lg(K)" if latex else "lgK")
+        if self.unobserved_component_effective_Z is not None:
+            labels.append("Z_\\text{Unobs. eff}" if latex else "Z_Unobs")
         return labels
 
     def layout_info(self) -> CosmicRaysModelConfig:
@@ -271,10 +298,23 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             breaks.append(b)
             offset += b.ndim()
 
+        if layout_info.rescale_all_particle:
+            all_particle_lg_shift = theta[offset]
+            offset += 1
+        else:
+            all_particle_lg_shift = None
+
+        if layout_info.add_unobserved_component:
+            unobserved_component_eff_Z = theta[offset]
+            offset += 1
+        else:
+            unobserved_component_eff_Z = None
+
         return CosmicRaysModel(
             base_spectra=components,
             breaks=breaks,
-            all_particle_lg_shift=theta[offset] if layout_info.rescale_all_particle else None,
+            all_particle_lg_shift=all_particle_lg_shift,
+            unobserved_component_effective_Z=unobserved_component_eff_Z,
         )
 
 
@@ -288,7 +328,12 @@ if __name__ == "__main__":
             SharedPowerLaw.single_primary(Primary.H, np.random.random(), np.random.random()),
             SharedPowerLaw.single_primary(Primary.He, np.random.random(), np.random.random()),
             SharedPowerLaw(
-                {Primary.Mg: np.random.random(), Primary.Fe: np.random.random()}, np.random.random()
+                {
+                    Primary.Mg: np.random.random(),
+                    Primary.Fe: np.random.random(),
+                    Primary.Unobserved: np.random.random(),
+                },
+                np.random.random(),
             ),
         ],
         breaks=[
@@ -296,6 +341,7 @@ if __name__ == "__main__":
             RigidityBreak(lg_R=5.0, d_alpha=-0.4, lg_sharpness=0.5, fix_sharpness=True),
             RigidityBreak(lg_R=5.0, d_alpha=-0.4, lg_sharpness=0.5),
         ],
-        all_particle_lg_shift=0.0,
+        all_particle_lg_shift=np.random.random(),
+        unobserved_component_effective_Z=np.random.random(),
     )
     gcr.validate_packing()

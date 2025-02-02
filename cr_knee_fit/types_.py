@@ -56,24 +56,57 @@ class Primary(enum.IntEnum):
     Si = 14
     Fe = 26
 
+    Unobserved = 1000
+
     @property
-    def Z(self) -> int:
+    def Z(self) -> float:
+        if self is Primary.Unobserved:
+            raise ValueError("Unobserved primary Z must be introduced as a free parameter")
         return self.value
 
     @property
     def A(self) -> int:
-        return {
-            Primary.H: 1,
-            Primary.He: 4,
-            Primary.C: 12,
-            Primary.O: 16,
-            Primary.Mg: 24,
-            Primary.Si: 28,
-            Primary.Fe: 56,
-        }[self]
+        return most_abundant_stable_izotope_A(round(self.Z))
 
     @property
     def color(self) -> Any:
-        all = sorted(Primary)
-        idx = all.index(self)
-        return _PRIMARY_CMAP(idx / (len(all) - 1))
+        if self is Primary.Unobserved:
+            return "gray"
+        else:
+            return _PRIMARY_CMAP(np.log(self.A) / np.log(Primary.Fe.A))
+
+
+def most_abundant_stable_izotope_A(Z: int) -> int:
+    Z_clamped = Z
+    if Z < 1:
+        Z_clamped = 1
+    elif Z > 26:
+        Z_clamped = 26
+    return {
+        1: 1,
+        2: 4,
+        3: 7,
+        4: 9,
+        5: 11,
+        6: 12,
+        7: 14,
+        8: 16,
+        9: 19,
+        10: 20,
+        11: 23,
+        12: 24,
+        13: 27,
+        14: 28,
+        15: 31,
+        16: 32,
+        17: 35,
+        18: 40,
+        19: 39,
+        20: 40,
+        21: 45,
+        22: 48,
+        23: 51,
+        24: 52,
+        25: 55,
+        26: 56,
+    }[Z_clamped]

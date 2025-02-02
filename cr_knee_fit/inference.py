@@ -1,5 +1,5 @@
 import numpy as np
-from scipy import stats
+from scipy import stats  # type: ignore
 
 from cr_knee_fit.cr_model import RigidityBreak
 from cr_knee_fit.fit_data import FitData
@@ -13,14 +13,14 @@ def break_prior(b: RigidityBreak, lg_R_min: float, lg_R_max: float, is_softening
     if (b.d_alpha > 0) != is_softening:
         return -np.inf
     if not b.fix_sharpness:
-        s = 10 ** b.lg_sharpness
+        s = 10**b.lg_sharpness
         if not (0.1 < s < 20):
             return -np.inf
     return res
 
 
 def logprior(model: Model) -> float:
-    res = 0
+    res = 0.0
 
     # breaks must be ordered in R to avoid ambiguity
     breaks_lgR = [m.lg_R for m in model.cr_model.breaks]
@@ -39,6 +39,10 @@ def logprior(model: Model) -> float:
     lgK = model.cr_model.all_particle_lg_shift
     if lgK is not None:
         if not (1 <= 10**lgK <= 2):
+            return -np.inf
+
+    if model.cr_model.unobserved_component_effective_Z is not None:
+        if not (1 <= model.cr_model.unobserved_component_effective_Z <= 26.5):
             return -np.inf
 
     # energy shift priors
@@ -78,34 +82,34 @@ def loglikelihood(
     config: ModelConfig,
 ) -> float:
     m = to_model(model_or_theta, config)
-    res = 0
-    for exp, particle_data in fit_data.spectra.items():
-        for primary, data in particle_data.items():
-            data = data.with_shifted_energy_scale(f=m.energy_shifts.f(exp))
+    res = 0.0
+    for exp, data_by_primary in fit_data.spectra.items():
+        for primary, p_data in data_by_primary.items():
+            p_data = p_data.with_shifted_energy_scale(f=m.energy_shifts.f(exp))
             res += chi_squared_loglikelihood(
-                prediction=m.cr_model.compute(data.E, primary),
-                y=data.F,
-                errhi=data.F_errhi,
-                errlo=data.F_errlo,
+                prediction=m.cr_model.compute(p_data.E, primary),
+                y=p_data.F,
+                errhi=p_data.F_errhi,
+                errlo=p_data.F_errlo,
             )
-    for exp, data in fit_data.all_particle_spectra.items():
-        data = data.with_shifted_energy_scale(f=m.energy_shifts.f(exp))
+    for exp, all_data in fit_data.all_particle_spectra.items():
+        all_data = all_data.with_shifted_energy_scale(f=m.energy_shifts.f(exp))
         res += chi_squared_loglikelihood(
-            prediction=m.cr_model.compute_all_particle(data.E),
-            y=data.F,
-            errhi=data.F_errhi,
-            errlo=data.F_errlo,
+            prediction=m.cr_model.compute_all_particle(all_data.E),
+            y=all_data.F,
+            errhi=all_data.F_errhi,
+            errlo=all_data.F_errlo,
         )
-    for exp, data in fit_data.lnA.items():
+    for exp, lnA_data in fit_data.lnA.items():
         f = m.energy_shifts.f(exp)
-        E_exp = data.x
+        E_exp = lnA_data.x
         E_true = E_exp * f
         res += chi_squared_loglikelihood(
             # for lnA, energy scale shift does not affect values as they include dE in num. and denom.
             prediction=m.cr_model.compute_lnA(E_true),
-            y=data.y,
-            errhi=data.y_errhi,
-            errlo=data.y_errlo,
+            y=lnA_data.y,
+            errhi=lnA_data.y_errhi,
+            errlo=lnA_data.y_errlo,
         )
 
     return res
