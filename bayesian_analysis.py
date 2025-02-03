@@ -1,11 +1,12 @@
+import argparse
 import contextlib
 import dataclasses
 import datetime
 import itertools
-import logging
 import multiprocessing
 import os
 import sys
+import traceback
 from pathlib import Path
 from typing import Sequence, cast
 
@@ -18,6 +19,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from scipy import optimize, stats  # type: ignore
 
+from cr_knee_fit import experiments
 from cr_knee_fit.cr_model import (
     CosmicRaysModel,
     CosmicRaysModelConfig,
@@ -43,7 +45,7 @@ from cr_knee_fit.utils import (
 # see https://emcee.readthedocs.io/en/stable/tutorials/parallel/#parallelization
 os.environ["OMP_NUM_THREADS"] = "1"
 
-logging.basicConfig(level=logging.INFO)
+IS_CLUSTER = os.environ.get("CRKNEES_CLUSTER") == "1"
 
 OUT_DIR = Path(__file__).parent / "out"
 OUT_DIR.mkdir(exist_ok=True)
@@ -173,7 +175,7 @@ def main(config: FitConfig) -> None:
     outdir.mkdir(exist_ok=True)
 
     logfile = outdir / "log.txt"
-    with logfile.open("w") as log, contextlib.redirect_stdout(new_target=log):
+    with logfile.open("w") as log, contextlib.redirect_stdout(log):
         print(f"Output dir: {outdir}")
 
         config_path = Path(outdir / "config.json")
@@ -229,24 +231,28 @@ def main(config: FitConfig) -> None:
 
         print_delim()
         print("Running preliminary MLE analysis...")
-        mle_config = dataclasses.replace(config.model, shifted_experiments=[])
+        try:
+            mle_config = dataclasses.replace(config.model, shifted_experiments=[])
 
-        def negloglike(v: np.ndarray) -> float:
-            return -loglikelihood(v, fit_data, mle_config)
+            def negloglike(v: np.ndarray) -> float:
+                return -loglikelihood(v, fit_data, mle_config)
 
-        res = optimize.minimize(
-            negloglike,
-            x0=safe_initial_guess_model(mle_config, fit_data).pack(),
-            method="Nelder-Mead",
-            options={
-                "maxiter": 100_000,
-            },
-        )
-        print(res)
-        mle_model = Model.unpack(res.x, layout_info=mle_config)
-        fig = mle_model.plot(fit_data, scale=E_SCALE)
-        fig.savefig(outdir / "mle-result.png")
-        mle_model.print_params()
+            res = optimize.minimize(
+                negloglike,
+                x0=safe_initial_guess_model(mle_config, fit_data).pack(),
+                method="Nelder-Mead",
+                options={
+                    "maxiter": 100_000,
+                },
+            )
+            print(res)
+            mle_model = Model.unpack(res.x, layout_info=mle_config)
+            fig = mle_model.plot(fit_data, scale=E_SCALE)
+            fig.savefig(outdir / "mle-result.png")
+            mle_model.print_params()
+        except Exception as e:
+            print(f"Error running MLE analysis, ignoring: {e}")
+            traceback.print_exc()
 
         print_delim()
         print("Running bayesian analysis...")
@@ -287,11 +293,7 @@ def main(config: FitConfig) -> None:
                         for _ in range(config.mcmc.n_walkers)
                     ]
                 )
-                sampler.run_mcmc(
-                    initial_state,
-                    nsteps=config.mcmc.n_steps,
-                    progress=os.environ.get("CRKNEES_NOPROGRESS") != "1",
-                )
+                sampler.run_mcmc(initial_state, nsteps=config.mcmc.n_steps, progress=not IS_CLUSTER)
 
             print("Sampling done")
             print(f"Acceptance fraction: {sampler.acceptance_fraction.mean()}")
@@ -452,18 +454,21 @@ def main(config: FitConfig) -> None:
 
 
 if __name__ == "__main__":
-    from cr_knee_fit import experiments
+    parser = argparse.ArgumentParser()
+    parser.add_argument("analysis_name", required=True, type=str)
+    parser.add_argument("--processes", default=1, type=int)
+    args = parser.parse_args()
+    analysis_name: str = args.analysis_name
+    processes = args.processes
 
     experiments_detailed = experiments.direct_experiments + [experiments.grapes]
-
     lhaaso = experiments.lhaaso_epos
-    suffix = "epos"
     experiments_all_particle = [lhaaso]
     experiments_lnA = [lhaaso]
 
     main(
         FitConfig(
-            name=f"composition+lhaaso ({suffix}) v3",
+            name=analysis_name,
             experiments_detailed=experiments_detailed,
             experiments_all_particle=experiments_all_particle,
             experiments_lnA=experiments_lnA,
@@ -497,7 +502,7 @@ if __name__ == "__main__":
             mcmc=McmcConfig(
                 n_steps=300_000,
                 n_walkers=64,
-                processes=8,
+                processes=processes,
                 reuse_saved=True,
             ),
         )
