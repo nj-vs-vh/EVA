@@ -459,7 +459,7 @@ def main(config: FitConfig) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("analysis_name", required=True, type=str)
+    parser.add_argument("analysis_name", type=str)
     parser.add_argument("--processes", default=1, type=int)
     args = parser.parse_args()
     analysis_name: str = args.analysis_name
