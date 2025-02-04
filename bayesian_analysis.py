@@ -171,8 +171,12 @@ def load_fit_data(config: FitConfig) -> FitData:
 
 
 def main(config: FitConfig) -> None:
-    outdir = OUT_DIR / config.name
-    outdir.mkdir(exist_ok=True)
+    if IS_CLUSTER:
+        # condor scratch directory on the executing node
+        outdir = Path.cwd()
+    else:
+        outdir = OUT_DIR / config.name
+        outdir.mkdir(exist_ok=True)
 
     logfile = outdir / "log.txt"
     with logfile.open("w") as log, contextlib.redirect_stdout(log):

@@ -3,16 +3,16 @@ analysis_name = first-cluster-run
 processes = 8
 
 executable = /storage/gpfs_data/auger/vaiman/miniconda3/bin/conda
-arguments = run --name crknees --no-capture-output python bayesian_analysis.py $(analysis_name) --processes $(processes)
+arguments = run --name crknees --no-capture-output python /storage/gpfs_data/auger/vaiman/cr-knees/bayesian_analysis.py $(analysis_name) --processes $(processes)
 environment = "CRKNEES_CLUSTER=1 OMP_NUM_THREADS=1"
 
-out_dir = out/$(analysis_name)
-log = $(out_dir)/htcondor.log
-output = $(out_dir)/htcondor.out
-error = $(out_dir)/htcondor.err
+log = condor.log
+output = condor.out
+error = condor.err
 
 request_cpus = $(processes)
+initialdir = out/$(analysis_name)
 
-should_transfer_files = No
+should_transfer_files = IF_NEEDED
 
 queue 1
