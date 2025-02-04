@@ -170,7 +170,7 @@ def load_fit_data(config: FitConfig) -> FitData:
 def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
     print(f"Output dir: {outdir}")
 
-    Path(outdir / "config.json").write_text(config.model_dump_json(indent=2))
+    Path(outdir / "config-dump.json").write_text(config.model_dump_json(indent=2))
 
     print_delim()
     print("Loading fit data...")
