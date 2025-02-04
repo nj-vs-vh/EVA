@@ -1,6 +1,6 @@
 # replace with a descriptive name
-analysis_name = first-cluster-run
-processes = 8
+analysis_name = test-cluster-run
+processes = 1
 
 executable = /storage/gpfs_data/auger/vaiman/miniconda3/bin/conda
 arguments = run --name crknees --no-capture-output python /storage/gpfs_data/auger/vaiman/cr-knees/bayesian_analysis.py $(analysis_name) --processes $(processes)
@@ -12,6 +12,7 @@ error = condor.err
 
 request_cpus = $(processes)
 initialdir = out/$(analysis_name)
+batch_name = $(analysis_name)
 
 should_transfer_files = IF_NEEDED
 
