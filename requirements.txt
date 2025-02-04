@@ -10,6 +10,7 @@ tqdm==4.67.1
 corner==2.2.3
 num2tex==0.8
 pydantic==2.10.5
+htcondor==24.3.0
 
 black==24.10.0
 isort==5.13.2
