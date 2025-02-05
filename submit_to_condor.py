@@ -2,7 +2,7 @@ import os
 import sys
 from pathlib import Path
 
-import htcondor
+import htcondor  # type: ignore
 import numpy as np
 
 from bayesian_analysis import FitConfig, McmcConfig
@@ -90,4 +90,3 @@ if __name__ == "__main__":
     schedd = htcondor.Schedd(location)  # type: ignore
     schedd.submit(job)
     print("Done!")
-

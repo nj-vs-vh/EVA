@@ -175,30 +175,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
     print_delim()
     print("Loading fit data...")
     fit_data = load_fit_data(config)
-    fig, axes = plt.subplots(ncols=2, figsize=(12, 5))
-    axes = cast(Sequence[Axes], axes)
-    print("Data by primary:")
-    for exp, ps in fit_data.spectra.items():
-        print(exp.name)
-        for p, s in ps.items():
-            print(f"  {p.name}: {s.E.size} points from {s.E.min():.1e} to {s.E.max():.1e} GeV")
-            s.plot(scale=E_SCALE, ax=axes[0])
-    print("All particle data:")
-    for exp, s in fit_data.all_particle_spectra.items():
-        print(f"    {exp.name}: {s.E.size} points from {s.E.min():.1e} to {s.E.max():.1e} GeV")
-        s.plot(scale=E_SCALE, ax=axes[0])
-    print("lnA data:")
-    for exp, lnA_data in fit_data.lnA.items():
-        print(
-            f"    {exp.name}: {lnA_data.x.size} points from {lnA_data.x.min():.1e} to {lnA_data.x.max():.1e} GeV"
-        )
-        lnA_data.plot(ax=axes[1])
-    [ax.set_xscale("log") for ax in axes]
-    [ax.legend(fontsize="xx-small") for ax in axes]
-    axes[0].set_yscale("log")
-    label_energy_flux(axes[1], scale=0)
-    axes[1].set_ylabel("$ \\langle \\ln A \\rangle $")
-    fig.savefig(outdir / "data.png")
+    fit_data.plot(scale=E_SCALE, describe=True).savefig(outdir / "data.png")
 
     print_delim()
     print("Initial guess model (example):")

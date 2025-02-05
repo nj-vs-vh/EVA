@@ -1,7 +1,8 @@
 import itertools
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Sequence, cast
 
+from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.axes import Axes
@@ -241,6 +242,33 @@ class FitData:
             },
             R_bounds=R_bounds,
         )
+
+    def plot(self, scale: float, describe: bool = False) -> Figure:
+        print_ = print if describe else lambda _: None
+        fig, axes = plt.subplots(ncols=2, figsize=(12, 5))
+        axes = cast(Sequence[Axes], axes)
+        print_("Data by primary:")
+        for exp, ps in self.spectra.items():
+            print_(exp.name)
+            for p, s in ps.items():
+                print_(f"  {p.name}: {s.E.size} points from {s.E.min():.1e} to {s.E.max():.1e} GeV")
+                s.plot(scale=scale, ax=axes[0])
+        print_("All particle data:")
+        for exp, s in self.all_particle_spectra.items():
+            print_(f"    {exp.name}: {s.E.size} points from {s.E.min():.1e} to {s.E.max():.1e} GeV")
+            s.plot(scale=scale, ax=axes[0])
+        print_("lnA data:")
+        for exp, lnA_data in self.lnA.items():
+            print_(
+                f"    {exp.name}: {lnA_data.x.size} points from {lnA_data.x.min():.1e} to {lnA_data.x.max():.1e} GeV"
+            )
+            lnA_data.plot(ax=axes[1])
+        [ax.set_xscale("log") for ax in axes]
+        [ax.legend(fontsize="xx-small") for ax in axes]
+        axes[0].set_yscale("log")
+        label_energy_flux(axes[1], scale=0)
+        axes[1].set_ylabel("$ \\langle \\ln A \\rangle $")
+        return fig
 
 
 def load_spectra(

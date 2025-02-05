@@ -5,20 +5,16 @@ import numpy as np
 
 from bayesian_analysis import FitConfig, McmcConfig, run_bayesian_analysis
 from cr_knee_fit import experiments
-from cr_knee_fit.cr_model import (
-    CosmicRaysModelConfig,
-    RigidityBreakConfig,
-)
+from cr_knee_fit.cr_model import CosmicRaysModelConfig, RigidityBreakConfig
 from cr_knee_fit.model import ModelConfig
 from cr_knee_fit.types_ import Primary
-
 
 if __name__ == "__main__":
     analysis_name = "composition + lhaaso (epos)"
 
     experiments_detailed = experiments.direct_experiments + [experiments.grapes]
     lhaaso = experiments.lhaaso_epos
-    experiments_all_particle = [lhaaso]
+    experiments_all_particle = [lhaaso, experiments.hawc]
     experiments_lnA = [lhaaso]
 
     config = FitConfig(
@@ -52,7 +48,7 @@ if __name__ == "__main__":
             ],
         ),
         mcmc=McmcConfig(
-            n_steps=300_000,
+            n_steps=200_000,
             n_walkers=64,
             processes=8,
             reuse_saved=True,

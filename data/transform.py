@@ -159,7 +159,19 @@ def transform_allParticles():
 def transform_Cagnoli2024():
     file = 'allpart_HET_wGen26_onlyBGO_RGWeights_SatCorrp_5UnfCycle_100GeV_1PeV_2016-23.txt'
     E_min, E_max, I_E, e_sta_lo, e_sta_up = np.loadtxt(f'lake/{file}', usecols=(2,3,4,5,6), unpack=True)
-    data = [geom_mean(E_min, E_max), I_E, e_sta_lo, e_sta_up, 0. * e_sta_lo, 0. * e_sta_up]
+    # dropping the last 3 points that are conflicting with LHAASO data
+    mask = np.ones_like(E_min, dtype=bool)
+    mask[-3:] = False
+    data = [
+        geom_mean(E_min[mask], E_max[mask]),
+        I_E[mask],
+        e_sta_lo[mask],
+        e_sta_up[mask],
+        e_sta_lo[mask],
+        e_sta_up[mask],
+        # 0. * e_sta_lo[mask],
+        # 0. * e_sta_up[mask],
+    ]
     dump(data, "DAMPE_all_energy.txt")
 
 def transform_TIBET_all():

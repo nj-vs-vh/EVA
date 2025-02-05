@@ -50,7 +50,7 @@ class Model(Packable[ModelConfig]):
         return Model(cr_model=cr, energy_shifts=energy_shifts)
 
     def plot(self, fit_data: FitData, scale: float) -> Figure:
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(10, 8))
 
         for exp, data_by_particle in fit_data.spectra.items():
             for _, data in data_by_particle.items():
@@ -62,7 +62,13 @@ class Model(Packable[ModelConfig]):
         for _, data in fit_data.all_particle_spectra.items():
             data.plot(scale=scale, ax=ax, add_label=False)
 
-        self.cr_model.plot(Emin=fit_data.E_min(), Emax=fit_data.E_max(), scale=scale, axes=ax)
+        self.cr_model.plot(
+            Emin=fit_data.E_min(),
+            Emax=fit_data.E_max(),
+            scale=scale,
+            axes=ax,
+            all_particle=len(fit_data.all_particle_spectra) > 0,
+        )
         legend_with_added_items(
             ax,
             [(e.legend_artist(), e.name) for e in fit_data.all_experiments()],

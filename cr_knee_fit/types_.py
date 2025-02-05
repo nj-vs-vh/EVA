@@ -73,7 +73,8 @@ class Primary(enum.IntEnum):
         if self is Primary.Unobserved:
             return "gray"
         else:
-            return _PRIMARY_CMAP(np.log(self.A) / np.log(Primary.Fe.A))
+            idx = sorted(Primary).index(self)
+            return _PRIMARY_CMAP(idx / (len(Primary) - 1))
 
 
 def most_abundant_stable_izotope_A(Z: int) -> int:

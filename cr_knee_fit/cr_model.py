@@ -28,7 +28,7 @@ class SharedPowerLaw(Packable[list[Primary]]):
 
     def compute(self, R: np.ndarray, primary: Primary) -> np.ndarray:
         lgI = self.lgI_per_primary[primary]
-        I = 10**lgI
+        I = 10.0**lgI
         return I * (R / self.R0) ** -self.alpha
 
     @property
@@ -220,7 +220,14 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             flux *= 10**self.all_particle_lg_shift
         return flux
 
-    def plot(self, Emin: float, Emax: float, scale: float, axes: Axes | None = None) -> Axes:
+    def plot(
+        self,
+        Emin: float,
+        Emax: float,
+        scale: float,
+        axes: Axes | None = None,
+        all_particle: bool = False,
+    ) -> Axes:
         if axes is not None:
             ax = axes
         else:
@@ -234,7 +241,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
                 label=p.name,
                 color=p.color,
             )
-        if self.all_particle_lg_shift:
+        if all_particle or self.all_particle_lg_shift:
             ax.plot(
                 E_grid,
                 E_factor * self.compute_all_particle(E_grid),
