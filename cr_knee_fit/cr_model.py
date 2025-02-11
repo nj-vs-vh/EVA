@@ -1,6 +1,6 @@
 import itertools
 from dataclasses import dataclass
-from typing import ClassVar, Sequence
+from typing import ClassVar, Literal, Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -63,76 +63,97 @@ class SharedPowerLaw(Packable[list[Primary]]):
         return SharedPowerLaw(lgI_per_primary=lgI_per_primary, alpha=theta[len(lgI_per_primary)])
 
 
+BreakQuantity = Literal[
+    "R",  # rigidity, GV
+    "E",  # total energy, GeV
+    "E_n",  # energy per nucleon, GeV
+]
+
+
 @dataclass
-class RigidityBreakConfig:
+class SpectralBreakConfig:
     fixed_lg_sharpness: float | None
+    quantity: BreakQuantity = "R"  # backcompat for legacy configs
 
 
 @dataclass
-class RigidityBreak(Packable[RigidityBreakConfig]):
-    lg_R: float  # break rigidity, lg(R / GV)
+class SpectralBreak(Packable[SpectralBreakConfig]):
+    lg_break: float  # break position, in units of quantity
     d_alpha: float  # PL index change at the break
     lg_sharpness: float  # 0 is very smooth, 10+ is very sharp
 
     fix_sharpness: bool = False
+    quantity: BreakQuantity = "R"
 
     def ndim(self) -> int:
         return 2 if self.fix_sharpness else 3
 
     def pack(self) -> np.ndarray:
-        return np.array([self.lg_R, self.d_alpha, self.lg_sharpness][: self.ndim()])
+        return np.array([self.lg_break, self.d_alpha, self.lg_sharpness][: self.ndim()])
 
     def labels(self, latex: bool) -> list[str]:
         if latex:
-            labels = ["\\lg(R_b)", "\\Delta \\alpha", "\\lg(s)"]
+            labels = [f"\\lg({self.quantity}^\\text{{b}})", "\\Delta \\alpha", "\\lg(s)"]
         else:
-            labels = ["lg(R_b)", "d_alpha", "lg(s)"]
+            labels = [f"lg({self.quantity}^b)", "d_alpha", "lg(s)"]
         return labels[: self.ndim()]
 
-    def layout_info(self) -> RigidityBreakConfig:
-        return RigidityBreakConfig(
-            fixed_lg_sharpness=self.lg_sharpness if self.fix_sharpness else None
+    def layout_info(self) -> SpectralBreakConfig:
+        return SpectralBreakConfig(
+            fixed_lg_sharpness=self.lg_sharpness if self.fix_sharpness else None,
+            quantity=self.quantity,
         )
 
     @classmethod
-    def unpack(cls, theta: np.ndarray, layout_info: RigidityBreakConfig) -> "RigidityBreak":
+    def unpack(cls, theta: np.ndarray, layout_info: SpectralBreakConfig) -> "SpectralBreak":
         lg_R, d_alpha = theta[:2]
-        return RigidityBreak(
-            lg_R=lg_R,
+        return SpectralBreak(
+            lg_break=lg_R,
             d_alpha=d_alpha,
             lg_sharpness=layout_info.fixed_lg_sharpness or theta[2],
             fix_sharpness=layout_info.fixed_lg_sharpness is not None,
+            quantity=layout_info.quantity,
         )
 
-    def compute(self, R: np.ndarray) -> np.ndarray:
-        R_b = 10**self.lg_R
+    def compute(self, E: np.ndarray, Z: int, A: int) -> np.ndarray:
+        match self.quantity:
+            case "E":
+                quantity = E
+            case "R":
+                quantity = E / Z
+            case "E_n":
+                quantity = E / A
+
+        break_ = 10**self.lg_break
         s = 10**self.lg_sharpness
 
-        result = np.zeros_like(R)
+        result = np.zeros_like(quantity)
 
         # calculation in different form for numerical stability
-        below_break = R <= R_b
-        result[below_break] = (1 + (R[below_break] / R_b) ** s) ** (-self.d_alpha / s)
+        below_break = quantity <= break_
+        result[below_break] = (1 + (quantity[below_break] / break_) ** s) ** (-self.d_alpha / s)
 
-        above_break = R > R_b
-        R_b_to_R = R_b / R[above_break]
+        above_break = quantity > break_
+        R_b_to_R = break_ / quantity[above_break]
         result[above_break] = R_b_to_R**self.d_alpha * (R_b_to_R**s + 1) ** (-self.d_alpha / s)
         return result
 
     def description(self) -> str:
         parts: list[str] = []
+        unit = "GV" if self.quantity == "R" else "GeV"
         parts.append(
-            f"$ R_b = {num2tex(10**self.lg_R, precision=2, exp_format='cdot')}~\\text{{GV}} $"
+            f"$ {self.quantity}^\\text{{b}} = {num2tex(10**self.lg_break, precision=2, exp_format='cdot')}~\\text{{{unit}}} $"
         )
         parts.append(f"$ \\Delta \\alpha = {self.d_alpha:.2f} $")
-        parts.append(f"$ s = {10**self.lg_sharpness:.2f} $")
+        if not self.fix_sharpness:
+            parts.append(f"$ s = {10**self.lg_sharpness:.2f} $")
         return ", ".join(parts)
 
 
 @dataclass
 class CosmicRaysModelConfig:
     components: Sequence[list[Primary]]
-    breaks: Sequence[RigidityBreakConfig]
+    breaks: Sequence[SpectralBreakConfig]
     rescale_all_particle: bool
 
     def __post_init__(self) -> None:
@@ -150,7 +171,7 @@ class CosmicRaysModelConfig:
 @dataclass
 class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
     base_spectra: list[SharedPowerLaw]
-    breaks: list[RigidityBreak]
+    breaks: list[SpectralBreak]
 
     all_particle_lg_shift: float | None  # sum of primaries * 10^shift = all particle spectrum
     unobserved_component_effective_Z: float | None
@@ -187,8 +208,13 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             )
         spectrum = matches[0]
         flux = spectrum.compute(R, primary)
-        for rb in self.breaks:
-            flux *= rb.compute(R)
+        for break_ in self.breaks:
+            Z = round(self._primary_Z(primary))
+            flux *= break_.compute(
+                R,
+                Z=Z,
+                A=most_abundant_stable_izotope_A(Z),
+            )
         return flux
 
     def _primary_Z(self, primary: Primary) -> float:
@@ -302,9 +328,9 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             spectrum = SharedPowerLaw.unpack(theta[offset:], component)
             components.append(spectrum)
             offset += spectrum.ndim()
-        breaks: list[RigidityBreak] = []
+        breaks: list[SpectralBreak] = []
         for break_config in layout_info.breaks:
-            b = RigidityBreak.unpack(theta[offset:], break_config)
+            b = SpectralBreak.unpack(theta[offset:], break_config)
             breaks.append(b)
             offset += b.ndim()
 
@@ -347,9 +373,9 @@ if __name__ == "__main__":
             ),
         ],
         breaks=[
-            RigidityBreak(lg_R=5.0, d_alpha=-0.4, lg_sharpness=0.5),
-            RigidityBreak(lg_R=5.0, d_alpha=-0.4, lg_sharpness=0.5, fix_sharpness=True),
-            RigidityBreak(lg_R=5.0, d_alpha=-0.4, lg_sharpness=0.5),
+            SpectralBreak(lg_break=5.0, d_alpha=-0.4, lg_sharpness=0.5),
+            SpectralBreak(lg_break=5.0, d_alpha=-0.4, lg_sharpness=0.5, fix_sharpness=True),
+            SpectralBreak(lg_break=5.0, d_alpha=-0.4, lg_sharpness=0.5),
         ],
         all_particle_lg_shift=np.random.random(),
         unobserved_component_effective_Z=np.random.random(),

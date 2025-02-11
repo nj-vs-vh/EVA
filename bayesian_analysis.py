@@ -21,8 +21,8 @@ from scipy import optimize, stats  # type: ignore
 
 from cr_knee_fit.cr_model import (
     CosmicRaysModel,
-    RigidityBreak,
-    RigidityBreakConfig,
+    SpectralBreak,
+    SpectralBreakConfig,
     SharedPowerLaw,
 )
 from cr_knee_fit.experiments import Experiment
@@ -44,7 +44,7 @@ os.environ["OMP_NUM_THREADS"] = "1"
 IS_CLUSTER = os.environ.get("CRKNEES_CLUSTER") == "1"
 
 
-def initial_guess_break(bc: RigidityBreakConfig, break_idx: int) -> RigidityBreak:
+def initial_guess_break(bc: SpectralBreakConfig, break_idx: int) -> SpectralBreak:
     if bc.fixed_lg_sharpness:
         lg_s = bc.fixed_lg_sharpness
     else:
@@ -53,11 +53,12 @@ def initial_guess_break(bc: RigidityBreakConfig, break_idx: int) -> RigidityBrea
     break_pos_guesses = [4.2, 5.3, 6.5]
     d_alpha_guesses = [0.3, -0.3, 0.5]
 
-    return RigidityBreak(
-        lg_R=stats.norm.rvs(loc=break_pos_guesses[break_idx], scale=0.1),
+    return SpectralBreak(
+        lg_break=stats.norm.rvs(loc=break_pos_guesses[break_idx], scale=0.1),
         d_alpha=stats.norm.rvs(loc=d_alpha_guesses[break_idx], scale=0.05),
         lg_sharpness=lg_s,
         fix_sharpness=bc.fixed_lg_sharpness is not None,
+        quantity=bc.quantity,
     )
 
 

@@ -7,7 +7,7 @@ import numpy as np
 
 from bayesian_analysis import FitConfig, McmcConfig
 from cr_knee_fit import experiments
-from cr_knee_fit.cr_model import CosmicRaysModelConfig, RigidityBreakConfig
+from cr_knee_fit.cr_model import CosmicRaysModelConfig, SpectralBreakConfig
 from cr_knee_fit.model import ModelConfig
 from cr_knee_fit.types_ import Primary
 
@@ -39,9 +39,9 @@ if __name__ == "__main__":
                     ],
                 ],
                 breaks=[
-                    RigidityBreakConfig(fixed_lg_sharpness=np.log10(5)),
-                    RigidityBreakConfig(fixed_lg_sharpness=np.log10(10)),
-                    RigidityBreakConfig(fixed_lg_sharpness=None),
+                    SpectralBreakConfig(fixed_lg_sharpness=np.log10(5), quantity="R"),
+                    SpectralBreakConfig(fixed_lg_sharpness=np.log10(10), quantity="R"),
+                    SpectralBreakConfig(fixed_lg_sharpness=None, quantity="E_n"),
                 ],
                 rescale_all_particle=False,
             ),

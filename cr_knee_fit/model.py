@@ -7,7 +7,7 @@ from matplotlib.figure import Figure
 from cr_knee_fit.cr_model import (
     CosmicRaysModel,
     CosmicRaysModelConfig,
-    RigidityBreak,
+    SpectralBreak,
     SharedPowerLaw,
 )
 from cr_knee_fit.experiments import Experiment
@@ -87,10 +87,11 @@ if __name__ == "__main__":
                 for p in Primary
             ],
             breaks=[
-                RigidityBreak(
-                    lg_R=np.random.random(),
+                SpectralBreak(
+                    lg_break=np.random.random(),
                     d_alpha=np.random.random(),
                     lg_sharpness=np.random.random(),
+                    quantity="R",
                 )
                 for _ in range(5)
             ],

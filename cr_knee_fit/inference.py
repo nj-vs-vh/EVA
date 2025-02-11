@@ -1,14 +1,19 @@
 import numpy as np
 from scipy import stats  # type: ignore
 
-from cr_knee_fit.cr_model import RigidityBreak
+from cr_knee_fit.cr_model import SpectralBreak
 from cr_knee_fit.fit_data import FitData
 from cr_knee_fit.model import Model, ModelConfig
 
 
-def break_prior(b: RigidityBreak, lg_R_min: float, lg_R_max: float, is_softening: bool) -> float:
+def break_prior(
+    b: SpectralBreak,
+    lg_break_min: float,
+    lg_break_max: float,
+    is_softening: bool,
+) -> float:
     res = 0
-    if not (lg_R_min < b.lg_R < lg_R_max):
+    if not (lg_break_min < b.lg_break < lg_break_max):
         return -np.inf
     if (b.d_alpha > 0) != is_softening:
         return -np.inf
@@ -23,18 +28,22 @@ def logprior(model: Model) -> float:
     res = 0.0
 
     # breaks must be ordered in R to avoid ambiguity
-    breaks_lgR = [m.lg_R for m in model.cr_model.breaks]
+    breaks_lgR = [m.lg_break for m in model.cr_model.breaks]
     if breaks_lgR != sorted(breaks_lgR):
         return -np.inf
 
     # dampe break
-    res += break_prior(model.cr_model.breaks[0], lg_R_min=3, lg_R_max=5, is_softening=True)
+    res += break_prior(model.cr_model.breaks[0], lg_break_min=3, lg_break_max=5, is_softening=True)
     if len(model.cr_model.breaks) > 1:
         # grapes hardening
-        res += break_prior(model.cr_model.breaks[1], lg_R_min=4.5, lg_R_max=6, is_softening=False)
+        res += break_prior(
+            model.cr_model.breaks[1], lg_break_min=4.5, lg_break_max=6, is_softening=False
+        )
     if len(model.cr_model.breaks) > 2:
         # all-particle knee
-        res += break_prior(model.cr_model.breaks[2], lg_R_min=5.5, lg_R_max=7, is_softening=True)
+        res += break_prior(
+            model.cr_model.breaks[2], lg_break_min=5.5, lg_break_max=7, is_softening=True
+        )
 
     lgK = model.cr_model.all_particle_lg_shift
     if lgK is not None:
@@ -73,7 +82,7 @@ def chi_squared_loglikelihood(
     loglike_per_bin = -0.5 * (
         np.where(residual > 0, (residual / errhi) ** 2, (residual / errlo) ** 2)
     )
-    return np.sum(loglike_per_bin)
+    return float(np.sum(loglike_per_bin))
 
 
 def loglikelihood(
