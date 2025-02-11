@@ -15,17 +15,21 @@ class Packable(Generic[LayoutInfo], abc.ABC):
         return self.pack().size
 
     @abc.abstractmethod
-    def pack(self) -> np.ndarray: ...
+    def pack(self) -> np.ndarray:
+        ...
 
     @abc.abstractmethod
-    def labels(self, latex: bool) -> list[str]: ...
+    def labels(self, latex: bool) -> list[str]:
+        ...
 
     @abc.abstractmethod
-    def layout_info(self) -> LayoutInfo: ...
+    def layout_info(self) -> LayoutInfo:
+        ...
 
     @classmethod
     @abc.abstractmethod
-    def unpack(cls: Type[T], theta: np.ndarray, layout_info: LayoutInfo) -> T: ...
+    def unpack(cls: Type[T], theta: np.ndarray, layout_info: LayoutInfo) -> T:
+        ...
 
     def validate_packing(self) -> None:
         packed = self.pack()
@@ -57,6 +61,10 @@ class Primary(enum.IntEnum):
     Fe = 26
 
     Unobserved = 1000
+
+    @classmethod
+    def all(cls) -> "list[Primary]":
+        return sorted([p for p in Primary if p is not Primary.Unobserved])
 
     @property
     def Z(self) -> float:

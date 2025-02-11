@@ -208,8 +208,11 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         return dNdR / Z
 
     def compute_lnA(self, E: np.ndarray) -> np.ndarray:
-        spectra = np.vstack([self.compute(E, primary) for primary in Primary])
-        lnA = np.array([most_abundant_stable_izotope_A(round(self._primary_Z(p))) for p in Primary])
+        primaries = self.layout_info().primaries
+        spectra = np.vstack([self.compute(E, p) for p in primaries])
+        lnA = np.array(
+            [np.log(most_abundant_stable_izotope_A(round(self._primary_Z(p)))) for p in primaries]
+        )
         return np.sum(spectra * np.expand_dims(lnA, axis=1), axis=0) / np.sum(spectra, axis=0)
 
     def compute_all_particle(self, E: np.ndarray) -> np.ndarray:
