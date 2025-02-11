@@ -1,3 +1,5 @@
+from typing import Iterable
+
 from matplotlib.artist import Artist
 from matplotlib.axes import Axes
 
@@ -23,7 +25,7 @@ def label_energy_flux(ax: Axes, scale: float) -> None:
         )
 
 
-def legend_with_added_items(ax: Axes, items: list[tuple[Artist, str]], **kwargs) -> None:
+def legend_with_added_items(ax: Axes, items: Iterable[tuple[Artist, str]], **kwargs) -> None:
     handles, labels = ax.get_legend_handles_labels()
     for artist, label in items:
         handles.append(artist)

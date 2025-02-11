@@ -10,12 +10,14 @@ from cr_knee_fit.model import ModelConfig
 from cr_knee_fit.types_ import Primary
 
 if __name__ == "__main__":
-    analysis_name = "composition + lhaaso (epos)"
+    analysis_name = "composition"
 
     experiments_detailed = experiments.direct_experiments + [experiments.grapes]
     lhaaso = experiments.lhaaso_epos
-    experiments_all_particle = [lhaaso, experiments.hawc]
-    experiments_lnA = [lhaaso]
+    # experiments_all_particle = [lhaaso, experiments.hawc]
+    # experiments_lnA = [lhaaso]
+    experiments_all_particle = []
+    experiments_lnA = []
 
     config = FitConfig(
         name=analysis_name,
@@ -33,13 +35,13 @@ if __name__ == "__main__":
                         Primary.Mg,
                         Primary.Si,
                         Primary.Fe,
-                        Primary.Unobserved,
+                        # Primary.Unobserved,
                     ],
                 ],
                 breaks=[
                     RigidityBreakConfig(fixed_lg_sharpness=np.log10(5)),
                     RigidityBreakConfig(fixed_lg_sharpness=np.log10(10)),
-                    RigidityBreakConfig(fixed_lg_sharpness=None),
+                    # RigidityBreakConfig(fixed_lg_sharpness=None),
                 ],
                 rescale_all_particle=False,
             ),

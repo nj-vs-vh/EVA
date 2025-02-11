@@ -2,10 +2,10 @@ import itertools
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Sequence, cast
 
-from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 
 from cr_knee_fit.experiments import Experiment
 from cr_knee_fit.types_ import Primary

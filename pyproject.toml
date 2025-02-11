@@ -9,7 +9,7 @@ extend-exclude = '''
 
 [tool.isort]
 profile = 'black'
-extend_skip = ["model", "data"]
+extend_skip = ["model", "data", ".devenv"]
 
 
 [tool.mypy]

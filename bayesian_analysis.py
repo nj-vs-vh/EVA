@@ -19,10 +19,8 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from scipy import optimize, stats  # type: ignore
 
-from cr_knee_fit import experiments
 from cr_knee_fit.cr_model import (
     CosmicRaysModel,
-    CosmicRaysModelConfig,
     RigidityBreak,
     RigidityBreakConfig,
     SharedPowerLaw,
@@ -31,23 +29,19 @@ from cr_knee_fit.experiments import Experiment
 from cr_knee_fit.fit_data import FitData
 from cr_knee_fit.inference import loglikelihood, logposterior, set_global_fit_data
 from cr_knee_fit.model import Model, ModelConfig
-from cr_knee_fit.plotting import plot_credible_band
+from cr_knee_fit.plotting import (
+    plot_posterior_contours,
+    tricontourf_kwargs_transparent_colors,
+)
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 from cr_knee_fit.types_ import Primary
-from cr_knee_fit.utils import (
-    E_GEV_LABEL,
-    add_log_margin,
-    label_energy_flux,
-    legend_with_added_items,
-)
+from cr_knee_fit.utils import E_GEV_LABEL, add_log_margin, legend_with_added_items
 
 # as recommended by emceee parallelization guide
 # see https://emcee.readthedocs.io/en/stable/tutorials/parallel/#parallelization
 os.environ["OMP_NUM_THREADS"] = "1"
 
 IS_CLUSTER = os.environ.get("CRKNEES_CLUSTER") == "1"
-
-E_SCALE = 2.8  # for plots only
 
 
 def initial_guess_break(bc: RigidityBreakConfig, break_idx: int) -> RigidityBreak:
@@ -175,12 +169,13 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
     print_delim()
     print("Loading fit data...")
     fit_data = load_fit_data(config)
-    fit_data.plot(scale=E_SCALE, describe=True).savefig(outdir / "data.png")
+    scale = 2.8 if fit_data.all_particle_spectra else 2.6
+    fit_data.plot(scale=scale, describe=True).savefig(outdir / "data.png")
 
     print_delim()
     print("Initial guess model (example):")
     initial_guess = safe_initial_guess_model(config.model, fit_data)
-    initial_guess.plot(fit_data, scale=E_SCALE).savefig(outdir / "initial_guess.png")
+    initial_guess.plot(fit_data, scale=scale).savefig(outdir / "initial_guess.png")
     initial_guess.print_params()
     print(
         "Logposterior value:",
@@ -209,7 +204,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
         )
         print(res)
         mle_model = Model.unpack(res.x, layout_info=mle_config)
-        fig = mle_model.plot(fit_data, scale=E_SCALE)
+        fig = mle_model.plot(fit_data, scale=scale)
         fig.savefig(outdir / "mle-result.png")
         mle_model.print_params()
     except Exception as e:
@@ -290,17 +285,20 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
     fig_corner.savefig(outdir / "corner.png")
 
     print_delim()
-    print("Plotting credible bands on all model predictions")
+    print("Plotting posterior contours on model predictions")
 
     fig, axes = plt.subplots(figsize=(18, 6), ncols=3)
     axes = cast(Sequence[Axes], axes)
 
     ax_comp = axes[0]
+    ax_all = axes[1]
+    ax_lnA = axes[2]
+
     ax_comp.set_title("Composition")
     for exp, data_by_particle in fit_data.spectra.items():
         for _, spectrum in data_by_particle.items():
             spectrum.with_shifted_energy_scale(f=median_model.energy_shifts.f(exp)).plot(
-                scale=E_SCALE,
+                scale=scale,
                 ax=ax_comp,
                 add_label=False,
             )
@@ -313,104 +311,104 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
     )
     Emin, Emax = add_log_margin(E_comp_all.min(), E_comp_all.max())
     for p in primaries:
-        plot_credible_band(
+        plot_posterior_contours(
             ax_comp,
-            scale=E_SCALE,
+            scale=scale,
             theta_sample=theta_sample,
             model_config=config.model,
             observable=lambda model, E: model.cr_model.compute(E, p),
-            color=p.color,
             bounds=(Emin, Emax),
-            add_median=False,
-            label=p.name,
+            tricontourf_kwargs=tricontourf_kwargs_transparent_colors(color=p.color, levels=8),
         )
     legend_with_added_items(
         ax_comp,
-        [(exp.legend_artist(), exp.name) for exp in sorted(fit_data.spectra.keys())],
+        (
+            [(p.legend_artist(), p.name) for p in primaries]
+            + [(exp.legend_artist(), exp.name) for exp in sorted(fit_data.spectra.keys())]
+        ),
         fontsize="x-small",
     )
 
-    ax_all = axes[1]
-    ax_all.set_title("All particle")
-    E_all_all = np.hstack([s.E for s in fit_data.all_particle_spectra.values()])
-    E_bounds_all = add_log_margin(E_all_all.min(), E_all_all.max())
-    for exp, spectrum in fit_data.all_particle_spectra.items():
-        spectrum.with_shifted_energy_scale(f=median_model.energy_shifts.f(exp)).plot(
-            scale=E_SCALE,
-            ax=ax_all,
-            add_label=False,
-        )
-    plot_credible_band(
-        ax_all,
-        scale=E_SCALE,
-        theta_sample=theta_sample,
-        model_config=config.model,
-        observable=lambda model, E: model.cr_model.compute_all_particle(E),
-        color="red",
-        bounds=E_bounds_all,
-        add_median=False,
-    )
-    for p in primaries:
-        plot_credible_band(
+    if fit_data.all_particle_spectra:
+        ax_all.set_title("All particle")
+        E_all_all = np.hstack([s.E for s in fit_data.all_particle_spectra.values()])
+        E_bounds_all = add_log_margin(E_all_all.min(), E_all_all.max())
+        for exp, spectrum in fit_data.all_particle_spectra.items():
+            spectrum.with_shifted_energy_scale(f=median_model.energy_shifts.f(exp)).plot(
+                scale=scale,
+                ax=ax_all,
+                add_label=False,
+            )
+
+        plot_posterior_contours(
             ax_all,
-            scale=E_SCALE,
+            scale=scale,
             theta_sample=theta_sample,
             model_config=config.model,
-            observable=lambda model, E: model.cr_model.compute(E, p),
-            color=p.color,
+            observable=lambda model, E: model.cr_model.compute_all_particle(E),
             bounds=E_bounds_all,
-            add_median=False,
-            label=p.name,
         )
-    legend_with_added_items(
-        ax_all,
-        [
-            (exp.legend_artist(), exp.name)
-            for exp in (
-                sorted(fit_data.all_particle_spectra.keys()) + sorted(fit_data.spectra.keys())
+        for p in primaries:
+            plot_posterior_contours(
+                ax_all,
+                scale=scale,
+                theta_sample=theta_sample,
+                model_config=config.model,
+                observable=lambda model, E: model.cr_model.compute(E, p),
+                bounds=E_bounds_all,
+                tricontourf_kwargs=tricontourf_kwargs_transparent_colors(color=p.color, levels=6),
             )
-        ],
-        fontsize="x-small",
-    )
-
-    ax_lnA = axes[2]
-    ax_lnA.set_title("$ \\langle \\ln A \\rangle $")
-    for exp, data in fit_data.lnA.items():
-        data = dataclasses.replace(data, x=data.x * median_model.energy_shifts.f(exp))
-        data.plot(
-            scale=0,
-            ax=ax_lnA,
-            add_label=False,
+        legend_with_added_items(
+            ax_all,
+            (
+                [(p.legend_artist(), p.name) for p in primaries]
+                + [
+                    (exp.legend_artist(), exp.name)
+                    for exp in (
+                        sorted(fit_data.all_particle_spectra.keys())
+                        + sorted(fit_data.spectra.keys())
+                    )
+                ]
+            ),
+            fontsize="x-small",
         )
-    E_lnA_all = np.hstack([s.x for s in fit_data.lnA.values()])
-    plot_credible_band(
-        ax_lnA,
-        scale=0,
-        theta_sample=theta_sample,
-        model_config=config.model,
-        observable=lambda model, E: model.cr_model.compute_lnA(E),
-        color="blue",
-        bounds=add_log_margin(E_lnA_all.min(), E_lnA_all.max()),
-        add_median=True,
-    )
-    legend_with_added_items(
-        ax_lnA,
-        [
-            (exp.legend_artist(), exp.name)
-            for exp in sorted(fit_data.lnA.keys(), key=lambda e: e.name)
-        ],
-        fontsize="x-small",
-    )
-    ax_lnA.set_xscale("log")
-    ax_lnA.set_xlabel(E_GEV_LABEL)
-    ax_lnA.set_ylabel("$ \\langle \\ln A \\rangle $")
+
+    if fit_data.lnA:
+        ax_lnA.set_title("$ \\langle \\ln A \\rangle $")
+        for exp, data in fit_data.lnA.items():
+            data = dataclasses.replace(data, x=data.x * median_model.energy_shifts.f(exp))
+            data.plot(
+                scale=0,
+                ax=ax_lnA,
+                add_label=False,
+            )
+        E_lnA_all = np.hstack([s.x for s in fit_data.lnA.values()])
+        plot_posterior_contours(
+            ax_lnA,
+            scale=0,
+            theta_sample=theta_sample,
+            model_config=config.model,
+            observable=lambda model, E: model.cr_model.compute_lnA(E),
+            bounds=add_log_margin(E_lnA_all.min(), E_lnA_all.max()),
+        )
+        legend_with_added_items(
+            ax_lnA,
+            [
+                (exp.legend_artist(), exp.name)
+                for exp in sorted(fit_data.lnA.keys(), key=lambda e: e.name)
+            ],
+            fontsize="x-small",
+        )
+        ax_lnA.set_xscale("log")
+        ax_lnA.set_xlabel(E_GEV_LABEL)
+        ax_lnA.set_ylabel("$ \\langle \\ln A \\rangle $")
 
     for ax in (ax_comp, ax_all):
         ax.set_xscale("log")
         ax.set_yscale("log")
 
     fig.tight_layout()
-    fig.savefig(outdir / "fluxes.pdf")
+    fig.savefig(outdir / "posterior_contours.pdf")
 
 
 if __name__ == "__main__":
