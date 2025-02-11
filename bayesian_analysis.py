@@ -21,9 +21,9 @@ from scipy import optimize, stats  # type: ignore
 
 from cr_knee_fit.cr_model import (
     CosmicRaysModel,
+    SharedPowerLaw,
     SpectralBreak,
     SpectralBreakConfig,
-    SharedPowerLaw,
 )
 from cr_knee_fit.experiments import Experiment
 from cr_knee_fit.fit_data import FitData

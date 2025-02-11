@@ -7,8 +7,8 @@ from matplotlib.figure import Figure
 from cr_knee_fit.cr_model import (
     CosmicRaysModel,
     CosmicRaysModelConfig,
-    SpectralBreak,
     SharedPowerLaw,
+    SpectralBreak,
 )
 from cr_knee_fit.experiments import Experiment
 from cr_knee_fit.fit_data import FitData
