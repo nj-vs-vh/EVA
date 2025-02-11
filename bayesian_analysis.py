@@ -103,7 +103,7 @@ def initial_guess_model(config: ModelConfig) -> Model:
             ),
             unobserved_component_effective_Z=(
                 stats.uniform.rvs(loc=14, scale=26 - 14)
-                if config.cr_model_config.add_unobserved_component
+                if config.cr_model_config.has_unobserved_component
                 else None
             ),
         ),

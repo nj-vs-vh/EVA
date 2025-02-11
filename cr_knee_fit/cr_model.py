@@ -160,7 +160,7 @@ class CosmicRaysModelConfig:
         assert len(self.primaries) == len(set(self.primaries))
 
     @property
-    def add_unobserved_component(self) -> bool:
+    def has_unobserved_component(self) -> bool:
         return Primary.Unobserved in self.primaries
 
     @property
@@ -340,7 +340,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         else:
             all_particle_lg_shift = None
 
-        if layout_info.add_unobserved_component:
+        if layout_info.has_unobserved_component:
             unobserved_component_eff_Z = theta[offset]
             offset += 1
         else:

@@ -12,7 +12,7 @@ from cr_knee_fit.model import ModelConfig
 from cr_knee_fit.types_ import Primary
 
 if __name__ == "__main__":
-    analysis_name = "composition + lhaaso (epos)"
+    analysis_name = "composition + lhaaso (epos); knee dependent on energy per nucleon"
 
     experiments_detailed = experiments.direct_experiments + [experiments.grapes]
     lhaaso = experiments.lhaaso_epos
@@ -35,7 +35,6 @@ if __name__ == "__main__":
                         Primary.Mg,
                         Primary.Si,
                         Primary.Fe,
-                        Primary.Unobserved,
                     ],
                 ],
                 breaks=[
@@ -43,7 +42,7 @@ if __name__ == "__main__":
                     SpectralBreakConfig(fixed_lg_sharpness=np.log10(10), quantity="R"),
                     SpectralBreakConfig(fixed_lg_sharpness=None, quantity="E_n"),
                 ],
-                rescale_all_particle=False,
+                rescale_all_particle=True,
             ),
             shifted_experiments=[
                 e for e in experiments_detailed + experiments_all_particle if e != experiments.ams02
