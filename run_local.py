@@ -14,7 +14,7 @@ if __name__ == "__main__":
 
     experiments_detailed = experiments.direct_experiments + [experiments.grapes]
     lhaaso = experiments.lhaaso_epos
-    experiments_all_particle = [lhaaso]
+    experiments_all_particle = [lhaaso, experiments.dampe]
     experiments_lnA = [lhaaso]
     # experiments_all_particle = []
     # experiments_lnA = []
