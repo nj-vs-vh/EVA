@@ -16,7 +16,7 @@ if __name__ == "__main__":
 
     experiments_detailed = experiments.direct_experiments + [experiments.grapes]
     lhaaso = experiments.lhaaso_epos
-    experiments_all_particle = [lhaaso]
+    experiments_all_particle = [lhaaso, experiments.hawc, experiments.dampe]
     experiments_lnA = [lhaaso]
 
     config = FitConfig(
@@ -77,7 +77,7 @@ if __name__ == "__main__":
             "output": "condor.out",
             "error": "condor.err",
             "log": "condor.log",
-            "request_cpus": str(config.mcmc.processes),
+            "request_cpus": str(config.mcmc.processes if config.mcmc else 1),
             "should_transfer_files": "IF_NEEDED",
             "max_transfer_output_mb": "100",
         }

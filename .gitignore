@@ -21,3 +21,4 @@ out/
 data/sync.sh
 sync-cluster.sh
 condor-out/
+temp*

@@ -10,14 +10,14 @@ from cr_knee_fit.model import ModelConfig
 from cr_knee_fit.types_ import Primary
 
 if __name__ == "__main__":
-    analysis_name = "composition"
+    analysis_name = "test-knee-in-e-n"
 
     experiments_detailed = experiments.direct_experiments + [experiments.grapes]
     lhaaso = experiments.lhaaso_epos
-    # experiments_all_particle = [lhaaso, experiments.hawc]
-    # experiments_lnA = [lhaaso]
-    experiments_all_particle = []
-    experiments_lnA = []
+    experiments_all_particle = [lhaaso]
+    experiments_lnA = [lhaaso]
+    # experiments_all_particle = []
+    # experiments_lnA = []
 
     config = FitConfig(
         name=analysis_name,
@@ -35,26 +35,26 @@ if __name__ == "__main__":
                         Primary.Mg,
                         Primary.Si,
                         Primary.Fe,
-                        # Primary.Unobserved,
                     ],
                 ],
                 breaks=[
                     SpectralBreakConfig(fixed_lg_sharpness=np.log10(5), quantity="R"),
                     SpectralBreakConfig(fixed_lg_sharpness=np.log10(10), quantity="R"),
-                    # RigidityBreakConfig(fixed_lg_sharpness=None),
+                    SpectralBreakConfig(fixed_lg_sharpness=np.log10(5), quantity="E_n"),
                 ],
-                rescale_all_particle=False,
+                rescale_all_particle=True,
             ),
             shifted_experiments=[
-                e for e in experiments_detailed + experiments_all_particle if e != experiments.ams02
+                # e for e in experiments_detailed + experiments_all_particle if e != experiments.ams02
             ],
         ),
-        mcmc=McmcConfig(
-            n_steps=200_000,
-            n_walkers=64,
-            processes=8,
-            reuse_saved=True,
-        ),
+        mcmc=None,
+        # mcmc=McmcConfig(
+        #     n_steps=200_000,
+        #     n_walkers=64,
+        #     processes=8,
+        #     reuse_saved=True,
+        # ),
     )
 
     outdir = Path(__file__).parent / "out" / config.name

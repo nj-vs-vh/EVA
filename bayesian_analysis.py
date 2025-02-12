@@ -137,7 +137,7 @@ class FitConfig(pydantic.BaseModel):
     experiments_all_particle: list[Experiment]
     experiments_lnA: list[Experiment]
     model: ModelConfig
-    mcmc: McmcConfig
+    mcmc: McmcConfig | None
 
 
 def print_delim():
@@ -211,6 +211,10 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
     except Exception as e:
         print(f"Error running MLE analysis, ignoring: {e}")
         traceback.print_exc()
+
+    if config.mcmc is None:
+        print("Not running bayesian analysis, mcmc config is None")
+        return
 
     print_delim()
     print("Running bayesian analysis...")
@@ -415,10 +419,15 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
 if __name__ == "__main__":
     # CLI for cluster run; use run_local.py wrapper script to run the analysis locally
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=Path, default=Path("config.json"))
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=Path("config.json"),
+        help="Configuration JSON file; output files will be placed in the same directory",
+    )
     args = parser.parse_args()
     config_path: Path = args.config
     print(f"Reading fit config from {config_path}")
 
     fit_config = FitConfig.model_validate_json(config_path.read_text())
-    run_bayesian_analysis(fit_config, outdir=Path.cwd())
+    run_bayesian_analysis(fit_config, outdir=config_path.parent)
