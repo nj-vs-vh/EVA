@@ -12,7 +12,7 @@ from cr_knee_fit.model import ModelConfig
 from cr_knee_fit.types_ import Primary
 
 if __name__ == "__main__":
-    analysis_name = "composition + lhaaso (epos); knee dependent on energy per nucleon"
+    analysis_name = "knee-in-E-per-nucl"
 
     experiments_detailed = experiments.direct_experiments + [experiments.grapes]
     lhaaso = experiments.lhaaso_epos
@@ -49,7 +49,7 @@ if __name__ == "__main__":
             ],
         ),
         mcmc=McmcConfig(
-            n_steps=500_000,
+            n_steps=200_000,
             n_walkers=128,
             processes=16,
             reuse_saved=True,
@@ -79,6 +79,7 @@ if __name__ == "__main__":
             "log": "condor.log",
             "request_cpus": str(config.mcmc.processes),
             "should_transfer_files": "IF_NEEDED",
+            "max_transfer_output_mb": "100",
         }
     )
     print()
