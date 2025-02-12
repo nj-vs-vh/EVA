@@ -74,7 +74,7 @@ def plot_posterior_contours(
     y_hists: list[np.ndarray] = []
     z_hists: list[np.ndarray] = []
     for sample_at_x in observable_sample.T:
-        hist, edges = np.histogram(sample_at_x, bins="auto")
+        hist, edges = np.histogram(sample_at_x, bins=30, density=False)
         centers = 0.5 * (edges[1:] + edges[:-1])
         y_hists.append(centers)
         z_hists.append(hist)
@@ -108,7 +108,8 @@ def plot_posterior_contours(
     }
     if tricontourf_kwargs:
         kwargs.update(tricontourf_kwargs)
-    return ax.tricontourf(x_pts, y_pts, z_pts, triangles=triangles, **kwargs)
+    tri = matplotlib.tri.Triangulation(x_pts, y_pts, triangles=triangles)
+    return ax.tricontourf(tri, z_pts, **kwargs)
 
 
 def tricontourf_kwargs_transparent_colors(
@@ -125,3 +126,33 @@ def tricontourf_kwargs_transparent_colors(
         ],
         "cmap": None,
     }
+
+
+def plot_ghostly_lines(
+    ax: Axes,
+    scale: float,
+    bounds: tuple[float, float],
+    theta_sample: np.ndarray,
+    model_config: ModelConfig,
+    observable: Observable,
+    n_samples: int,
+    color: str,
+    label: str | None = None,
+) -> None:
+    x_min, x_max = bounds
+    x_grid = np.logspace(np.log10(x_min), np.log10(x_max), 100)
+    scale_factor = x_grid**scale
+
+    n_total = theta_sample.shape[0]
+    fraction = n_samples / n_total
+    mask = np.random.random(size=theta_sample.shape[0]) < fraction
+    for i, theta in enumerate(theta_sample[mask, :]):
+        model = Model.unpack(theta, layout_info=model_config)
+        obs = observable(model, x_grid)
+        ax.plot(
+            x_grid,
+            scale_factor * obs,
+            color=color,
+            alpha=max(1 / n_samples, 0.01),
+            label=label if i == 0 else None,
+        )
