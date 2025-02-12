@@ -115,14 +115,14 @@ class SpectralBreak(Packable[SpectralBreakConfig]):
             quantity=layout_info.quantity,
         )
 
-    def compute(self, E: np.ndarray, Z: int, A: int) -> np.ndarray:
+    def compute(self, R: np.ndarray, Z: int, A: int) -> np.ndarray:
         match self.quantity:
             case "E":
-                quantity = E
+                quantity = R * float(Z)
             case "R":
-                quantity = E / Z
+                quantity = R
             case "E_n":
-                quantity = E / A
+                quantity = R * (Z / A)
 
         break_ = 10**self.lg_break
         s = 10**self.lg_sharpness
