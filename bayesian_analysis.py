@@ -323,7 +323,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
             model_config=config.model,
             observable=lambda model, E: model.cr_model.compute(E, p),
             bounds=(Emin, Emax),
-            tricontourf_kwargs=tricontourf_kwargs_transparent_colors(color=p.color, levels=8),
+            tricontourf_kwargs=tricontourf_kwargs_transparent_colors(color=p.color, levels=15),
         )
     legend_with_added_items(
         ax_comp,
@@ -352,7 +352,9 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
             model_config=config.model,
             observable=lambda model, E: model.cr_model.compute_all_particle(E),
             bounds=E_bounds_all,
+            tricontourf_kwargs={"levels": 15},
         )
+        ylim = ax_all.get_ylim()
         for p in primaries:
             plot_posterior_contours(
                 ax_all,
@@ -361,18 +363,16 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
                 model_config=config.model,
                 observable=lambda model, E: model.cr_model.compute(E, p),
                 bounds=E_bounds_all,
-                tricontourf_kwargs=tricontourf_kwargs_transparent_colors(color=p.color, levels=6),
+                tricontourf_kwargs=tricontourf_kwargs_transparent_colors(color=p.color, levels=15),
             )
+        ax_all.set_ylim(*ylim)
         legend_with_added_items(
             ax_all,
             (
                 [(p.legend_artist(), p.name) for p in primaries]
                 + [
                     (exp.legend_artist(), exp.name)
-                    for exp in (
-                        sorted(fit_data.all_particle_spectra.keys())
-                        + sorted(fit_data.spectra.keys())
-                    )
+                    for exp in (sorted(fit_data.all_particle_spectra.keys()))
                 ]
             ),
             fontsize="x-small",
@@ -386,6 +386,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
                 scale=0,
                 ax=ax_lnA,
                 add_label=False,
+                color="black",
             )
         E_lnA_all = np.hstack([s.x for s in fit_data.lnA.values()])
         plot_posterior_contours(

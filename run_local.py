@@ -10,14 +10,12 @@ from cr_knee_fit.model import ModelConfig
 from cr_knee_fit.types_ import Primary
 
 if __name__ == "__main__":
-    analysis_name = "test-knee-in-e-n"
+    analysis_name = "knee-in-E-full-local"
 
     experiments_detailed = experiments.direct_experiments + [experiments.grapes]
     lhaaso = experiments.lhaaso_epos
-    experiments_all_particle = [lhaaso, experiments.dampe]
+    experiments_all_particle = [lhaaso]
     experiments_lnA = [lhaaso]
-    # experiments_all_particle = []
-    # experiments_lnA = []
 
     config = FitConfig(
         name=analysis_name,
@@ -40,21 +38,20 @@ if __name__ == "__main__":
                 breaks=[
                     SpectralBreakConfig(fixed_lg_sharpness=np.log10(5), quantity="R"),
                     SpectralBreakConfig(fixed_lg_sharpness=np.log10(10), quantity="R"),
-                    SpectralBreakConfig(fixed_lg_sharpness=np.log10(5), quantity="E_n"),
+                    SpectralBreakConfig(fixed_lg_sharpness=None, quantity="E"),
                 ],
                 rescale_all_particle=True,
             ),
             shifted_experiments=[
-                # e for e in experiments_detailed + experiments_all_particle if e != experiments.ams02
+                e for e in experiments_detailed + experiments_all_particle if e != experiments.ams02
             ],
         ),
-        mcmc=None,
-        # mcmc=McmcConfig(
-        #     n_steps=200_000,
-        #     n_walkers=64,
-        #     processes=8,
-        #     reuse_saved=True,
-        # ),
+        mcmc=McmcConfig(
+            n_steps=200_000,
+            n_walkers=64,
+            processes=8,
+            reuse_saved=True,
+        ),
     )
 
     outdir = Path(__file__).parent / "out" / config.name
