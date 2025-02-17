@@ -8,17 +8,24 @@ from matplotlib.axes import Axes
 from num2tex import num2tex  # type: ignore
 
 from cr_knee_fit.types_ import Packable, Primary, most_abundant_stable_izotope_A
-from cr_knee_fit.utils import label_energy_flux
 
 
 @dataclass
-class SharedPowerLaw(Packable[list[Primary]]):
+class SpectralComponentConfig:
+    primaries: list[Primary]
+    scale_contrib_to_allpart: bool
+
+
+@dataclass
+class SharedPowerLaw(Packable[SpectralComponentConfig]):
     """
     Power law spectrum in rigidity with a single index and per-primary normalization
     """
 
     lgI_per_primary: dict[Primary, float]  # log10(I / (GV m^2 s sr)^-1) at R0
     alpha: float  # power law index
+
+    lg_scale_contrib_to_all: None | float = None
 
     R0: ClassVar[float] = 1e3  # reference rigidity
 
@@ -36,31 +43,53 @@ class SharedPowerLaw(Packable[list[Primary]]):
         return sorted(self.lgI_per_primary.keys())
 
     def pack(self) -> np.ndarray:
-        return np.array([self.lgI_per_primary[p] for p in self.primaries] + [self.alpha])
+        packed = [self.lgI_per_primary[p] for p in self.primaries]
+        packed.append(self.alpha)
+        if self.lg_scale_contrib_to_all is not None:
+            packed.append(self.lg_scale_contrib_to_all)
+        return np.array(packed)
 
     def ndim(self) -> int:
-        return len(self.lgI_per_primary) + 1
+        return len(self.lgI_per_primary) + 1 + int(self.lg_scale_contrib_to_all is not None)
 
     def labels(self, latex: bool) -> list[str]:
+        ps_label = component_label(self.primaries)
         if latex:
-            return [f"\\lg(I)_\\text{{{p.name}}}" for p in self.primaries] + [
-                f"\\alpha_\\text{{{component_label(self.primaries)}}}"
-            ]
+            res = [f"\\lg(I)_\\text{{{p.name}}}" for p in self.primaries]
+            res.append(f"\\alpha_\\text{{{ps_label}}}")
+            if self.lg_scale_contrib_to_all:
+                res.append(f"\\lg(K)_\\text{{{ps_label}}}")
+            return res
         else:
-            return [f"lgI_{{{p.name}}}" for p in self.primaries] + [
-                f"alpha_{{{component_label(self.primaries)}}}"
-            ]
+            res = [f"lgI_{{{p.name}}}" for p in self.primaries] + [f"alpha_{{{ps_label}}}"]
+            if self.lg_scale_contrib_to_all:
+                res.append(f"lg(K)_{{{ps_label}}}")
+            return res
 
     def description(self) -> str:
         return f"$ \\text{{{component_label(self.primaries)}}} \\propto R ^{{-{self.alpha:.2f}}} $"
 
-    def layout_info(self) -> list[Primary]:
-        return self.primaries
+    def layout_info(self) -> SpectralComponentConfig:
+        return SpectralComponentConfig(
+            primaries=self.primaries,
+            scale_contrib_to_allpart=self.lg_scale_contrib_to_all is not None,
+        )
 
     @classmethod
-    def unpack(cls, theta: np.ndarray, layout_info: list[Primary]) -> "SharedPowerLaw":
-        lgI_per_primary = dict(zip(layout_info, theta))
-        return SharedPowerLaw(lgI_per_primary=lgI_per_primary, alpha=theta[len(lgI_per_primary)])
+    def unpack(cls, theta: np.ndarray, layout_info: SpectralComponentConfig) -> "SharedPowerLaw":
+        lgI_per_primary = dict(zip(layout_info.primaries, theta))
+        offset = len(lgI_per_primary)
+        alpha = theta[offset]
+        if layout_info.scale_contrib_to_allpart:
+            offset += 1
+            lg_scale_contrib_to_all = theta[offset]
+        else:
+            lg_scale_contrib_to_all = None
+        return SharedPowerLaw(
+            lgI_per_primary=lgI_per_primary,
+            alpha=alpha,
+            lg_scale_contrib_to_all=lg_scale_contrib_to_all,
+        )
 
 
 BreakQuantity = Literal[
@@ -152,7 +181,7 @@ class SpectralBreak(Packable[SpectralBreakConfig]):
 
 @dataclass
 class CosmicRaysModelConfig:
-    components: Sequence[list[Primary]]
+    components: Sequence[list[Primary] | SpectralComponentConfig]
     breaks: Sequence[SpectralBreakConfig]
     rescale_all_particle: bool
 
@@ -164,8 +193,22 @@ class CosmicRaysModelConfig:
         return Primary.Unobserved in self.primaries
 
     @property
+    def component_configs(self) -> list[SpectralComponentConfig]:
+        return [
+            config_or_primaries
+            if isinstance(config_or_primaries, SpectralComponentConfig)
+            else SpectralComponentConfig(config_or_primaries, scale_contrib_to_allpart=False)
+            for config_or_primaries in self.components
+        ]
+
+    @property
     def primaries(self) -> list[Primary]:
-        return sorted(itertools.chain.from_iterable(self.components))
+        return sorted(
+            itertools.chain.from_iterable(
+                c.primaries if isinstance(c, SpectralComponentConfig) else c
+                for c in self.components
+            )
+        )
 
 
 @dataclass
@@ -200,13 +243,18 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             )
         )
 
-    def compute_rigidity(self, R: np.ndarray, primary: Primary) -> np.ndarray:
-        matches = [pl for pl in self.base_spectra if primary in pl.primaries]
+    def _get_component(self, primary: Primary) -> SharedPowerLaw:
+        matches = [comp for comp in self.base_spectra if primary in comp.primaries]
         if not matches:
             raise ValueError(
                 f"Unsupported primary: {primary}, this model includes: {self.layout_info().primaries}"
             )
-        spectrum = matches[0]
+        if len(matches) > 1:
+            raise RuntimeError(f"Primary {primary} matches more than one component: {matches}")
+        return matches[0]
+
+    def compute_rigidity(self, R: np.ndarray, primary: Primary) -> np.ndarray:
+        spectrum = self._get_component(primary)
         flux = spectrum.compute(R, primary)
         for break_ in self.breaks:
             Z = round(self._primary_Z(primary))
@@ -227,15 +275,25 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         else:
             return primary.Z
 
-    def compute(self, E: np.ndarray, primary: Primary) -> np.ndarray:
+    def compute(
+        self,
+        E: np.ndarray,
+        primary: Primary,
+        contrib_to_all_particle: bool = False,
+    ) -> np.ndarray:
         Z = self._primary_Z(primary)
         R = E / Z
         dNdR = self.compute_rigidity(R, primary=primary)
-        return dNdR / Z
+        dNdE = dNdR / Z
+        if contrib_to_all_particle:
+            component = self._get_component(primary)
+            if component.lg_scale_contrib_to_all:
+                dNdE *= 10 ** (component.lg_scale_contrib_to_all)
+        return dNdE
 
     def compute_lnA(self, E: np.ndarray) -> np.ndarray:
         primaries = self.layout_info().primaries
-        spectra = np.vstack([self.compute(E, p) for p in primaries])
+        spectra = np.vstack([self.compute(E, p, contrib_to_all_particle=True) for p in primaries])
         lnA = np.array(
             [np.log(most_abundant_stable_izotope_A(round(self._primary_Z(p)))) for p in primaries]
         )
@@ -244,7 +302,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
     def compute_all_particle(self, E: np.ndarray) -> np.ndarray:
         flux = np.zeros_like(E)
         for primary in self.layout_info().primaries:
-            flux += self.compute(E, primary=primary)
+            flux += self.compute(E, primary=primary, contrib_to_all_particle=True)
         if self.all_particle_lg_shift is not None:
             flux *= 10**self.all_particle_lg_shift
         return flux
@@ -325,7 +383,15 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         components: list[SharedPowerLaw] = []
         offset = 0
         for component in layout_info.components:
-            spectrum = SharedPowerLaw.unpack(theta[offset:], component)
+            component_config = (
+                component
+                if isinstance(component, SpectralComponentConfig)
+                else SpectralComponentConfig(
+                    primaries=component,
+                    scale_contrib_to_allpart=False,  # backwards compatibility
+                )
+            )
+            spectrum = SharedPowerLaw.unpack(theta[offset:], component_config)
             components.append(spectrum)
             offset += spectrum.ndim()
         breaks: list[SpectralBreak] = []

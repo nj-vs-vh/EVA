@@ -16,17 +16,21 @@ class Packable(Generic[LayoutInfo], abc.ABC):
         return self.pack().size
 
     @abc.abstractmethod
-    def pack(self) -> np.ndarray: ...
+    def pack(self) -> np.ndarray:
+        ...
 
     @abc.abstractmethod
-    def labels(self, latex: bool) -> list[str]: ...
+    def labels(self, latex: bool) -> list[str]:
+        ...
 
     @abc.abstractmethod
-    def layout_info(self) -> LayoutInfo: ...
+    def layout_info(self) -> LayoutInfo:
+        ...
 
     @classmethod
     @abc.abstractmethod
-    def unpack(cls: Type[T], theta: np.ndarray, layout_info: LayoutInfo) -> T: ...
+    def unpack(cls: Type[T], theta: np.ndarray, layout_info: LayoutInfo) -> T:
+        ...
 
     def validate_packing(self) -> None:
         packed = self.pack()
@@ -86,11 +90,7 @@ class Primary(enum.IntEnum):
 
 
 def most_abundant_stable_izotope_A(Z: int) -> int:
-    Z_clamped = Z
-    if Z < 1:
-        Z_clamped = 1
-    elif Z > 26:
-        Z_clamped = 26
+    Z_clamped = min(26, max(1, Z))
     return {
         1: 1,
         2: 4,

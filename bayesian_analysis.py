@@ -82,15 +82,20 @@ def initial_guess_model(config: ModelConfig) -> Model:
                     SharedPowerLaw(
                         lgI_per_primary={
                             primary: stats.norm.rvs(loc=initial_guess_lgI[primary], scale=0.05)
-                            for primary in component
+                            for primary in comp_conf.primaries
                         },
                         alpha=stats.norm.rvs(
-                            loc=2.6 if component == [Primary.H] else 2.5,
+                            loc=2.6 if comp_conf == [Primary.H] else 2.5,
                             scale=0.05,
+                        ),
+                        lg_scale_contrib_to_all=(
+                            stats.uniform.rvs(loc=0.01, scale=0.3)
+                            if comp_conf.scale_contrib_to_allpart
+                            else None
                         ),
                     )
                 )
-                for component in config.cr_model_config.components
+                for comp_conf in config.cr_model_config.component_configs
             ],
             breaks=[
                 initial_guess_break(bc, break_idx=i)
@@ -170,7 +175,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
     print_delim()
     print("Loading fit data...")
     fit_data = load_fit_data(config)
-    scale = 2.8 if fit_data.all_particle_spectra else 2.6
+    scale = 2.8 if fit_data.E_max() > 2e6 else 2.6
     fit_data.plot(scale=scale, describe=True).savefig(outdir / "data.png")
 
     print_delim()

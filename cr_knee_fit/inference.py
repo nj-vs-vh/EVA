@@ -27,11 +27,11 @@ def break_prior(
 def logprior(model: Model) -> float:
     res = 0.0
 
+    # breaks prior
     # breaks must be ordered in R to avoid ambiguity
     breaks_lgR = [m.lg_break for m in model.cr_model.breaks]
     if breaks_lgR != sorted(breaks_lgR):
         return -np.inf
-
     # dampe break
     res += break_prior(model.cr_model.breaks[0], lg_break_min=3, lg_break_max=5, is_softening=True)
     if len(model.cr_model.breaks) > 1:
@@ -45,16 +45,21 @@ def logprior(model: Model) -> float:
             model.cr_model.breaks[2], lg_break_min=5.5, lg_break_max=7, is_softening=True
         )
 
+    # components prior
+    for component in model.cr_model.base_spectra:
+        if component.lg_scale_contrib_to_all is not None and component.lg_scale_contrib_to_all < 0:
+            return -np.inf
+    
+    # other model params
     lgK = model.cr_model.all_particle_lg_shift
     if lgK is not None:
         if not (1 <= 10**lgK <= 2):
             return -np.inf
-
     if model.cr_model.unobserved_component_effective_Z is not None:
         if not (1 <= model.cr_model.unobserved_component_effective_Z <= 26.5):
             return -np.inf
 
-    # energy shift priors
+    # experimental energy shifts' prior
     # TODO: realistic priors from experiments' energy scale systematic uncertainties
     for _, lg_shift in model.energy_shifts.lg_shifts.items():
         resolution_percent = 10
