@@ -13,6 +13,24 @@ from cr_knee_fit.cr_model import (
 from cr_knee_fit.model_ import ModelConfig
 from cr_knee_fit.types_ import Primary
 
+
+def run_local(config: FitConfig) -> None:
+    print("Running:")
+    print(config)
+
+    outdir = Path(__file__).parent / "out" / config.name
+    if outdir.exists():
+        print(f"Output directory exists: {outdir}")
+        answer = input("Continue? This will overwrite some files! [Yn] ")
+        if answer.lower() == "n":
+            sys.exit(0)
+    outdir.mkdir(exist_ok=True, parents=True)
+
+    logfile = outdir / "log.txt"
+    with logfile.open("w") as log, contextlib.redirect_stdout(log):
+        run_bayesian_analysis(config, outdir)
+
+
 if __name__ == "__main__":
     for with_lhaaso in (True, False):
         analysis_name = f"scale-only-nuclei-try-{with_lhaaso=}"
@@ -71,15 +89,4 @@ if __name__ == "__main__":
                 reuse_saved=True,
             ),
         )
-
-        outdir = Path(__file__).parent / "out" / config.name
-        if outdir.exists():
-            print(f"Output directory exists: {outdir}")
-            answer = input("Continue? This will overwrite some files! [Yn] ")
-            if answer.lower() == "n":
-                sys.exit(0)
-        outdir.mkdir(exist_ok=True, parents=True)
-
-        logfile = outdir / "log.txt"
-        with logfile.open("w") as log, contextlib.redirect_stdout(log):
-            run_bayesian_analysis(config, outdir)
+        run_local(config)
