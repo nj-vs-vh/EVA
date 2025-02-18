@@ -7,7 +7,7 @@ import matplotlib.tri
 import numpy as np
 from matplotlib.axes import Axes
 
-from cr_knee_fit.model import Model, ModelConfig
+from cr_knee_fit.model_ import Model, ModelConfig
 
 Observable = Callable[[Model, np.ndarray], np.ndarray]
 

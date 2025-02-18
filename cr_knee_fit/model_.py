@@ -83,7 +83,11 @@ if __name__ == "__main__":
     m = Model(
         cr_model=CosmicRaysModel(
             base_spectra=[
-                SharedPowerLaw.single_primary(p, np.random.random(), alpha=np.random.random())
+                SharedPowerLaw(
+                    lgI_per_primary={p: np.random.random()},
+                    alpha=np.random.random(),
+                    lg_scale_contrib_to_all=0.1,
+                )
                 for p in Primary
             ],
             breaks=[

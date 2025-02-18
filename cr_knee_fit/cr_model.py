@@ -195,9 +195,11 @@ class CosmicRaysModelConfig:
     @property
     def component_configs(self) -> list[SpectralComponentConfig]:
         return [
-            config_or_primaries
-            if isinstance(config_or_primaries, SpectralComponentConfig)
-            else SpectralComponentConfig(config_or_primaries, scale_contrib_to_allpart=False)
+            (
+                config_or_primaries
+                if isinstance(config_or_primaries, SpectralComponentConfig)
+                else SpectralComponentConfig(config_or_primaries, scale_contrib_to_allpart=False)
+            )
             for config_or_primaries in self.components
         ]
 
@@ -373,7 +375,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
 
     def layout_info(self) -> CosmicRaysModelConfig:
         return CosmicRaysModelConfig(
-            components=[spectrum.primaries for spectrum in self.base_spectra],
+            components=[spectrum.layout_info() for spectrum in self.base_spectra],
             breaks=[b.layout_info() for b in self.breaks],
             rescale_all_particle=self.all_particle_lg_shift is not None,
         )

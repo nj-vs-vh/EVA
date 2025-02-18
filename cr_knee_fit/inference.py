@@ -3,7 +3,7 @@ from scipy import stats  # type: ignore
 
 from cr_knee_fit.cr_model import SpectralBreak
 from cr_knee_fit.fit_data import FitData
-from cr_knee_fit.model import Model, ModelConfig
+from cr_knee_fit.model_ import Model, ModelConfig
 
 
 def break_prior(
@@ -49,7 +49,7 @@ def logprior(model: Model) -> float:
     for component in model.cr_model.base_spectra:
         if component.lg_scale_contrib_to_all is not None and component.lg_scale_contrib_to_all < 0:
             return -np.inf
-    
+
     # other model params
     lgK = model.cr_model.all_particle_lg_shift
     if lgK is not None:

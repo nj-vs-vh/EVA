@@ -8,7 +8,7 @@ import numpy as np
 from bayesian_analysis import FitConfig, McmcConfig
 from cr_knee_fit import experiments
 from cr_knee_fit.cr_model import CosmicRaysModelConfig, SpectralBreakConfig
-from cr_knee_fit.model import ModelConfig
+from cr_knee_fit.model_ import ModelConfig
 from cr_knee_fit.types_ import Primary
 
 if __name__ == "__main__":

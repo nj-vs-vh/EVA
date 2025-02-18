@@ -28,7 +28,7 @@ from cr_knee_fit.cr_model import (
 from cr_knee_fit.experiments import Experiment
 from cr_knee_fit.fit_data import FitData
 from cr_knee_fit.inference import loglikelihood, logposterior, set_global_fit_data
-from cr_knee_fit.model import Model, ModelConfig
+from cr_knee_fit.model_ import Model, ModelConfig
 from cr_knee_fit.plotting import (
     plot_posterior_contours,
     tricontourf_kwargs_transparent_colors,
