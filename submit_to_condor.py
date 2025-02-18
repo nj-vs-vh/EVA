@@ -41,6 +41,7 @@ def submit_job(config: FitConfig) -> None:
             "error": "condor.err",
             "log": "condor.log",
             "request_cpus": str(config.mcmc.processes if config.mcmc else 1),
+            "request_memory": "8GB",
             "should_transfer_files": "IF_NEEDED",
             "max_transfer_output_mb": "100",
         }
