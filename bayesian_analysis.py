@@ -30,6 +30,7 @@ from cr_knee_fit.plotting import (
     tricontourf_kwargs_transparent_colors,
 )
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
+from cr_knee_fit.types_ import Primary
 from cr_knee_fit.utils import E_GEV_LABEL, add_log_margin, legend_with_added_items
 
 # as recommended by emceee parallelization guide
@@ -331,11 +332,34 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
                     color=primary.color, levels=15
                 ),
             )
-        ax_all.set_ylim(*ylim)
+        plot_posterior_contours(
+            ax_all,
+            scale=scale,
+            theta_sample=theta_sample,
+            model_config=config.model,
+            observable=lambda model, E: (
+                model.compute_spectrum(E, primary=None)
+                - sum(
+                    (
+                        sum(
+                            (pop.compute(E, primary=primary) for pop in model.populations),
+                            np.zeros_like(E),
+                        )
+                        for primary in Primary.all()
+                    ),
+                    np.zeros_like(E),
+                )
+            ),
+            bounds=E_bounds_all,
+            tricontourf_kwargs=tricontourf_kwargs_transparent_colors(color="gray", levels=15),
+        )
+
+        # ax_all.set_ylim(*ylim)
         legend_with_added_items(
             ax_all,
             (
                 [(p.legend_artist(), p.name) for p in primaries]
+                + [(Primary.Unobserved.legend_artist(), "Unobserved")]
                 + [
                     (exp.legend_artist(), exp.name)
                     for exp in (sorted(fit_data.all_particle_spectra.keys()))

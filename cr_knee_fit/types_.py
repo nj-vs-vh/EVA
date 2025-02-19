@@ -45,7 +45,7 @@ class Packable(Generic[LayoutInfo], abc.ABC):
         print(self.format_params())
 
 
-_PRIMARY_CMAP = plt.colormaps["turbo"]
+_PRIMARY_CMAP = plt.colormaps["rainbow_r"]
 
 
 class Primary(enum.IntEnum):
@@ -79,7 +79,7 @@ class Primary(enum.IntEnum):
             return "gray"
         else:
             idx = sorted(Primary).index(self)
-            return _PRIMARY_CMAP(idx / (len(Primary) - 1))
+            return _PRIMARY_CMAP(idx / (len(Primary) - 2))
 
     def legend_artist(self):
         return lines.Line2D([], [], color=self.color, marker="none")
