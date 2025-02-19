@@ -3,8 +3,6 @@ from dataclasses import dataclass
 
 from matplotlib import lines
 
-from cr_knee_fit.types_ import Primary
-
 markers_iter = itertools.cycle(["o", "v", "^", "<", ">", "s", "p", "P", "8", "X", "D"])
 markers_cache: dict[str, str] = {}
 
@@ -14,7 +12,7 @@ class Experiment:
     name: str
     filename_stem: str | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         marker = markers_cache.get(self.name)
         if not marker:
             marker = next(markers_iter)

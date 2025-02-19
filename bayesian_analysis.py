@@ -5,10 +5,11 @@ import datetime
 import itertools
 import multiprocessing
 import os
+import random
 import sys
 import traceback
 from pathlib import Path
-from typing import Sequence, cast
+from typing import Callable, Sequence, cast
 
 import corner  # type: ignore
 import emcee  # type: ignore
@@ -17,14 +18,9 @@ import pydantic
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
-from scipy import optimize, stats  # type: ignore
+from pydantic_numpy.typing import Np2DArrayFp64
+from scipy import optimize  # type: ignore
 
-from cr_knee_fit.cr_model import (
-    CosmicRaysModel,
-    SharedPowerLaw,
-    SpectralBreak,
-    SpectralBreakConfig,
-)
 from cr_knee_fit.experiments import Experiment
 from cr_knee_fit.fit_data import FitData
 from cr_knee_fit.inference import loglikelihood, logposterior, set_global_fit_data
@@ -34,7 +30,6 @@ from cr_knee_fit.plotting import (
     tricontourf_kwargs_transparent_colors,
 )
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
-from cr_knee_fit.types_ import Primary
 from cr_knee_fit.utils import E_GEV_LABEL, add_log_margin, legend_with_added_items
 
 # as recommended by emceee parallelization guide
@@ -42,90 +37,6 @@ from cr_knee_fit.utils import E_GEV_LABEL, add_log_margin, legend_with_added_ite
 os.environ["OMP_NUM_THREADS"] = "1"
 
 IS_CLUSTER = os.environ.get("CRKNEES_CLUSTER") == "1"
-
-
-def initial_guess_break(bc: SpectralBreakConfig, break_idx: int) -> SpectralBreak:
-    if bc.fixed_lg_sharpness:
-        lg_s = bc.fixed_lg_sharpness
-    else:
-        lg_s = stats.norm.rvs(loc=np.log10(5), scale=0.01)
-
-    break_pos_guesses = [4.2, 5.3, 6.5]
-    d_alpha_guesses = [0.3, -0.3, 0.5]
-
-    return SpectralBreak(
-        lg_break=stats.norm.rvs(loc=break_pos_guesses[break_idx], scale=0.1),
-        d_alpha=stats.norm.rvs(loc=d_alpha_guesses[break_idx], scale=0.05),
-        lg_sharpness=lg_s,
-        fix_sharpness=bc.fixed_lg_sharpness is not None,
-        quantity=bc.quantity,
-    )
-
-
-initial_guess_lgI = {
-    Primary.H: -4,
-    Primary.He: -4.65,
-    Primary.C: -6.15,
-    Primary.O: -6.1,
-    Primary.Mg: -6.85,
-    Primary.Si: -6.9,
-    Primary.Fe: -6.9,
-    Primary.Unobserved: -8,
-}
-
-
-def initial_guess_model(config: ModelConfig) -> Model:
-    return Model(
-        cr_model=CosmicRaysModel(
-            base_spectra=[
-                (
-                    SharedPowerLaw(
-                        lgI_per_primary={
-                            primary: stats.norm.rvs(loc=initial_guess_lgI[primary], scale=0.05)
-                            for primary in comp_conf.primaries
-                        },
-                        alpha=stats.norm.rvs(
-                            loc=2.6 if comp_conf == [Primary.H] else 2.5,
-                            scale=0.05,
-                        ),
-                        lg_scale_contrib_to_all=(
-                            stats.uniform.rvs(loc=0.01, scale=0.3)
-                            if comp_conf.scale_contrib_to_allpart
-                            else None
-                        ),
-                    )
-                )
-                for comp_conf in config.cr_model_config.component_configs
-            ],
-            breaks=[
-                initial_guess_break(bc, break_idx=i)
-                for i, bc in enumerate(config.cr_model_config.breaks)
-            ],
-            all_particle_lg_shift=(
-                np.log10(stats.uniform.rvs(loc=1.1, scale=0.9))
-                if config.cr_model_config.rescale_all_particle
-                else None
-            ),
-            unobserved_component_effective_Z=(
-                stats.uniform.rvs(loc=14, scale=26 - 14)
-                if config.cr_model_config.has_unobserved_component
-                else None
-            ),
-        ),
-        energy_shifts=ExperimentEnergyScaleShifts(
-            lg_shifts={exp: stats.norm.rvs(loc=0, scale=0.01) for exp in config.shifted_experiments}
-        ),
-    )
-
-
-def safe_initial_guess_model(config: ModelConfig, fit_data: FitData) -> Model:
-    n_try = 1000
-    for _ in range(n_try):
-        m = initial_guess_model(config)
-        if np.isfinite(logposterior(m, fit_data, config)):
-            return m
-    else:
-        raise ValueError(f"Failed to generate valid model in {n_try} tries")
 
 
 @dataclasses.dataclass
@@ -141,8 +52,52 @@ class FitConfig(pydantic.BaseModel):
     experiments_detailed: list[Experiment]
     experiments_all_particle: list[Experiment]
     experiments_lnA: list[Experiment]
-    model: ModelConfig
     mcmc: McmcConfig | None
+
+    model: ModelConfig
+    initial_guesses: Np2DArrayFp64  # n_sample x n_model_dim
+
+    @classmethod
+    def from_guessing_func(
+        cls,
+        name: str,
+        experiments_detailed: list[Experiment],
+        experiments_all_particle: list[Experiment],
+        experiments_lnA: list[Experiment],
+        mcmc: McmcConfig | None,
+        generate_guess: Callable[[], Model],
+        n_guesses: int = 100,
+    ) -> "FitConfig":
+        guesses = [generate_guess() for _ in range(n_guesses)]
+        assert (
+            len({g.ndim() for g in guesses}) == 1
+        ), "guess generation function generates different-dimensional models"
+
+        return FitConfig(
+            name=name,
+            experiments_detailed=experiments_detailed,
+            experiments_all_particle=experiments_all_particle,
+            experiments_lnA=experiments_lnA,
+            mcmc=mcmc,
+            model=guesses[0].layout_info(),
+            initial_guesses=np.array([guess.pack() for guess in guesses]),
+        )
+
+    def generate_initial_guess(self, fit_data: FitData) -> Model:
+        n_try = 1000
+        for _ in range(n_try):
+            # initial guess are not supposed to sample a specific distribution,
+            # it's enough to generate some points in the region of the parameter
+            # space defined as the convex hull of user-provided samples
+            n_sample = self.initial_guesses.shape[0]
+            a = self.initial_guesses[np.random.choice(n_sample), :]
+            b = self.initial_guesses[np.random.choice(n_sample), :]
+            guess = a + np.random.random() * (b - a)
+            m = Model.unpack(guess, layout_info=self.model)
+            if np.isfinite(logposterior(m, fit_data, self.model)):
+                return m
+        else:
+            raise ValueError(f"Failed to generate valid model in {n_try} tries")
 
 
 def print_delim():
@@ -160,7 +115,7 @@ def load_fit_data(config: FitConfig) -> FitData:
         experiments_detailed=config.experiments_detailed,
         experiments_all_particle=config.experiments_all_particle,
         experiments_lnA=config.experiments_lnA,
-        primaries=config.model.cr_model_config.primaries,
+        primaries=config.model.primaries(),
         R_bounds=(7e2, 1e8),
     )
     set_global_fit_data(fit_data)
@@ -180,7 +135,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
 
     print_delim()
     print("Initial guess model (example):")
-    initial_guess = safe_initial_guess_model(config.model, fit_data)
+    initial_guess = config.generate_initial_guess(fit_data)
     initial_guess.plot(fit_data, scale=scale).savefig(outdir / "initial_guess.png")
     initial_guess.print_params()
     print(
@@ -196,13 +151,17 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
     print("Running preliminary MLE analysis...")
     try:
         mle_config = dataclasses.replace(config.model, shifted_experiments=[])
+        initial_mle_model = dataclasses.replace(
+            config.generate_initial_guess(fit_data),
+            energy_shifts=ExperimentEnergyScaleShifts(dict()),
+        )
 
         def negloglike(v: np.ndarray) -> float:
             return -loglikelihood(v, fit_data, mle_config)
 
         res = optimize.minimize(
             negloglike,
-            x0=safe_initial_guess_model(mle_config, fit_data).pack(),
+            x0=initial_mle_model.pack(),
             method="Nelder-Mead",
             options={
                 "maxiter": 100_000,
@@ -224,7 +183,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
     print_delim()
     print("Running bayesian analysis...")
     print(f"MCMC config: {config.mcmc}")
-    ndim = safe_initial_guess_model(config.model, fit_data).ndim()
+    ndim = config.generate_initial_guess(fit_data).ndim()
     print(f"N dim = {ndim}")
 
     sample_path = outdir / "theta.txt"
@@ -256,7 +215,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
             )
             initial_state = np.array(
                 [
-                    safe_initial_guess_model(config.model, fit_data).pack()
+                    config.generate_initial_guess(fit_data).pack()
                     for _ in range(config.mcmc.n_walkers)
                 ]
             )
@@ -283,9 +242,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
     print_delim()
     print("Plotting posterior")
     sample_to_plot = theta_sample
-    sample_labels = [
-        "$" + label + "$" for label in initial_guess_model(config.model).labels(latex=True)
-    ]
+    sample_labels = ["$" + label + "$" for label in initial_guess.labels(latex=True)]
     fig_corner: Figure = corner.corner(
         sample_to_plot,
         labels=sample_labels,
@@ -312,7 +269,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
                 ax=ax_comp,
                 add_label=False,
             )
-    primaries = median_model.cr_model.layout_info().primaries
+    primaries = median_model.layout_info().primaries(observed_only=False)
     E_comp_all = np.hstack(
         [
             s.E
@@ -320,15 +277,17 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
         ]
     )
     Emin, Emax = add_log_margin(E_comp_all.min(), E_comp_all.max())
-    for p in primaries:
+    for primary in primaries:
         plot_posterior_contours(
             ax_comp,
             scale=scale,
             theta_sample=theta_sample,
             model_config=config.model,
-            observable=lambda model, E: model.cr_model.compute(E, p),
+            observable=lambda model, E: model.compute_spectrum(E, primary=primary),
             bounds=(Emin, Emax),
-            tricontourf_kwargs=tricontourf_kwargs_transparent_colors(color=p.color, levels=15),
+            tricontourf_kwargs=tricontourf_kwargs_transparent_colors(
+                color=primary.color, levels=15
+            ),
         )
     legend_with_added_items(
         ax_comp,
@@ -355,20 +314,22 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
             scale=scale,
             theta_sample=theta_sample,
             model_config=config.model,
-            observable=lambda model, E: model.cr_model.compute_all_particle(E),
+            observable=lambda model, E: model.compute_spectrum(E, primary=None),
             bounds=E_bounds_all,
             tricontourf_kwargs={"levels": 15},
         )
         ylim = ax_all.get_ylim()
-        for p in primaries:
+        for primary in primaries:
             plot_posterior_contours(
                 ax_all,
                 scale=scale,
                 theta_sample=theta_sample,
                 model_config=config.model,
-                observable=lambda model, E: model.cr_model.compute(E, p),
+                observable=lambda model, E: model.compute_spectrum(E, primary=primary),
                 bounds=E_bounds_all,
-                tricontourf_kwargs=tricontourf_kwargs_transparent_colors(color=p.color, levels=15),
+                tricontourf_kwargs=tricontourf_kwargs_transparent_colors(
+                    color=primary.color, levels=15
+                ),
             )
         ax_all.set_ylim(*ylim)
         legend_with_added_items(
@@ -399,7 +360,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
             scale=0,
             theta_sample=theta_sample,
             model_config=config.model,
-            observable=lambda model, E: model.cr_model.compute_lnA(E),
+            observable=lambda model, E: model.compute_lnA(E),
             bounds=add_log_margin(E_lnA_all.min(), E_lnA_all.max()),
         )
         legend_with_added_items(

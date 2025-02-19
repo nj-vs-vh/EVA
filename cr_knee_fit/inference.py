@@ -27,36 +27,36 @@ def break_prior(
 def logprior(model: Model) -> float:
     res = 0.0
 
-    # breaks prior
+    # main population prior
+
+    main = model.populations[0]
+
     # breaks must be ordered in R to avoid ambiguity
-    breaks_lgR = [m.lg_break for m in model.cr_model.breaks]
+    breaks_lgR = [m.lg_break for m in main.breaks]
     if breaks_lgR != sorted(breaks_lgR):
         return -np.inf
+
     # dampe break
-    res += break_prior(model.cr_model.breaks[0], lg_break_min=3, lg_break_max=5, is_softening=True)
-    if len(model.cr_model.breaks) > 1:
+    res += break_prior(main.breaks[0], lg_break_min=3, lg_break_max=5, is_softening=True)
+    if len(main.breaks) > 1:
         # grapes hardening
-        res += break_prior(
-            model.cr_model.breaks[1], lg_break_min=4.5, lg_break_max=6, is_softening=False
-        )
-    if len(model.cr_model.breaks) > 2:
+        res += break_prior(main.breaks[1], lg_break_min=4.5, lg_break_max=6, is_softening=False)
+    if len(main.breaks) > 2:
         # all-particle knee
-        res += break_prior(
-            model.cr_model.breaks[2], lg_break_min=5.5, lg_break_max=7, is_softening=True
-        )
+        res += break_prior(main.breaks[2], lg_break_min=5.5, lg_break_max=7, is_softening=True)
 
     # components prior
-    for component in model.cr_model.base_spectra:
+    for component in main.base_spectra:
         if component.lg_scale_contrib_to_all is not None and component.lg_scale_contrib_to_all < 0:
             return -np.inf
 
     # other model params
-    lgK = model.cr_model.all_particle_lg_shift
+    lgK = main.all_particle_lg_shift
     if lgK is not None:
         if not (1 <= 10**lgK <= 2):
             return -np.inf
-    if model.cr_model.unobserved_component_effective_Z is not None:
-        if not (1 <= model.cr_model.unobserved_component_effective_Z <= 26.5):
+    if main.unobserved_component_effective_Z is not None:
+        if not (1 <= main.unobserved_component_effective_Z <= 26.5):
             return -np.inf
 
     # experimental energy shifts' prior
@@ -95,32 +95,32 @@ def loglikelihood(
     fit_data: FitData,
     config: ModelConfig,
 ) -> float:
-    m = to_model(model_or_theta, config)
+    model = to_model(model_or_theta, config)
     res = 0.0
     for exp, data_by_primary in fit_data.spectra.items():
         for primary, p_data in data_by_primary.items():
-            p_data = p_data.with_shifted_energy_scale(f=m.energy_shifts.f(exp))
+            p_data = p_data.with_shifted_energy_scale(f=model.energy_shifts.f(exp))
             res += chi_squared_loglikelihood(
-                prediction=m.cr_model.compute(p_data.E, primary),
+                prediction=model.compute_spectrum(p_data.E, primary=primary),
                 y=p_data.F,
                 errhi=p_data.F_errhi,
                 errlo=p_data.F_errlo,
             )
     for exp, all_data in fit_data.all_particle_spectra.items():
-        all_data = all_data.with_shifted_energy_scale(f=m.energy_shifts.f(exp))
+        all_data = all_data.with_shifted_energy_scale(f=model.energy_shifts.f(exp))
         res += chi_squared_loglikelihood(
-            prediction=m.cr_model.compute_all_particle(all_data.E),
+            prediction=model.compute_spectrum(all_data.E, primary=None),
             y=all_data.F,
             errhi=all_data.F_errhi,
             errlo=all_data.F_errlo,
         )
     for exp, lnA_data in fit_data.lnA.items():
-        f = m.energy_shifts.f(exp)
+        f = model.energy_shifts.f(exp)
         E_exp = lnA_data.x
+        # for lnA, energy scale shift does not affect values as they include dE in num. and denom.
         E_true = E_exp * f
         res += chi_squared_loglikelihood(
-            # for lnA, energy scale shift does not affect values as they include dE in num. and denom.
-            prediction=m.cr_model.compute_lnA(E_true),
+            prediction=model.compute_lnA(E_true),
             y=lnA_data.y,
             errhi=lnA_data.y_errhi,
             errlo=lnA_data.y_errlo,

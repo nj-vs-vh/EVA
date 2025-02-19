@@ -12,6 +12,7 @@ from cr_knee_fit.cr_model import (
     SpectralBreakConfig,
     SpectralComponentConfig,
 )
+from cr_knee_fit.guesses import initial_guess_one_population_model
 from cr_knee_fit.model_ import ModelConfig
 from cr_knee_fit.types_ import Primary
 
@@ -65,53 +66,56 @@ if __name__ == "__main__":
         experiments_lnA = []
         if with_lhaaso:
             experiments_all_particle.append(experiments.lhaaso_epos)
+
             experiments_lnA.append(experiments.lhaaso_epos)
 
-        config = FitConfig(
+        model_config = ModelConfig(
+            cr_model_config=CosmicRaysModelConfig(
+                components=[
+                    [Primary.H],
+                    [Primary.He],
+                    SpectralComponentConfig(
+                        primaries=[
+                            Primary.C,
+                            Primary.O,
+                            Primary.Mg,
+                            Primary.Si,
+                            Primary.Fe,
+                        ],
+                        scale_contrib_to_allpart=True,
+                    ),
+                ],
+                breaks=[
+                    SpectralBreakConfig(fixed_lg_sharpness=None, quantity="R"),
+                    SpectralBreakConfig(fixed_lg_sharpness=None, quantity="R"),
+                ]
+                + (
+                    [
+                        SpectralBreakConfig(fixed_lg_sharpness=None, quantity="R"),
+                    ]
+                    if with_lhaaso
+                    else []
+                ),
+                rescale_all_particle=False,
+            ),
+            shifted_experiments=[
+                e
+                for e in itertools.chain(experiments_detailed, experiments_all_particle)
+                if e != experiments.ams02
+            ],
+        )
+
+        config = FitConfig.from_guessing_func(
             name=analysis_name,
             experiments_detailed=experiments_detailed,
             experiments_all_particle=experiments_all_particle,
             experiments_lnA=experiments_lnA,
-            model=ModelConfig(
-                cr_model_config=CosmicRaysModelConfig(
-                    components=[
-                        [Primary.H],
-                        [Primary.He],
-                        SpectralComponentConfig(
-                            primaries=[
-                                Primary.C,
-                                Primary.O,
-                                Primary.Mg,
-                                Primary.Si,
-                                Primary.Fe,
-                            ],
-                            scale_contrib_to_allpart=True,
-                        ),
-                    ],
-                    breaks=[
-                        SpectralBreakConfig(fixed_lg_sharpness=None, quantity="R"),
-                        SpectralBreakConfig(fixed_lg_sharpness=None, quantity="R"),
-                    ]
-                    + (
-                        [
-                            SpectralBreakConfig(fixed_lg_sharpness=None, quantity="R"),
-                        ]
-                        if with_lhaaso
-                        else []
-                    ),
-                    rescale_all_particle=False,
-                ),
-                shifted_experiments=[
-                    e
-                    for e in itertools.chain(experiments_detailed, experiments_all_particle)
-                    if e != experiments.ams02
-                ],
-            ),
             mcmc=McmcConfig(
-                n_steps=500_000,
-                n_walkers=128,
+                n_steps=50_000,
+                n_walkers=64,
                 processes=8,
                 reuse_saved=True,
             ),
+            generate_guess=lambda: initial_guess_one_population_model(model_config),
         )
         submit_job(config)
