@@ -100,22 +100,49 @@ class Model(Packable[ModelConfig]):
         for _, data in fit_data.all_particle_spectra.items():
             data.plot(scale=scale, ax=ax, add_label=False)
 
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ylim = ax.get_ylim()  # respecting ylim set by data
+
         for pop in self.populations:
             pop.plot(
                 Emin=fit_data.E_min(),
                 Emax=fit_data.E_max(),
                 scale=scale,
                 axes=ax,
-                all_particle=len(fit_data.all_particle_spectra) > 0,
+                all_particle=len(fit_data.all_particle_spectra) > 0 and len(pop.primaries) > 1,
             )
+        if len(self.populations) > 1:
+            multipop_primaries = [
+                primary
+                for primary in Primary.all()
+                if len([pop for pop in self.populations if primary in pop.primaries]) > 1
+            ]
+            E_grid = np.logspace(np.log10(fit_data.E_min()), np.log10(fit_data.E_max()), 100)
+            E_factor = E_grid**scale
+            for primary in multipop_primaries:
+                ax.plot(
+                    E_grid,
+                    E_factor * self.compute_spectrum(E_grid, primary=primary),
+                    label="Total " + primary.name,
+                    color=primary.color,
+                    linewidth=2,
+                )
+            if len(fit_data.all_particle_spectra) > 0:
+                ax.plot(
+                    E_grid,
+                    E_factor * self.compute_spectrum(E_grid, primary=None),
+                    label="Total all particle",
+                    color="black",
+                    linewidth=2,
+                )
 
         legend_with_added_items(
             ax,
             [(e.legend_artist(), e.name) for e in fit_data.all_experiments()],
             fontsize="x-small",
         )
-        ax.set_xscale("log")
-        ax.set_yscale("log")
+        ax.set_ylim(*ylim)
         return fig
 
     def compute_spectrum(self, E: np.ndarray, primary: Primary | None) -> np.ndarray:

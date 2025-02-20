@@ -180,15 +180,29 @@ class SpectralBreak(Packable[SpectralBreakConfig]):
 
 
 @dataclass
+class PopulationMetadata:
+    name: str
+    linestyle: str | None
+
+
+@dataclass
 class CosmicRaysModelConfig:
     components: Sequence[list[Primary] | SpectralComponentConfig]
     breaks: Sequence[SpectralBreakConfig]
     rescale_all_particle: bool
 
     population_name: str | None = None
+    population_meta: PopulationMetadata | None = None
 
     def __post_init__(self) -> None:
         assert len(self.primaries) == len(set(self.primaries))
+        if self.population_name is not None:
+            if self.population_meta is not None:
+                raise ValueError("population name and metadata are mutually exclusive")
+            self.population_meta = PopulationMetadata(
+                name=self.population_name,
+                linestyle=None,
+            )
 
     @property
     def has_unobserved_component(self) -> bool:
@@ -223,7 +237,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
     all_particle_lg_shift: float | None  # sum of primaries * 10^shift = all particle spectrum
     unobserved_component_effective_Z: float | None
 
-    population_name: str | None = None
+    population_meta: PopulationMetadata | None = None
 
     def __post_init__(self) -> None:
         seen_primaries = set[Primary]()
@@ -235,11 +249,15 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             seen_primaries.update(s.primaries)
         if (
             self.unobserved_component_effective_Z is not None
-            and Primary.Unobserved not in self.layout_info().primaries
+            and Primary.Unobserved not in self.primaries
         ):
             raise ValueError(
                 "Unobserved primary must be present as a primary if it's effective Z is used as a param"
             )
+
+    @property
+    def primaries(self) -> list[Primary]:
+        return self.layout_info().primaries
 
     def description(self) -> str:
         return "; ".join(
@@ -298,7 +316,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         return dNdE
 
     def compute_lnA(self, E: np.ndarray) -> np.ndarray:
-        primaries = self.layout_info().primaries
+        primaries = self.primaries
         spectra = np.vstack([self.compute(E, p, contrib_to_all_particle=True) for p in primaries])
         lnA = np.array(
             [np.log(most_abundant_stable_izotope_A(round(self.primary_Z(p)))) for p in primaries]
@@ -307,11 +325,18 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
 
     def compute_all_particle(self, E: np.ndarray) -> np.ndarray:
         flux = np.zeros_like(E)
-        for primary in self.layout_info().primaries:
+        for primary in self.primaries:
             flux += self.compute(E, primary=primary, contrib_to_all_particle=True)
         if self.all_particle_lg_shift is not None:
             flux *= 10**self.all_particle_lg_shift
         return flux
+
+    @property
+    def _linestyle(self) -> str | None:
+        if self.population_meta is None:
+            return None
+        else:
+            return self.population_meta.linestyle
 
     def plot(
         self,
@@ -320,6 +345,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         scale: float,
         axes: Axes | None = None,
         all_particle: bool = False,
+        primaries: list[Primary] | None = None,
     ) -> Axes:
         if axes is not None:
             ax = axes
@@ -327,12 +353,13 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             _, ax = plt.subplots()
         E_grid = np.logspace(np.log10(Emin), np.log10(Emax), 100)
         E_factor = E_grid**scale
-        for p in self.layout_info().primaries:
+        for p in primaries or self.primaries:
             ax.plot(
                 E_grid,
                 E_factor * self.compute(E_grid, p),
                 label=self.population_prefix(latex=False) + p.name,
                 color=p.color,
+                linestyle=self._linestyle,
             )
         if all_particle or self.all_particle_lg_shift:
             ax.plot(
@@ -340,6 +367,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
                 E_factor * self.compute_all_particle(E_grid),
                 label=self.population_prefix(latex=False) + "All particle",
                 color="black",
+                linestyle=self._linestyle,
             )
         return ax
 
@@ -382,8 +410,12 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         return labels
 
     def population_prefix(self, latex: bool) -> str:
-        if self.population_name is not None:
-            return f"\\text{{{self.population_name}}} " if latex else self.population_name + " "
+        if self.population_meta is not None:
+            return (
+                f"\\text{{{self.population_meta.name}}}\\;"
+                if latex
+                else self.population_meta.name + " "
+            )
         else:
             return ""
 
@@ -392,7 +424,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             components=[spectrum.layout_info() for spectrum in self.base_spectra],
             breaks=[b.layout_info() for b in self.breaks],
             rescale_all_particle=self.all_particle_lg_shift is not None,
-            population_name=self.population_name,
+            population_meta=self.population_meta,
         )
 
     @classmethod
@@ -434,7 +466,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             breaks=breaks,
             all_particle_lg_shift=all_particle_lg_shift,
             unobserved_component_effective_Z=unobserved_component_eff_Z,
-            population_name=layout_info.population_name,
+            population_meta=layout_info.population_meta,
         )
 
 
@@ -463,5 +495,6 @@ if __name__ == "__main__":
         ],
         all_particle_lg_shift=np.random.random(),
         unobserved_component_effective_Z=np.random.random(),
+        population_meta=None,
     )
     gcr.validate_packing()

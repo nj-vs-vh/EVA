@@ -31,7 +31,10 @@ def initial_guess_break(bc: SpectralBreakConfig, break_idx: int) -> SpectralBrea
     )
 
 
-def initial_guess_main_population(pop_config: CosmicRaysModelConfig) -> CosmicRaysModel:
+def initial_guess_main_population(
+    pop_config: CosmicRaysModelConfig,
+    initial_guess_lgI_override: dict[Primary, float] | None = None,
+) -> CosmicRaysModel:
     initial_guess_lgI = {
         Primary.H: -4,
         Primary.He: -4.65,
@@ -42,6 +45,8 @@ def initial_guess_main_population(pop_config: CosmicRaysModelConfig) -> CosmicRa
         Primary.Fe: -6.9,
         Primary.Unobserved: -8,
     }
+    if initial_guess_lgI_override:
+        initial_guess_lgI.update(initial_guess_lgI_override)
     return CosmicRaysModel(
         base_spectra=[
             (

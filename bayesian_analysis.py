@@ -102,13 +102,7 @@ class FitConfig(pydantic.BaseModel):
 
 
 def print_delim():
-    print(
-        "\n\n"
-        + "=" * 15
-        + "\n"
-        + datetime.datetime.now().isoformat(sep=" ", timespec="seconds")
-        + "\n\n"
-    )
+    print("\n" + "=" * 15 + "\n" + datetime.datetime.now().isoformat(sep=" ", timespec="seconds"))
 
 
 def load_fit_data(config: FitConfig) -> FitData:
@@ -121,6 +115,40 @@ def load_fit_data(config: FitConfig) -> FitData:
     )
     set_global_fit_data(fit_data)
     return fit_data
+
+
+def run_ml_analysis(
+    config: FitConfig,
+    fit_data: FitData,
+    freeze_shifts: bool,
+    initial_model: Model | None = None,
+) -> Model | None:
+    try:
+        model_config = config.model
+        initial_model = initial_model or config.generate_initial_guess(fit_data)
+        if freeze_shifts:
+            model_config = dataclasses.replace(model_config, shifted_experiments=[])
+            initial_model = dataclasses.replace(
+                initial_model,
+                energy_shifts=ExperimentEnergyScaleShifts(dict()),
+            )
+
+        def negloglike(v: np.ndarray) -> float:
+            return -loglikelihood(v, fit_data, model_config)
+
+        res = optimize.minimize(
+            negloglike,
+            x0=initial_model.pack(),
+            method="Nelder-Mead",
+            options={
+                "maxiter": 100_000,
+            },
+        )
+        print(res)
+        return Model.unpack(res.x, layout_info=model_config)
+    except Exception as e:
+        print(f"Error running ML analysis, ignoring: {e}")
+        traceback.print_exc()
 
 
 def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
@@ -149,33 +177,16 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
     )
 
     print_delim()
-    print("Running preliminary MLE analysis...")
-    try:
-        mle_config = dataclasses.replace(config.model, shifted_experiments=[])
-        initial_mle_model = dataclasses.replace(
-            config.generate_initial_guess(fit_data),
-            energy_shifts=ExperimentEnergyScaleShifts(dict()),
-        )
-
-        def negloglike(v: np.ndarray) -> float:
-            return -loglikelihood(v, fit_data, mle_config)
-
-        res = optimize.minimize(
-            negloglike,
-            x0=initial_mle_model.pack(),
-            method="Nelder-Mead",
-            options={
-                "maxiter": 100_000,
-            },
-        )
-        print(res)
-        mle_model = Model.unpack(res.x, layout_info=mle_config)
-        fig = mle_model.plot(fit_data, scale=scale)
-        fig.savefig(outdir / "mle-result.png")
+    print("Running preliminary ML analysis...")
+    mle_model = run_ml_analysis(
+        config=config,
+        fit_data=fit_data,
+        freeze_shifts=True,
+        initial_model=None,
+    )
+    if mle_model is not None:
+        mle_model.plot(fit_data, scale=scale).savefig(outdir / "preliminary-mle-result.png")
         mle_model.print_params()
-    except Exception as e:
-        print(f"Error running MLE analysis, ignoring: {e}")
-        traceback.print_exc()
 
     if config.mcmc is None:
         print("Not running bayesian analysis, mcmc config is None")
@@ -241,7 +252,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
     median_model.print_params()
 
     print_delim()
-    print("Plotting posterior")
+    print("Plotting corner plot of the posterior")
     sample_to_plot = theta_sample
     sample_labels = ["$" + label + "$" for label in initial_guess.labels(latex=True)]
     fig_corner: Figure = corner.corner(
@@ -405,6 +416,30 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
 
     fig.tight_layout()
     fig.savefig(outdir / "posterior_contours.pdf")
+
+    print_delim()
+    print("Plotting best-fitting model from the posterior sample")
+    model_sample = [Model.unpack(theta, layout_info=config.model) for theta in theta_sample]
+    loglike_values = [loglikelihood(model, fit_data, config=config.model) for model in model_sample]
+    best_fit_idx = np.argmax(loglike_values)
+    print(f"Best-fitting model idx: {best_fit_idx}; loglike = {loglike_values[best_fit_idx]}")
+    posterior_best = model_sample[best_fit_idx]
+    # TODO: transform fit data to include energy shifts!!!
+    posterior_best.plot(fit_data, scale=scale).savefig(outdir / "best-fitting-posterior-point.png")
+
+    print_delim()
+    print("Running ML analysis from the best-fitting posterior point")
+    posterior_ml_best = run_ml_analysis(
+        config=config,
+        fit_data=fit_data,
+        freeze_shifts=True,
+        initial_model=posterior_best,
+    )
+    if posterior_ml_best is not None:
+        posterior_ml_best.print_params()
+        posterior_ml_best.plot(fit_data, scale=scale).savefig(
+            outdir / "mle-from-posterior-best.png"
+        )
 
 
 if __name__ == "__main__":
