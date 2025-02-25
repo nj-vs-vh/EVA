@@ -34,13 +34,14 @@ class ModelConfig:
                     "population_configs and cr_model_config parameters are mutually exclusive"
                 )
             self.population_configs = [self.cr_model_config]
+            self.cr_model_config = None
 
-    def primaries(self, observed_only: bool = True) -> list[Primary]:
+    def primaries(self, only_fixed_Z: bool) -> list[Primary]:
         return sorted(
             {
                 p
                 for p in itertools.chain.from_iterable(c.primaries for c in self.population_configs)
-                if p is not Primary.Unobserved or not observed_only
+                if p is not Primary.FreeZ or not only_fixed_Z
             }
         )
 
@@ -115,7 +116,7 @@ class Model(Packable[ModelConfig]):
         if len(self.populations) > 1:
             multipop_primaries = [
                 primary
-                for primary in Primary.all()
+                for primary in Primary.all_fixed()
                 if len([pop for pop in self.populations if primary in pop.primaries]) > 1
             ]
             E_grid = np.logspace(np.log10(fit_data.E_min()), np.log10(fit_data.E_max()), 100)
@@ -159,18 +160,16 @@ class Model(Packable[ModelConfig]):
         )
 
     def compute_lnA(self, E: np.ndarray) -> np.ndarray:
-        simple_primaries = self.layout_info().primaries()
+        simple_primaries = self.layout_info().primaries(only_fixed_Z=True)
         spectra = [self.compute_spectrum(E, primary=primary) for primary in simple_primaries]
         lnA = [np.log(p.A) for p in simple_primaries]
 
-        # adding unobserved components per-population as they are not additive
+        # adding FreeZ components per-population as they are not additive
         for pop in self.populations:
-            if Primary.Unobserved not in pop.layout_info().primaries:
+            if Primary.FreeZ not in pop.layout_info().primaries:
                 continue
-            spectra.append(pop.compute(E, primary=Primary.Unobserved))
-            lnA.append(
-                np.log(most_abundant_stable_izotope_A(round(pop.primary_Z(Primary.Unobserved))))
-            )
+            spectra.append(pop.compute(E, primary=Primary.FreeZ))
+            lnA.append(np.log(most_abundant_stable_izotope_A(round(pop.primary_Z(Primary.FreeZ)))))
 
         spectra_arr = np.vstack(spectra)
         lnA_arr = np.expand_dims(np.array(lnA), axis=1)
@@ -199,7 +198,7 @@ if __name__ == "__main__":
                     for _ in range(5)
                 ],
                 all_particle_lg_shift=np.random.random(),
-                unobserved_component_effective_Z=np.random.random(),
+                free_Z=np.random.random(),
             )
             for _ in range(3)
         ],

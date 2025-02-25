@@ -43,7 +43,7 @@ def initial_guess_main_population(
         Primary.Mg: -6.85,
         Primary.Si: -6.9,
         Primary.Fe: -6.9,
-        Primary.Unobserved: -8,
+        Primary.FreeZ: -8,
     }
     if initial_guess_lgI_override:
         initial_guess_lgI.update(initial_guess_lgI_override)
@@ -74,9 +74,9 @@ def initial_guess_main_population(
             if pop_config.rescale_all_particle
             else None
         ),
-        unobserved_component_effective_Z=(
+        free_Z=(
             stats.uniform.rvs(loc=14, scale=26 - 14)
-            if pop_config.has_unobserved_component
+            if pop_config.has_free_Z_component
             else None
         ),
     )

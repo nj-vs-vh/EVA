@@ -54,14 +54,14 @@ if __name__ == "__main__":
             Primary.Mg: -6.85,
             Primary.Si: -6.9,
             Primary.Fe: -6.9,
-            Primary.Unobserved: -8,
+            Primary.FreeZ: -8,
         }
         main_population = CosmicRaysModel(
             base_spectra=[
                 SharedPowerLaw(
                     lgI_per_primary={
                         primary: stats.norm.rvs(loc=initial_guess_lgI[primary], scale=0.05)
-                        for primary in Primary.all()
+                        for primary in Primary.all_fixed()
                     },
                     alpha=stats.norm.rvs(loc=2.6, scale=0.05),
                     lg_scale_contrib_to_all=stats.uniform.rvs(loc=0.01, scale=0.3),
@@ -75,7 +75,7 @@ if __name__ == "__main__":
                 for i in range(3)
             ],
             all_particle_lg_shift=None,
-            unobserved_component_effective_Z=None,
+            free_Z=None,
         )
 
         low_energy_population = CosmicRaysModel(
@@ -88,7 +88,7 @@ if __name__ == "__main__":
             ],
             breaks=[],
             all_particle_lg_shift=None,
-            unobserved_component_effective_Z=None,
+            free_Z=None,
             population_meta=PopulationMetadata(
                 name="Low energy",
                 linestyle="--",

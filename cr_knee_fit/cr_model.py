@@ -205,8 +205,8 @@ class CosmicRaysModelConfig:
             )
 
     @property
-    def has_unobserved_component(self) -> bool:
-        return Primary.Unobserved in self.primaries
+    def has_free_Z_component(self) -> bool:
+        return Primary.FreeZ in self.primaries
 
     @property
     def component_configs(self) -> list[SpectralComponentConfig]:
@@ -235,7 +235,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
     breaks: list[SpectralBreak]
 
     all_particle_lg_shift: float | None  # sum of primaries * 10^shift = all particle spectrum
-    unobserved_component_effective_Z: float | None
+    free_Z: float | None
 
     population_meta: PopulationMetadata | None = None
 
@@ -247,12 +247,9 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
                     "Ambiguous base spectra, at least one primary specified in several components"
                 )
             seen_primaries.update(s.primaries)
-        if (
-            self.unobserved_component_effective_Z is not None
-            and Primary.Unobserved not in self.primaries
-        ):
+        if self.free_Z is not None and Primary.FreeZ not in self.primaries:
             raise ValueError(
-                "Unobserved primary must be present as a primary if it's effective Z is used as a param"
+                "FreeZ primary must be present as a primary if it's effective Z is used as a param"
             )
 
     @property
@@ -290,14 +287,24 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         return flux
 
     def primary_Z(self, primary: Primary) -> float:
-        if primary is Primary.Unobserved:
-            if self.unobserved_component_effective_Z is None:
+        if primary is Primary.FreeZ:
+            if self.free_Z is None:
                 raise ValueError(
-                    f"Attempted to get unobserved primary Z but it's not included in the model"
+                    f"Attempted to get FreeZ primary but it's Z is not included in the model"
                 )
-            return self.unobserved_component_effective_Z
+            return self.free_Z
         else:
             return primary.Z
+
+    def primary_name(self, primary: Primary) -> str:
+        if primary is Primary.FreeZ:
+            if self.free_Z is None:
+                raise ValueError(
+                    f"Attempted to get FreeZ primary but it's Z is not included in the model"
+                )
+            return f"Z = {int(self.free_Z)}"
+        else:
+            return primary.name
 
     def compute(
         self,
@@ -353,12 +360,12 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             _, ax = plt.subplots()
         E_grid = np.logspace(np.log10(Emin), np.log10(Emax), 100)
         E_factor = E_grid**scale
-        for p in primaries or self.primaries:
+        for primary in primaries or self.primaries:
             ax.plot(
                 E_grid,
-                E_factor * self.compute(E_grid, p),
-                label=self.population_prefix(latex=False) + p.name,
-                color=p.color,
+                E_factor * self.compute(E_grid, primary),
+                label=self.population_prefix(latex=False) + self.primary_name(primary),
+                color=primary.color,
                 linestyle=self._linestyle,
             )
         if all_particle or self.all_particle_lg_shift:
@@ -376,7 +383,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             sum(c.ndim() for c in self.base_spectra)
             + sum(b.ndim() for b in self.breaks)
             + int(self.all_particle_lg_shift is not None)
-            + int(self.unobserved_component_effective_Z is not None)
+            + int(self.free_Z is not None)
         )
 
     def pack(self) -> np.ndarray:
@@ -385,8 +392,8 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         ]
         if self.all_particle_lg_shift is not None:
             subvectors.append(np.array([self.all_particle_lg_shift]))
-        if self.unobserved_component_effective_Z:
-            subvectors.append(np.array([self.unobserved_component_effective_Z]))
+        if self.free_Z:
+            subvectors.append(np.array([self.free_Z]))
         return np.hstack(subvectors)
 
     def labels(self, latex: bool) -> list[str]:
@@ -401,7 +408,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
                 )
         if self.all_particle_lg_shift is not None:
             labels.append("\\lg(K)" if latex else "lgK")
-        if self.unobserved_component_effective_Z is not None:
+        if self.free_Z is not None:
             labels.append("Z_\\text{Unobs. eff}" if latex else "Z_Unobs")
 
         prefix = self.population_prefix(latex)
@@ -455,17 +462,17 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         else:
             all_particle_lg_shift = None
 
-        if layout_info.has_unobserved_component:
-            unobserved_component_eff_Z = theta[offset]
+        if layout_info.has_free_Z_component:
+            free_Z = theta[offset]
             offset += 1
         else:
-            unobserved_component_eff_Z = None
+            free_Z = None
 
         return CosmicRaysModel(
             base_spectra=components,
             breaks=breaks,
             all_particle_lg_shift=all_particle_lg_shift,
-            unobserved_component_effective_Z=unobserved_component_eff_Z,
+            free_Z=free_Z,
             population_meta=layout_info.population_meta,
         )
 
@@ -483,7 +490,7 @@ if __name__ == "__main__":
                 {
                     Primary.Mg: np.random.random(),
                     Primary.Fe: np.random.random(),
-                    Primary.Unobserved: np.random.random(),
+                    Primary.FreeZ: np.random.random(),
                 },
                 np.random.random(),
             ),
@@ -494,7 +501,7 @@ if __name__ == "__main__":
             SpectralBreak(lg_break=5.0, d_alpha=-0.4, lg_sharpness=0.5),
         ],
         all_particle_lg_shift=np.random.random(),
-        unobserved_component_effective_Z=np.random.random(),
+        free_Z=np.random.random(),
         population_meta=None,
     )
     gcr.validate_packing()

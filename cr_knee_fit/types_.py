@@ -16,17 +16,21 @@ class Packable(Generic[LayoutInfo], abc.ABC):
         return self.pack().size
 
     @abc.abstractmethod
-    def pack(self) -> np.ndarray: ...
+    def pack(self) -> np.ndarray:
+        ...
 
     @abc.abstractmethod
-    def labels(self, latex: bool) -> list[str]: ...
+    def labels(self, latex: bool) -> list[str]:
+        ...
 
     @abc.abstractmethod
-    def layout_info(self) -> LayoutInfo: ...
+    def layout_info(self) -> LayoutInfo:
+        ...
 
     @classmethod
     @abc.abstractmethod
-    def unpack(cls: Type[T], theta: np.ndarray, layout_info: LayoutInfo) -> T: ...
+    def unpack(cls: Type[T], theta: np.ndarray, layout_info: LayoutInfo) -> T:
+        ...
 
     def validate_packing(self) -> None:
         packed = self.pack()
@@ -57,16 +61,18 @@ class Primary(enum.IntEnum):
     Si = 14
     Fe = 26
 
-    Unobserved = 1000
+    FreeZ = 1000
 
     @classmethod
-    def all(cls) -> "list[Primary]":
-        return sorted([p for p in Primary if p is not Primary.Unobserved])
+    def all_fixed(cls) -> "list[Primary]":
+        return sorted([p for p in Primary if p is not Primary.FreeZ])
 
     @property
     def Z(self) -> float:
-        if self is Primary.Unobserved:
-            raise ValueError("Unobserved primary Z must be introduced as a free parameter")
+        if self is Primary.FreeZ:
+            raise ValueError(
+                "Z for Primary.FreeZ must be introduced as a free parameter in the model"
+            )
         return self.value
 
     @property
@@ -75,7 +81,7 @@ class Primary(enum.IntEnum):
 
     @property
     def color(self) -> Any:
-        if self is Primary.Unobserved:
+        if self is Primary.FreeZ:
             return "gray"
         else:
             idx = sorted(Primary).index(self)

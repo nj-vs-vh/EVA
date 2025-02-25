@@ -110,7 +110,7 @@ def load_fit_data(config: FitConfig) -> FitData:
         experiments_detailed=config.experiments_detailed,
         experiments_all_particle=config.experiments_all_particle,
         experiments_lnA=config.experiments_lnA,
-        primaries=config.model.primaries(),
+        primaries=config.model.primaries(only_fixed_Z=True),
         R_bounds=(7e2, 1e8),
     )
     set_global_fit_data(fit_data)
@@ -281,7 +281,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
                 ax=ax_comp,
                 add_label=False,
             )
-    primaries = median_model.layout_info().primaries(observed_only=False)
+    primaries = median_model.layout_info().primaries(only_fixed_Z=False)
     E_comp_all = np.hstack(
         [
             s.E
@@ -356,7 +356,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
                             (pop.compute(E, primary=primary) for pop in model.populations),
                             np.zeros_like(E),
                         )
-                        for primary in Primary.all()
+                        for primary in Primary.all_fixed()
                     ),
                     np.zeros_like(E),
                 )
@@ -370,7 +370,9 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
             ax_all,
             (
                 [(p.legend_artist(), p.name) for p in primaries]
-                + [(Primary.Unobserved.legend_artist(), "Unobserved")]
+                + [(Primary.FreeZ.legend_artist(), "Free Z")]
+                if Primary.FreeZ in config.model.primaries(only_fixed_Z=False)
+                else []
                 + [
                     (exp.legend_artist(), exp.name)
                     for exp in (sorted(fit_data.all_particle_spectra.keys()))

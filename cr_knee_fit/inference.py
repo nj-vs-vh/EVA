@@ -55,8 +55,8 @@ def logprior(model: Model) -> float:
     if lgK is not None:
         if not (1 <= 10**lgK <= 2):
             return -np.inf
-    if main.unobserved_component_effective_Z is not None:
-        if not (1 <= main.unobserved_component_effective_Z <= 26.5):
+    if main.free_Z is not None:
+        if not (1 <= main.free_Z <= 26.5):
             return -np.inf
 
     # experimental energy shifts' prior
