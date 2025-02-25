@@ -1,5 +1,5 @@
 import numpy as np
-from scipy import stats
+from scipy import stats  # type: ignore
 
 from cr_knee_fit.cr_model import (
     CosmicRaysModel,
@@ -10,7 +10,7 @@ from cr_knee_fit.cr_model import (
 )
 from cr_knee_fit.model_ import Model, ModelConfig
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
-from cr_knee_fit.types_ import Primary
+from cr_knee_fit.types_ import Element
 
 
 def initial_guess_break(bc: SpectralBreakConfig, break_idx: int) -> SpectralBreak:
@@ -33,17 +33,17 @@ def initial_guess_break(bc: SpectralBreakConfig, break_idx: int) -> SpectralBrea
 
 def initial_guess_main_population(
     pop_config: CosmicRaysModelConfig,
-    initial_guess_lgI_override: dict[Primary, float] | None = None,
+    initial_guess_lgI_override: dict[Element, float] | None = None,
 ) -> CosmicRaysModel:
     initial_guess_lgI = {
-        Primary.H: -4,
-        Primary.He: -4.65,
-        Primary.C: -6.15,
-        Primary.O: -6.1,
-        Primary.Mg: -6.85,
-        Primary.Si: -6.9,
-        Primary.Fe: -6.9,
-        Primary.FreeZ: -8,
+        Element.H: -4,
+        Element.He: -4.65,
+        Element.C: -6.15,
+        Element.O: -6.1,
+        Element.Mg: -6.85,
+        Element.Si: -6.9,
+        Element.Fe: -6.9,
+        Element.FreeZ: -8,
     }
     if initial_guess_lgI_override:
         initial_guess_lgI.update(initial_guess_lgI_override)
@@ -51,12 +51,12 @@ def initial_guess_main_population(
         base_spectra=[
             (
                 SharedPowerLaw(
-                    lgI_per_primary={
-                        primary: stats.norm.rvs(loc=initial_guess_lgI[primary], scale=0.05)
-                        for primary in comp_conf.primaries
+                    lgI_per_element={
+                        element: stats.norm.rvs(loc=initial_guess_lgI[element], scale=0.05)
+                        for element in comp_conf.elements
                     },
                     alpha=stats.norm.rvs(
-                        loc=2.6 if comp_conf.primaries == [Primary.H] else 2.5,
+                        loc=2.6 if comp_conf.elements == [Element.H] else 2.5,
                         scale=0.05,
                     ),
                     lg_scale_contrib_to_all=(
@@ -75,9 +75,7 @@ def initial_guess_main_population(
             else None
         ),
         free_Z=(
-            stats.uniform.rvs(loc=14, scale=26 - 14)
-            if pop_config.has_free_Z_component
-            else None
+            stats.uniform.rvs(loc=14, scale=26 - 14) if pop_config.has_free_Z_component else None
         ),
     )
 

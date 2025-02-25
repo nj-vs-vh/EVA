@@ -18,7 +18,7 @@ import pydantic
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
-from pydantic_numpy.typing import Np2DArrayFp64
+from pydantic_numpy.typing import Np2DArrayFp64  # type: ignore
 from scipy import optimize  # type: ignore
 
 from cr_knee_fit.experiments import Experiment
@@ -30,7 +30,7 @@ from cr_knee_fit.plotting import (
     tricontourf_kwargs_transparent_colors,
 )
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
-from cr_knee_fit.types_ import Primary
+from cr_knee_fit.types_ import Element
 from cr_knee_fit.utils import E_GEV_LABEL, add_log_margin, legend_with_added_items
 
 # as recommended by emceee parallelization guide
@@ -110,7 +110,7 @@ def load_fit_data(config: FitConfig) -> FitData:
         experiments_detailed=config.experiments_detailed,
         experiments_all_particle=config.experiments_all_particle,
         experiments_lnA=config.experiments_lnA,
-        primaries=config.model.primaries(only_fixed_Z=True),
+        elements=config.model.elements(only_fixed_Z=True),
         R_bounds=(7e2, 1e8),
     )
     set_global_fit_data(fit_data)
@@ -149,6 +149,7 @@ def run_ml_analysis(
     except Exception as e:
         print(f"Error running ML analysis, ignoring: {e}")
         traceback.print_exc()
+        return None
 
 
 def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
@@ -281,7 +282,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
                 ax=ax_comp,
                 add_label=False,
             )
-    primaries = median_model.layout_info().primaries(only_fixed_Z=False)
+    elements = median_model.layout_info().elements(only_fixed_Z=False)
     E_comp_all = np.hstack(
         [
             s.E
@@ -289,22 +290,22 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
         ]
     )
     Emin, Emax = add_log_margin(E_comp_all.min(), E_comp_all.max())
-    for primary in primaries:
+    for element in elements:
         plot_posterior_contours(
             ax_comp,
             scale=scale,
             theta_sample=theta_sample,
             model_config=config.model,
-            observable=lambda model, E: model.compute_spectrum(E, primary=primary),
+            observable=lambda model, E: model.compute_spectrum(E, element=element),
             bounds=(Emin, Emax),
             tricontourf_kwargs=tricontourf_kwargs_transparent_colors(
-                color=primary.color, levels=15
+                color=element.color, levels=15
             ),
         )
     legend_with_added_items(
         ax_comp,
         (
-            [(p.legend_artist(), p.name) for p in primaries]
+            [(p.legend_artist(), p.name) for p in elements]
             + [(exp.legend_artist(), exp.name) for exp in sorted(fit_data.spectra.keys())]
         ),
         fontsize="x-small",
@@ -326,20 +327,20 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
             scale=scale,
             theta_sample=theta_sample,
             model_config=config.model,
-            observable=lambda model, E: model.compute_spectrum(E, primary=None),
+            observable=lambda model, E: model.compute_spectrum(E, element=None),
             bounds=E_bounds_all,
             tricontourf_kwargs={"levels": 15},
         )
-        for primary in primaries:
+        for element in elements:
             plot_posterior_contours(
                 ax_all,
                 scale=scale,
                 theta_sample=theta_sample,
                 model_config=config.model,
-                observable=lambda model, E: model.compute_spectrum(E, primary=primary),
+                observable=lambda model, E: model.compute_spectrum(E, element=element),
                 bounds=E_bounds_all,
                 tricontourf_kwargs=tricontourf_kwargs_transparent_colors(
-                    color=primary.color, levels=15
+                    color=element.color, levels=15
                 ),
             )
         if any(
@@ -363,9 +364,9 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
         legend_with_added_items(
             ax_all,
             (
-                [(p.legend_artist(), p.name) for p in primaries]
-                + [(Primary.FreeZ.legend_artist(), "Free Z")]
-                if Primary.FreeZ in config.model.primaries(only_fixed_Z=False)
+                [(p.legend_artist(), p.name) for p in elements]
+                + [(Element.FreeZ.legend_artist(), "Free Z")]
+                if Element.FreeZ in config.model.elements(only_fixed_Z=False)
                 else []
                 + [
                     (exp.legend_artist(), exp.name)

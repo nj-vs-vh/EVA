@@ -15,7 +15,7 @@ from cr_knee_fit.cr_model import (
 from cr_knee_fit.experiments import Experiment
 from cr_knee_fit.fit_data import FitData
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
-from cr_knee_fit.types_ import Packable, Primary, most_abundant_stable_izotope_A
+from cr_knee_fit.types_ import Element, Packable, izotope_average_A
 from cr_knee_fit.utils import legend_with_added_items
 
 
@@ -36,12 +36,12 @@ class ModelConfig:
             self.population_configs = [self.cr_model_config]
             self.cr_model_config = None
 
-    def primaries(self, only_fixed_Z: bool) -> list[Primary]:
+    def elements(self, only_fixed_Z: bool) -> list[Element]:
         return sorted(
             {
                 p
-                for p in itertools.chain.from_iterable(c.primaries for c in self.population_configs)
-                if p is not Primary.FreeZ or not only_fixed_Z
+                for p in itertools.chain.from_iterable(c.elements for c in self.population_configs)
+                if p is not Element.FreeZ or not only_fixed_Z
             }
         )
 
@@ -111,28 +111,28 @@ class Model(Packable[ModelConfig]):
                 Emax=fit_data.E_max(),
                 scale=scale,
                 axes=ax,
-                all_particle=len(fit_data.all_particle_spectra) > 0 and len(pop.primaries) > 1,
+                all_particle=len(fit_data.all_particle_spectra) > 0 and len(pop.elements) > 1,
             )
         if len(self.populations) > 1:
-            multipop_primaries = [
-                primary
-                for primary in Primary.regular()
-                if len([pop for pop in self.populations if primary in pop.primaries]) > 1
+            multipop_elements = [
+                element
+                for element in Element.regular()
+                if len([pop for pop in self.populations if element in pop.elements]) > 1
             ]
             E_grid = np.logspace(np.log10(fit_data.E_min()), np.log10(fit_data.E_max()), 100)
             E_factor = E_grid**scale
-            for primary in multipop_primaries:
+            for element in multipop_elements:
                 ax.plot(
                     E_grid,
-                    E_factor * self.compute_spectrum(E_grid, primary=primary),
-                    label="Total " + primary.name,
-                    color=primary.color,
+                    E_factor * self.compute_spectrum(E_grid, element=element),
+                    label="Total " + element.name,
+                    color=element.color,
                     linewidth=2,
                 )
             if len(fit_data.all_particle_spectra) > 0:
                 ax.plot(
                     E_grid,
-                    E_factor * self.compute_spectrum(E_grid, primary=None),
+                    E_factor * self.compute_spectrum(E_grid, element=None),
                     label="Total all particle",
                     color="black",
                     linewidth=2,
@@ -146,12 +146,12 @@ class Model(Packable[ModelConfig]):
         ax.set_ylim(*ylim)
         return fig
 
-    def compute_spectrum(self, E: np.ndarray, primary: Primary | None) -> np.ndarray:
+    def compute_spectrum(self, E: np.ndarray, element: Element | None) -> np.ndarray:
         return sum(
             (
                 (
-                    pop.compute(E, primary=primary, contrib_to_all_particle=False)
-                    if primary is not None
+                    pop.compute(E, element=element, contrib_to_all_particle=False)
+                    if element is not None
                     else pop.compute_all_particle(E)
                 )
                 for pop in self.populations
@@ -160,16 +160,16 @@ class Model(Packable[ModelConfig]):
         )
 
     def compute_lnA(self, E: np.ndarray) -> np.ndarray:
-        simple_primaries = self.layout_info().primaries(only_fixed_Z=True)
-        spectra = [self.compute_spectrum(E, primary=primary) for primary in simple_primaries]
-        lnA = [np.log(p.A) for p in simple_primaries]
+        simple_elements = self.layout_info().elements(only_fixed_Z=True)
+        spectra = [self.compute_spectrum(E, element=element) for element in simple_elements]
+        lnA = [np.log(p.A) for p in simple_elements]
 
         # adding FreeZ components per-population as they are not additive
         for pop in self.populations:
-            if Primary.FreeZ not in pop.layout_info().primaries:
+            if Element.FreeZ not in pop.layout_info().elements:
                 continue
-            spectra.append(pop.compute(E, primary=Primary.FreeZ))
-            lnA.append(np.log(most_abundant_stable_izotope_A(round(pop.primary_Z(Primary.FreeZ)))))
+            spectra.append(pop.compute(E, element=Element.FreeZ))
+            lnA.append(np.log(izotope_average_A(round(pop.element_Z(Element.FreeZ)))))
 
         spectra_arr = np.vstack(spectra)
         lnA_arr = np.expand_dims(np.array(lnA), axis=1)
@@ -182,11 +182,11 @@ if __name__ == "__main__":
             CosmicRaysModel(
                 base_spectra=[
                     SharedPowerLaw(
-                        lgI_per_primary={p: np.random.random()},
+                        lgI_per_element={p: np.random.random()},
                         alpha=np.random.random(),
                         lg_scale_contrib_to_all=0.1,
                     )
-                    for p in Primary
+                    for p in Element
                 ],
                 breaks=[
                     SpectralBreak(

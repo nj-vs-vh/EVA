@@ -1,11 +1,9 @@
 import abc
-import enum
-from typing import Annotated, Any, Generic, Type, TypeVar
+from typing import Generic, Type, TypeVar
 
-import matplotlib.pyplot as plt
 import numpy as np
-import pydantic
-from matplotlib import lines
+
+from cr_knee_fit.elements import Element, izotope_average_A
 
 T = TypeVar("T")
 LayoutInfo = TypeVar("LayoutInfo")
@@ -16,21 +14,17 @@ class Packable(Generic[LayoutInfo], abc.ABC):
         return self.pack().size
 
     @abc.abstractmethod
-    def pack(self) -> np.ndarray:
-        ...
+    def pack(self) -> np.ndarray: ...
 
     @abc.abstractmethod
-    def labels(self, latex: bool) -> list[str]:
-        ...
+    def labels(self, latex: bool) -> list[str]: ...
 
     @abc.abstractmethod
-    def layout_info(self) -> LayoutInfo:
-        ...
+    def layout_info(self) -> LayoutInfo: ...
 
     @classmethod
     @abc.abstractmethod
-    def unpack(cls: Type[T], theta: np.ndarray, layout_info: LayoutInfo) -> T:
-        ...
+    def unpack(cls: Type[T], theta: np.ndarray, layout_info: LayoutInfo) -> T: ...
 
     def validate_packing(self) -> None:
         packed = self.pack()
@@ -47,81 +41,3 @@ class Packable(Generic[LayoutInfo], abc.ABC):
 
     def print_params(self):
         print(self.format_params())
-
-
-_PRIMARY_CMAP = plt.colormaps["rainbow_r"]
-
-
-class Primary(enum.IntEnum):
-    H = 1
-    He = 2
-    C = 6
-    O = 8
-    Mg = 12
-    Si = 14
-    Fe = 26
-
-    FreeZ = -1
-
-    @classmethod
-    def special(cls) -> "list[Primary]":
-        return [Primary.FreeZ]
-
-    @classmethod
-    def regular(cls) -> "list[Primary]":
-        return sorted([p for p in Primary if p not in cls.special()])
-
-    @property
-    def Z(self) -> float:
-        if self is Primary.FreeZ:
-            raise ValueError(
-                "Z for Primary.FreeZ must be introduced as a free parameter in the model"
-            )
-        return self.value
-
-    @property
-    def A(self) -> int:
-        return most_abundant_stable_izotope_A(round(self.Z))
-
-    @property
-    def color(self) -> Any:
-        if self is Primary.FreeZ:
-            return "gray"
-        else:
-            idx = sorted(Primary.regular()).index(self)
-            return _PRIMARY_CMAP(idx / (len(Primary.regular()) - 1))
-
-    def legend_artist(self):
-        return lines.Line2D([], [], color=self.color, marker="none")
-
-
-def most_abundant_stable_izotope_A(Z: int) -> int:
-    Z_clamped = min(26, max(1, Z))
-    return {
-        1: 1,
-        2: 4,
-        3: 7,
-        4: 9,
-        5: 11,
-        6: 12,
-        7: 14,
-        8: 16,
-        9: 19,
-        10: 20,
-        11: 23,
-        12: 24,
-        13: 27,
-        14: 28,
-        15: 31,
-        16: 32,
-        17: 35,
-        18: 40,
-        19: 39,
-        20: 40,
-        21: 45,
-        22: 48,
-        23: 51,
-        24: 52,
-        25: 55,
-        26: 56,
-    }[Z_clamped]

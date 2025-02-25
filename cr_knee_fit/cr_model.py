@@ -7,22 +7,24 @@ import numpy as np
 from matplotlib.axes import Axes
 from num2tex import num2tex  # type: ignore
 
-from cr_knee_fit.types_ import Packable, Primary, most_abundant_stable_izotope_A
+from cr_knee_fit.types_ import Element, Packable, izotope_average_A
+
+# region: shared power law
 
 
 @dataclass
 class SpectralComponentConfig:
-    primaries: list[Primary]
+    elements: list[Element]
     scale_contrib_to_allpart: bool
 
 
 @dataclass
 class SharedPowerLaw(Packable[SpectralComponentConfig]):
     """
-    Power law spectrum in rigidity with a single index and per-primary normalization
+    Power law spectrum in rigidity with a single index and per-element normalization
     """
 
-    lgI_per_primary: dict[Primary, float]  # log10(I / (GV m^2 s sr)^-1) at R0
+    lgI_per_element: dict[Element, float]  # log10(I / (GV m^2 s sr)^-1) at R0
     alpha: float  # power law index
 
     lg_scale_contrib_to_all: None | float = None
@@ -30,55 +32,55 @@ class SharedPowerLaw(Packable[SpectralComponentConfig]):
     R0: ClassVar[float] = 1e3  # reference rigidity
 
     @classmethod
-    def single_primary(cls, p: Primary, lgI: float, alpha: float) -> "SharedPowerLaw":
-        return SharedPowerLaw(lgI_per_primary={p: lgI}, alpha=alpha)
+    def single_element(cls, p: Element, lgI: float, alpha: float) -> "SharedPowerLaw":
+        return SharedPowerLaw(lgI_per_element={p: lgI}, alpha=alpha)
 
-    def compute(self, R: np.ndarray, primary: Primary) -> np.ndarray:
-        lgI = self.lgI_per_primary[primary]
+    def compute(self, R: np.ndarray, element: Element) -> np.ndarray:
+        lgI = self.lgI_per_element[element]
         I = 10.0**lgI
         return I * (R / self.R0) ** -self.alpha
 
     @property
-    def primaries(self) -> list[Primary]:
-        return sorted(self.lgI_per_primary.keys())
+    def elements(self) -> list[Element]:
+        return sorted(self.lgI_per_element.keys())
 
     def pack(self) -> np.ndarray:
-        packed = [self.lgI_per_primary[p] for p in self.primaries]
+        packed = [self.lgI_per_element[p] for p in self.elements]
         packed.append(self.alpha)
         if self.lg_scale_contrib_to_all is not None:
             packed.append(self.lg_scale_contrib_to_all)
         return np.array(packed)
 
     def ndim(self) -> int:
-        return len(self.lgI_per_primary) + 1 + int(self.lg_scale_contrib_to_all is not None)
+        return len(self.lgI_per_element) + 1 + int(self.lg_scale_contrib_to_all is not None)
 
     def labels(self, latex: bool) -> list[str]:
-        ps_label = component_label(self.primaries)
+        ps_label = component_label(self.elements)
         if latex:
-            res = [f"\\lg(I)_\\text{{{p.name}}}" for p in self.primaries]
+            res = [f"\\lg(I)_\\text{{{p.name}}}" for p in self.elements]
             res.append(f"\\alpha_\\text{{{ps_label}}}")
             if self.lg_scale_contrib_to_all:
                 res.append(f"\\lg(K)_\\text{{{ps_label}}}")
             return res
         else:
-            res = [f"lgI_{{{p.name}}}" for p in self.primaries] + [f"alpha_{{{ps_label}}}"]
+            res = [f"lgI_{{{p.name}}}" for p in self.elements] + [f"alpha_{{{ps_label}}}"]
             if self.lg_scale_contrib_to_all:
                 res.append(f"lg(K)_{{{ps_label}}}")
             return res
 
     def description(self) -> str:
-        return f"$ \\text{{{component_label(self.primaries)}}} \\propto R ^{{-{self.alpha:.2f}}} $"
+        return f"$ \\text{{{component_label(self.elements)}}} \\propto R ^{{-{self.alpha:.2f}}} $"
 
     def layout_info(self) -> SpectralComponentConfig:
         return SpectralComponentConfig(
-            primaries=self.primaries,
+            elements=self.elements,
             scale_contrib_to_allpart=self.lg_scale_contrib_to_all is not None,
         )
 
     @classmethod
     def unpack(cls, theta: np.ndarray, layout_info: SpectralComponentConfig) -> "SharedPowerLaw":
-        lgI_per_primary = dict(zip(layout_info.primaries, theta))
-        offset = len(lgI_per_primary)
+        lgI_per_el = dict(zip(layout_info.elements, theta))
+        offset = len(lgI_per_el)
         alpha = theta[offset]
         if layout_info.scale_contrib_to_allpart:
             offset += 1
@@ -86,10 +88,15 @@ class SharedPowerLaw(Packable[SpectralComponentConfig]):
         else:
             lg_scale_contrib_to_all = None
         return SharedPowerLaw(
-            lgI_per_primary=lgI_per_primary,
+            lgI_per_element=lgI_per_el,
             alpha=alpha,
             lg_scale_contrib_to_all=lg_scale_contrib_to_all,
         )
+
+
+# endregion
+
+# region: breaks
 
 
 BreakQuantity = Literal[
@@ -144,7 +151,7 @@ class SpectralBreak(Packable[SpectralBreakConfig]):
             quantity=layout_info.quantity,
         )
 
-    def compute(self, R: np.ndarray, Z: int, A: int) -> np.ndarray:
+    def compute(self, R: np.ndarray, Z: int, A: float) -> np.ndarray:
         match self.quantity:
             case "E":
                 quantity = R * float(Z)
@@ -179,6 +186,9 @@ class SpectralBreak(Packable[SpectralBreakConfig]):
         return ", ".join(parts)
 
 
+# endregion
+
+
 @dataclass
 class PopulationMetadata:
     name: str
@@ -187,7 +197,7 @@ class PopulationMetadata:
 
 @dataclass
 class CosmicRaysModelConfig:
-    components: Sequence[list[Primary] | SpectralComponentConfig]
+    components: Sequence[list[Element] | SpectralComponentConfig]
     breaks: Sequence[SpectralBreakConfig]
     rescale_all_particle: bool
 
@@ -195,7 +205,7 @@ class CosmicRaysModelConfig:
     population_meta: PopulationMetadata | None = None
 
     def __post_init__(self) -> None:
-        assert len(self.primaries) == len(set(self.primaries))
+        assert len(self.elements) == len(set(self.elements))
         if self.population_name is not None:
             if self.population_meta is not None:
                 raise ValueError("population name and metadata are mutually exclusive")
@@ -206,25 +216,24 @@ class CosmicRaysModelConfig:
 
     @property
     def has_free_Z_component(self) -> bool:
-        return Primary.FreeZ in self.primaries
+        return Element.FreeZ in self.elements
 
     @property
     def component_configs(self) -> list[SpectralComponentConfig]:
         return [
             (
-                config_or_primaries
-                if isinstance(config_or_primaries, SpectralComponentConfig)
-                else SpectralComponentConfig(config_or_primaries, scale_contrib_to_allpart=False)
+                conf_or_elements
+                if isinstance(conf_or_elements, SpectralComponentConfig)
+                else SpectralComponentConfig(conf_or_elements, scale_contrib_to_allpart=False)
             )
-            for config_or_primaries in self.components
+            for conf_or_elements in self.components
         ]
 
     @property
-    def primaries(self) -> list[Primary]:
+    def elements(self) -> list[Element]:
         return sorted(
             itertools.chain.from_iterable(
-                c.primaries if isinstance(c, SpectralComponentConfig) else c
-                for c in self.components
+                c.elements if isinstance(c, SpectralComponentConfig) else c for c in self.components
             )
         )
 
@@ -234,27 +243,29 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
     base_spectra: list[SharedPowerLaw]
     breaks: list[SpectralBreak]
 
-    all_particle_lg_shift: float | None  # sum of primaries * 10^shift = all particle spectrum
+    all_particle_lg_shift: float | None  # sum of elements* 10^shift = all particle spectrum
     free_Z: float | None
+
+    unresolved_elements_spectrum: SharedPowerLaw | None = None
 
     population_meta: PopulationMetadata | None = None
 
     def __post_init__(self) -> None:
-        seen_primaries = set[Primary]()
+        seen = set[Element]()
         for s in self.base_spectra:
-            if seen_primaries.intersection(s.primaries):
+            if seen.intersection(s.elements):
                 raise ValueError(
-                    "Ambiguous base spectra, at least one primary specified in several components"
+                    "Ambiguous base spectra, at least one element specified in several components"
                 )
-            seen_primaries.update(s.primaries)
-        if self.free_Z is not None and Primary.FreeZ not in self.primaries:
+            seen.update(s.elements)
+        if self.free_Z is not None and Element.FreeZ not in self.elements:
             raise ValueError(
-                "FreeZ primary must be present as a primary if it's effective Z is used as a param"
+                "FreeZ element must be present as a element if it's effective Z is used as a param"
             )
 
     @property
-    def primaries(self) -> list[Primary]:
-        return self.layout_info().primaries
+    def elements(self) -> list[Element]:
+        return self.layout_info().elements
 
     def description(self) -> str:
         return "; ".join(
@@ -264,76 +275,74 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             )
         )
 
-    def _get_component(self, primary: Primary) -> SharedPowerLaw | None:
-        matches = [comp for comp in self.base_spectra if primary in comp.primaries]
+    def _get_component(self, element: Element) -> SharedPowerLaw | None:
+        matches = [comp for comp in self.base_spectra if element in comp.elements]
         if not matches:
             return None
         if len(matches) > 1:
-            raise RuntimeError(f"Primary {primary} matches more than one component: {matches}")
+            raise RuntimeError(f"Element {element} matches more than one component: {matches}")
         return matches[0]
 
-    def compute_rigidity(self, R: np.ndarray, primary: Primary) -> np.ndarray:
-        spectrum = self._get_component(primary)
+    def compute_rigidity(self, R: np.ndarray, element: Element) -> np.ndarray:
+        spectrum = self._get_component(element)
         if spectrum is None:
             return np.zeros_like(R)
-        flux = spectrum.compute(R, primary)
+        flux = spectrum.compute(R, element)
         for break_ in self.breaks:
-            Z = round(self.primary_Z(primary))
+            Z = round(self.element_Z(element))
             flux *= break_.compute(
                 R,
                 Z=Z,
-                A=most_abundant_stable_izotope_A(Z),
+                A=izotope_average_A(Z),
             )
         return flux
 
-    def primary_Z(self, primary: Primary) -> float:
-        if primary is Primary.FreeZ:
+    def element_Z(self, element: Element) -> float:
+        if element is Element.FreeZ:
             if self.free_Z is None:
                 raise ValueError(
-                    f"Attempted to get FreeZ primary but it's Z is not included in the model"
+                    f"Attempted to get FreeZ element but it's Z is not included in the model"
                 )
             return self.free_Z
         else:
-            return primary.Z
+            return element.Z
 
-    def primary_name(self, primary: Primary) -> str:
-        if primary is Primary.FreeZ:
+    def element_name(self, element: Element) -> str:
+        if element is Element.FreeZ:
             if self.free_Z is None:
                 raise ValueError(
-                    f"Attempted to get FreeZ primary but it's Z is not included in the model"
+                    f"Attempted to get FreeZ element but it's Z is not included in the model"
                 )
             return f"Z = {int(self.free_Z)}"
         else:
-            return primary.name
+            return element.name
 
     def compute(
         self,
         E: np.ndarray,
-        primary: Primary,
+        element: Element,
         contrib_to_all_particle: bool = False,
     ) -> np.ndarray:
-        Z = self.primary_Z(primary)
+        Z = self.element_Z(element)
         R = E / Z
-        dNdR = self.compute_rigidity(R, primary=primary)
+        dNdR = self.compute_rigidity(R, element=element)
         dNdE = dNdR / Z
         if contrib_to_all_particle:
-            component = self._get_component(primary)
+            component = self._get_component(element)
             if component is not None and component.lg_scale_contrib_to_all:
                 dNdE *= 10 ** (component.lg_scale_contrib_to_all)
         return dNdE
 
     def compute_lnA(self, E: np.ndarray) -> np.ndarray:
-        primaries = self.primaries
-        spectra = np.vstack([self.compute(E, p, contrib_to_all_particle=True) for p in primaries])
-        lnA = np.array(
-            [np.log(most_abundant_stable_izotope_A(round(self.primary_Z(p)))) for p in primaries]
-        )
+        elements = self.elements
+        spectra = np.vstack([self.compute(E, p, contrib_to_all_particle=True) for p in elements])
+        lnA = np.array([np.log(izotope_average_A(round(self.element_Z(p)))) for p in elements])
         return np.sum(spectra * np.expand_dims(lnA, axis=1), axis=0) / np.sum(spectra, axis=0)
 
     def compute_all_particle(self, E: np.ndarray) -> np.ndarray:
         flux = np.zeros_like(E)
-        for primary in self.primaries:
-            flux += self.compute(E, primary=primary, contrib_to_all_particle=True)
+        for element in self.elements:
+            flux += self.compute(E, element=element, contrib_to_all_particle=True)
         if self.all_particle_lg_shift is not None:
             flux *= 10**self.all_particle_lg_shift
         return flux
@@ -347,7 +356,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
 
     def compute_extra_all_particle_contribution(self, E: np.ndarray) -> np.ndarray:
         return self.compute_all_particle(E) - sum(
-            (self.compute(E, primary=primary) for primary in Primary.regular()),
+            (self.compute(E, element=element) for element in Element.regular()),
             np.zeros_like(E),
         )
 
@@ -358,7 +367,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         scale: float,
         axes: Axes | None = None,
         all_particle: bool = False,
-        primaries: list[Primary] | None = None,
+        elements: list[Element] | None = None,
     ) -> Axes:
         if axes is not None:
             ax = axes
@@ -367,12 +376,12 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         E_grid = np.logspace(np.log10(Emin), np.log10(Emax), 100)
         E_factor = E_grid**scale
         label_prefix = self.population_prefix(latex=False)
-        for primary in primaries or self.primaries:
+        for element in elements or self.elements:
             ax.plot(
                 E_grid,
-                E_factor * self.compute(E_grid, primary),
-                label=label_prefix + self.primary_name(primary),
-                color=primary.color,
+                E_factor * self.compute(E_grid, element),
+                label=label_prefix + self.element_name(element),
+                color=element.color,
                 linestyle=self._linestyle,
             )
         extra_all_particle_contrib = self.compute_extra_all_particle_contribution(E_grid)
@@ -460,7 +469,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
                 component
                 if isinstance(component, SpectralComponentConfig)
                 else SpectralComponentConfig(
-                    primaries=component,
+                    elements=component,
                     scale_contrib_to_allpart=False,  # backwards compatibility
                 )
             )
@@ -494,20 +503,20 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         )
 
 
-def component_label(p_or_ps: Primary | Sequence[Primary]) -> str:
-    return p_or_ps.name if isinstance(p_or_ps, Primary) else ", ".join(p.name for p in p_or_ps)
+def component_label(p_or_ps: Element | Sequence[Element]) -> str:
+    return p_or_ps.name if isinstance(p_or_ps, Element) else ", ".join(p.name for p in p_or_ps)
 
 
 if __name__ == "__main__":
     gcr = CosmicRaysModel(
         base_spectra=[
-            SharedPowerLaw.single_primary(Primary.H, np.random.random(), np.random.random()),
-            SharedPowerLaw.single_primary(Primary.He, np.random.random(), np.random.random()),
+            SharedPowerLaw.single_element(Element.H, np.random.random(), np.random.random()),
+            SharedPowerLaw.single_element(Element.He, np.random.random(), np.random.random()),
             SharedPowerLaw(
                 {
-                    Primary.Mg: np.random.random(),
-                    Primary.Fe: np.random.random(),
-                    Primary.FreeZ: np.random.random(),
+                    Element.Mg: np.random.random(),
+                    Element.Fe: np.random.random(),
+                    Element.FreeZ: np.random.random(),
                 },
                 np.random.random(),
             ),

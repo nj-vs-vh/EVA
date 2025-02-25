@@ -8,7 +8,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
 from cr_knee_fit.experiments import Experiment
-from cr_knee_fit.types_ import Primary
+from cr_knee_fit.types_ import Element
 from cr_knee_fit.utils import label_energy_flux, legend_with_added_items
 from model.utils import load_data
 
@@ -87,7 +87,7 @@ class CRSpectrumData:
     F_errhi: np.ndarray
 
     experiment: Experiment
-    primary: Primary | None | tuple[Primary, ...]
+    element: Element | None | tuple[Element, ...]
 
     energy_scale_shift: float = 1.0
 
@@ -98,12 +98,12 @@ class CRSpectrumData:
             F_errlo=self.F_errlo / f,
             F_errhi=self.F_errhi / f,
             experiment=self.experiment,
-            primary=self.primary,
+            element=self.element,
             energy_scale_shift=self.energy_scale_shift * f,
         )
 
     @classmethod
-    def load(cls, exp: Experiment, p: Primary, R_bounds: tuple[float, float]) -> "CRSpectrumData":
+    def load(cls, exp: Experiment, p: Element, R_bounds: tuple[float, float]) -> "CRSpectrumData":
         data = load_data(
             filename=f"{exp.filename_prefix}_{p.name}_energy.txt",
             slope=0,  # multiplying data by E^0 = leaving as-is
@@ -117,7 +117,7 @@ class CRSpectrumData:
             F_errlo=data[2],
             F_errhi=data[3],
             experiment=exp,
-            primary=p,
+            element=p,
         )
 
     @classmethod
@@ -137,17 +137,17 @@ class CRSpectrumData:
             F_errlo=data[2],
             F_errhi=data[3],
             experiment=exp,
-            primary=None,
+            element=None,
         )
 
     def plot_label(self) -> str:
-        if self.primary is None:
-            primary_label = "all"
-        elif isinstance(self.primary, tuple):
-            primary_label = "+".join(p.name for p in self.primary)
+        if self.element is None:
+            element_label = "all"
+        elif isinstance(self.element, tuple):
+            element_label = "+".join(p.name for p in self.element)
         else:
-            primary_label = self.primary.name
-        label = f"{self.experiment.name} {primary_label}"
+            element_label = self.element.name
+        label = f"{self.experiment.name} {element_label}"
         if not np.isclose(self.energy_scale_shift, 1.0):
             shift_percent = abs(100 * (self.energy_scale_shift - 1))
             shift_sign = "+" if self.energy_scale_shift > 1 else "-"
@@ -171,9 +171,9 @@ class CRSpectrumData:
             color=(
                 color
                 or (
-                    self.primary.color
-                    if isinstance(self.primary, Primary)
-                    else ("black" if self.primary is None else None)
+                    self.element.color
+                    if isinstance(self.element, Element)
+                    else ("black" if self.element is None else None)
                 )
             ),
             label=self.plot_label() if add_label else None,
@@ -190,7 +190,7 @@ class CRSpectrumData:
 
 @dataclass
 class FitData:
-    spectra: dict[Experiment, dict[Primary, CRSpectrumData]]
+    spectra: dict[Experiment, dict[Element, CRSpectrumData]]
     all_particle_spectra: dict[Experiment, CRSpectrumData]
     R_bounds: tuple[float, float]
 
@@ -207,8 +207,8 @@ class FitData:
         return sorted(all)
 
     def all_spectra(self) -> Iterable[CRSpectrumData]:
-        for primary_spectra in self.spectra.values():
-            yield from primary_spectra.values()
+        for element_spectra in self.spectra.values():
+            yield from element_spectra.values()
         yield from self.all_particle_spectra.values()
 
     def E_min(self) -> float:
@@ -223,11 +223,11 @@ class FitData:
         experiments_detailed: list[Experiment],
         experiments_all_particle: list[Experiment],
         experiments_lnA: list[Experiment],
-        primaries: list[Primary],
+        elements: list[Element],
         R_bounds: tuple[float, float],
     ) -> "FitData":
         return FitData(
-            spectra={exp: load_spectra(exp, primaries, R_bounds) for exp in experiments_detailed},
+            spectra={exp: load_spectra(exp, elements, R_bounds) for exp in experiments_detailed},
             all_particle_spectra={
                 exp: CRSpectrumData.load_all_particle(exp) for exp in experiments_all_particle
             },
@@ -252,7 +252,7 @@ class FitData:
             fig, ax = plt.subplots(figsize=(10, 8))
             axes = [ax]
 
-        print_("Data by primary:")
+        print_("Data by element:")
         for exp, ps in self.spectra.items():
             print_(exp.name)
             for p, s in ps.items():
@@ -286,11 +286,11 @@ class FitData:
 
 def load_spectra(
     experiment: Experiment,
-    primaries: list[Primary],
+    elements: list[Element],
     R_bounds: tuple[float, float],
-) -> dict[Primary, "CRSpectrumData"]:
-    res = dict[Primary, CRSpectrumData]()
-    for p in primaries:
+) -> dict[Element, "CRSpectrumData"]:
+    res = dict[Element, CRSpectrumData]()
+    for p in elements:
         try:
             res[p] = CRSpectrumData.load(experiment, p, R_bounds)
         except Exception:

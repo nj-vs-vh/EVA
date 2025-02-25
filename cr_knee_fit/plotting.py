@@ -109,7 +109,7 @@ def plot_posterior_contours(
     if tricontourf_kwargs:
         kwargs.update(tricontourf_kwargs)
     tri = matplotlib.tri.Triangulation(x_pts, y_pts, triangles=triangles)
-    return ax.tricontourf(tri, z_pts, **kwargs)
+    return ax.tricontourf(tri, z_pts, **kwargs)  # type: ignore
 
 
 def tricontourf_kwargs_transparent_colors(

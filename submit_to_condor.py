@@ -14,7 +14,7 @@ from cr_knee_fit.cr_model import (
 )
 from cr_knee_fit.guesses import initial_guess_one_population_model
 from cr_knee_fit.model_ import ModelConfig
-from cr_knee_fit.types_ import Primary
+from cr_knee_fit.types_ import Element
 
 
 def submit_job(config: FitConfig) -> None:
@@ -72,15 +72,15 @@ if __name__ == "__main__":
         model_config = ModelConfig(
             cr_model_config=CosmicRaysModelConfig(
                 components=[
-                    [Primary.H],
-                    [Primary.He],
+                    [Element.H],
+                    [Element.He],
                     SpectralComponentConfig(
-                        primaries=[
-                            Primary.C,
-                            Primary.O,
-                            Primary.Mg,
-                            Primary.Si,
-                            Primary.Fe,
+                        elements=[
+                            Element.C,
+                            Element.O,
+                            Element.Mg,
+                            Element.Si,
+                            Element.Fe,
                         ],
                         scale_contrib_to_allpart=True,
                     ),

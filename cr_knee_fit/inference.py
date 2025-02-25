@@ -97,19 +97,19 @@ def loglikelihood(
 ) -> float:
     model = to_model(model_or_theta, config)
     res = 0.0
-    for exp, data_by_primary in fit_data.spectra.items():
-        for primary, p_data in data_by_primary.items():
-            p_data = p_data.with_shifted_energy_scale(f=model.energy_shifts.f(exp))
+    for exp, data_by_element in fit_data.spectra.items():
+        for element, el_data in data_by_element.items():
+            el_data = el_data.with_shifted_energy_scale(f=model.energy_shifts.f(exp))
             res += chi_squared_loglikelihood(
-                prediction=model.compute_spectrum(p_data.E, primary=primary),
-                y=p_data.F,
-                errhi=p_data.F_errhi,
-                errlo=p_data.F_errlo,
+                prediction=model.compute_spectrum(el_data.E, element=element),
+                y=el_data.F,
+                errhi=el_data.F_errhi,
+                errlo=el_data.F_errlo,
             )
     for exp, all_data in fit_data.all_particle_spectra.items():
         all_data = all_data.with_shifted_energy_scale(f=model.energy_shifts.f(exp))
         res += chi_squared_loglikelihood(
-            prediction=model.compute_spectrum(all_data.E, primary=None),
+            prediction=model.compute_spectrum(all_data.E, element=None),
             y=all_data.F,
             errhi=all_data.F_errhi,
             errlo=all_data.F_errlo,
