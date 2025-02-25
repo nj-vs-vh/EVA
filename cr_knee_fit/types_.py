@@ -64,7 +64,7 @@ class Primary(enum.IntEnum):
     FreeZ = 1000
 
     @classmethod
-    def all_fixed(cls) -> "list[Primary]":
+    def regular(cls) -> "list[Primary]":
         return sorted([p for p in Primary if p is not Primary.FreeZ])
 
     @property

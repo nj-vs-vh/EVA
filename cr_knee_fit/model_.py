@@ -116,7 +116,7 @@ class Model(Packable[ModelConfig]):
         if len(self.populations) > 1:
             multipop_primaries = [
                 primary
-                for primary in Primary.all_fixed()
+                for primary in Primary.regular()
                 if len([pop for pop in self.populations if primary in pop.primaries]) > 1
             ]
             E_grid = np.logspace(np.log10(fit_data.E_min()), np.log10(fit_data.E_max()), 100)

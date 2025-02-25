@@ -330,7 +330,6 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
             bounds=E_bounds_all,
             tricontourf_kwargs={"levels": 15},
         )
-        ylim = ax_all.get_ylim()
         for primary in primaries:
             plot_posterior_contours(
                 ax_all,
@@ -343,29 +342,33 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
                     color=primary.color, levels=15
                 ),
             )
-        plot_posterior_contours(
-            ax_all,
-            scale=scale,
-            theta_sample=theta_sample,
-            model_config=config.model,
-            observable=lambda model, E: (
-                model.compute_spectrum(E, primary=None)
-                - sum(
-                    (
-                        sum(
-                            (pop.compute(E, primary=primary) for pop in model.populations),
-                            np.zeros_like(E),
-                        )
-                        for primary in Primary.all_fixed()
-                    ),
-                    np.zeros_like(E),
-                )
-            ),
-            bounds=E_bounds_all,
-            tricontourf_kwargs=tricontourf_kwargs_transparent_colors(color="gray", levels=15),
-        )
+        if any(
+            pop_conf.rescale_all_particle
+            or any(comp.scale_contrib_to_allpart for comp in pop_conf.component_configs)
+            for pop_conf in config.model.population_configs
+        ):
+            plot_posterior_contours(
+                ax_all,
+                scale=scale,
+                theta_sample=theta_sample,
+                model_config=config.model,
+                observable=lambda model, E: (
+                    model.compute_spectrum(E, primary=None)
+                    - sum(
+                        (
+                            sum(
+                                (pop.compute(E, primary=primary) for pop in model.populations),
+                                np.zeros_like(E),
+                            )
+                            for primary in Primary.regular()
+                        ),
+                        np.zeros_like(E),
+                    )
+                ),
+                bounds=E_bounds_all,
+                tricontourf_kwargs=tricontourf_kwargs_transparent_colors(color="gray", levels=15),
+            )
 
-        # ax_all.set_ylim(*ylim)
         legend_with_added_items(
             ax_all,
             (
