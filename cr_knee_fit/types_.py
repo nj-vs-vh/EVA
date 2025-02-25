@@ -61,11 +61,15 @@ class Primary(enum.IntEnum):
     Si = 14
     Fe = 26
 
-    FreeZ = 1000
+    FreeZ = -1
+
+    @classmethod
+    def special(cls) -> "list[Primary]":
+        return [Primary.FreeZ]
 
     @classmethod
     def regular(cls) -> "list[Primary]":
-        return sorted([p for p in Primary if p is not Primary.FreeZ])
+        return sorted([p for p in Primary if p not in cls.special()])
 
     @property
     def Z(self) -> float:
@@ -84,8 +88,8 @@ class Primary(enum.IntEnum):
         if self is Primary.FreeZ:
             return "gray"
         else:
-            idx = sorted(Primary).index(self)
-            return _PRIMARY_CMAP(idx / (len(Primary) - 2))
+            idx = sorted(Primary.regular()).index(self)
+            return _PRIMARY_CMAP(idx / (len(Primary.regular()) - 1))
 
     def legend_artist(self):
         return lines.Line2D([], [], color=self.color, marker="none")

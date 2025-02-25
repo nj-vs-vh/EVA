@@ -352,18 +352,9 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
                 scale=scale,
                 theta_sample=theta_sample,
                 model_config=config.model,
-                observable=lambda model, E: (
-                    model.compute_spectrum(E, primary=None)
-                    - sum(
-                        (
-                            sum(
-                                (pop.compute(E, primary=primary) for pop in model.populations),
-                                np.zeros_like(E),
-                            )
-                            for primary in Primary.regular()
-                        ),
-                        np.zeros_like(E),
-                    )
+                observable=lambda model, E: sum(
+                    (pop.compute_extra_all_particle_contribution(E) for pop in model.populations),
+                    np.zeros_like(E),
                 ),
                 bounds=E_bounds_all,
                 tricontourf_kwargs=tricontourf_kwargs_transparent_colors(color="gray", levels=15),

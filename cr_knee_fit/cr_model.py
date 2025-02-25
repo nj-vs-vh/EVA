@@ -345,6 +345,12 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         else:
             return self.population_meta.linestyle
 
+    def compute_extra_all_particle_contribution(self, E: np.ndarray) -> np.ndarray:
+        return self.compute_all_particle(E) - sum(
+            (self.compute(E, primary=primary) for primary in Primary.regular()),
+            np.zeros_like(E),
+        )
+
     def plot(
         self,
         Emin: float,
@@ -360,19 +366,30 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             _, ax = plt.subplots()
         E_grid = np.logspace(np.log10(Emin), np.log10(Emax), 100)
         E_factor = E_grid**scale
+        label_prefix = self.population_prefix(latex=False)
         for primary in primaries or self.primaries:
             ax.plot(
                 E_grid,
                 E_factor * self.compute(E_grid, primary),
-                label=self.population_prefix(latex=False) + self.primary_name(primary),
+                label=label_prefix + self.primary_name(primary),
                 color=primary.color,
                 linestyle=self._linestyle,
             )
-        if all_particle or self.all_particle_lg_shift:
+        extra_all_particle_contrib = self.compute_extra_all_particle_contribution(E_grid)
+        has_extra_allparticle_contrib = np.any(extra_all_particle_contrib > 0)
+        if has_extra_allparticle_contrib:
+            ax.plot(
+                E_grid,
+                E_factor * extra_all_particle_contrib,
+                label=label_prefix + "Extra contribution to all-particle",
+                color="gray",
+                linestyle=self._linestyle,
+            )
+        if all_particle or has_extra_allparticle_contrib:
             ax.plot(
                 E_grid,
                 E_factor * self.compute_all_particle(E_grid),
-                label=self.population_prefix(latex=False) + "All particle",
+                label=label_prefix + "All particle",
                 color="black",
                 linestyle=self._linestyle,
             )
