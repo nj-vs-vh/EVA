@@ -95,7 +95,11 @@ low_energy_CR_spectra = {
 }
 resolved_elements = [el.name for el in Element.regular()]
 unresolved_element_names = [
-    el for el in crdb.ELEMENTS if el in low_energy_CR_spectra and el not in resolved_elements
+    el
+    for el in crdb.ELEMENTS
+    if el in low_energy_CR_spectra
+    and el not in resolved_elements
+    # and element_name_to_Z_A[el][0] < 27
 ]
 
 _total = sum(low_energy_CR_spectra[el][0] for el in unresolved_element_names)

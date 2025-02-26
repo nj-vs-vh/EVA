@@ -13,7 +13,7 @@ from cr_knee_fit.elements import (
     isotope_average_A,
     unresolved_element_names,
     unresolved_element_normalized_abundances_at_1TV,
-    low_energy_CR_spectra
+    low_energy_CR_spectra,
 )
 from cr_knee_fit.types_ import Packable
 
@@ -291,7 +291,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
     all_particle_lg_shift: float | None  # sum of elements* 10^shift = all particle spectrum
     free_Z: float | None
 
-    unresolved_elements_spectrum: UnresolvedElementsSpectrum | None = None
+    unresolved_elements_spectrum: UnresolvedElementsSpectrum | None
 
     population_meta: PopulationMetadata | None = None
 

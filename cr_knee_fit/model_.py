@@ -206,6 +206,7 @@ if __name__ == "__main__":
                 ],
                 all_particle_lg_shift=np.random.random(),
                 free_Z=np.random.random(),
+                unresolved_elements_spectrum=None,
             )
             for _ in range(3)
         ],

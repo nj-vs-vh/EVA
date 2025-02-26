@@ -7,6 +7,7 @@ from cr_knee_fit.cr_model import (
     SharedPowerLawSpectrum,
     SpectralBreak,
     SpectralBreakConfig,
+    UnresolvedElementsSpectrum,
 )
 from cr_knee_fit.model_ import Model, ModelConfig
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
@@ -76,6 +77,11 @@ def initial_guess_main_population(
         ),
         free_Z=(
             stats.uniform.rvs(loc=14, scale=26 - 14) if pop_config.has_free_Z_component else None
+        ),
+        unresolved_elements_spectrum=(
+            UnresolvedElementsSpectrum(lgI=stats.norm.rvs(loc=-6.45, scale=0.3))
+            if pop_config.add_unresolved_elements
+            else None
         ),
     )
 

@@ -76,6 +76,7 @@ if __name__ == "__main__":
             ],
             all_particle_lg_shift=None,
             free_Z=None,
+            unresolved_elements_spectrum=None,
         )
 
         low_energy_population = CosmicRaysModel(
@@ -89,6 +90,7 @@ if __name__ == "__main__":
             breaks=[],
             all_particle_lg_shift=None,
             free_Z=None,
+            unresolved_elements_spectrum=None,
             population_meta=PopulationMetadata(
                 name="Low energy",
                 linestyle="--",
