@@ -11,7 +11,7 @@ from cr_knee_fit.cr_model import (
     CosmicRaysModel,
     CosmicRaysModelConfig,
     PopulationMetadata,
-    SharedPowerLaw,
+    SharedPowerLawSpectrum,
     SpectralBreakConfig,
     SpectralComponentConfig,
 )
@@ -58,7 +58,7 @@ if __name__ == "__main__":
         }
         main_population = CosmicRaysModel(
             base_spectra=[
-                SharedPowerLaw(
+                SharedPowerLawSpectrum(
                     lgI_per_element={
                         element: stats.norm.rvs(loc=initial_guess_lgI[element], scale=0.05)
                         for element in Element.regular()
@@ -80,7 +80,7 @@ if __name__ == "__main__":
 
         low_energy_population = CosmicRaysModel(
             base_spectra=[
-                SharedPowerLaw.single_element(
+                SharedPowerLawSpectrum.single_element(
                     Element.H,
                     lgI=stats.norm.rvs(loc=-4.5, scale=0.05),
                     alpha=stats.norm.rvs(loc=3, scale=0.1),

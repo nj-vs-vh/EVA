@@ -4,7 +4,7 @@ from scipy import stats  # type: ignore
 from cr_knee_fit.cr_model import (
     CosmicRaysModel,
     CosmicRaysModelConfig,
-    SharedPowerLaw,
+    SharedPowerLawSpectrum,
     SpectralBreak,
     SpectralBreakConfig,
 )
@@ -50,7 +50,7 @@ def initial_guess_main_population(
     return CosmicRaysModel(
         base_spectra=[
             (
-                SharedPowerLaw(
+                SharedPowerLawSpectrum(
                     lgI_per_element={
                         element: stats.norm.rvs(loc=initial_guess_lgI[element], scale=0.05)
                         for element in comp_conf.elements

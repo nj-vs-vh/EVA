@@ -9,13 +9,13 @@ from matplotlib.figure import Figure
 from cr_knee_fit.cr_model import (
     CosmicRaysModel,
     CosmicRaysModelConfig,
-    SharedPowerLaw,
+    SharedPowerLawSpectrum,
     SpectralBreak,
 )
 from cr_knee_fit.experiments import Experiment
 from cr_knee_fit.fit_data import FitData
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
-from cr_knee_fit.types_ import Element, Packable, izotope_average_A
+from cr_knee_fit.types_ import Element, Packable, isotope_average_A
 from cr_knee_fit.utils import legend_with_added_items
 
 
@@ -40,7 +40,9 @@ class ModelConfig:
         return sorted(
             {
                 p
-                for p in itertools.chain.from_iterable(c.elements for c in self.population_configs)
+                for p in itertools.chain.from_iterable(
+                    c.resolved_elements for c in self.population_configs
+                )
                 if p is not Element.FreeZ or not only_fixed_Z
             }
         )
@@ -111,13 +113,13 @@ class Model(Packable[ModelConfig]):
                 Emax=fit_data.E_max(),
                 scale=scale,
                 axes=ax,
-                all_particle=len(fit_data.all_particle_spectra) > 0 and len(pop.elements) > 1,
+                all_particle=len(fit_data.all_particle_spectra) > 0 and len(pop.all_elements) > 1,
             )
         if len(self.populations) > 1:
             multipop_elements = [
                 element
                 for element in Element.regular()
-                if len([pop for pop in self.populations if element in pop.elements]) > 1
+                if len([pop for pop in self.populations if element in pop.all_elements]) > 1
             ]
             E_grid = np.logspace(np.log10(fit_data.E_min()), np.log10(fit_data.E_max()), 100)
             E_factor = E_grid**scale
@@ -166,14 +168,19 @@ class Model(Packable[ModelConfig]):
 
         # adding FreeZ components per-population as they are not additive
         for pop in self.populations:
-            if Element.FreeZ not in pop.layout_info().elements:
+            if Element.FreeZ not in pop.layout_info().resolved_elements:
                 continue
             spectra.append(pop.compute(E, element=Element.FreeZ))
-            lnA.append(np.log(izotope_average_A(round(pop.element_Z(Element.FreeZ)))))
+            lnA.append(np.log(isotope_average_A(round(pop.element_Z(Element.FreeZ)))))
 
         spectra_arr = np.vstack(spectra)
         lnA_arr = np.expand_dims(np.array(lnA), axis=1)
         return np.sum(spectra_arr * lnA_arr, axis=0) / np.sum(spectra_arr, axis=0)
+
+    def compute_abundances(self, R: float) -> dict[Element | str, float]:
+        pop_abundances = [pop.compute_abundances(R) for pop in self.populations]
+        all_elements = list(set(itertools.chain.from_iterable(ab.keys() for ab in pop_abundances)))
+        return {el: sum(ab.get(el, 0.0) for ab in pop_abundances) for el in all_elements}
 
 
 if __name__ == "__main__":
@@ -181,7 +188,7 @@ if __name__ == "__main__":
         populations=[
             CosmicRaysModel(
                 base_spectra=[
-                    SharedPowerLaw(
+                    SharedPowerLawSpectrum(
                         lgI_per_element={p: np.random.random()},
                         alpha=np.random.random(),
                         lg_scale_contrib_to_all=0.1,
