@@ -28,6 +28,10 @@ class Element(enum.IntEnum):
     def regular(cls) -> "list[Element]":
         return sorted([p for p in Element if p not in cls.special()])
 
+    @classmethod
+    def nuclei(cls) -> "list[Element]":
+        return [e for e in Element.regular() if e not in {Element.H, Element.He}]
+
     @property
     def Z(self) -> float:
         if self is Element.FreeZ:
@@ -97,8 +101,7 @@ resolved_elements = [el.name for el in Element.regular()]
 unresolved_element_names = [
     el
     for el in crdb.ELEMENTS
-    if el in low_energy_CR_spectra
-    and el not in resolved_elements
+    if el in low_energy_CR_spectra and el not in resolved_elements
     # and element_name_to_Z_A[el][0] < 27
 ]
 

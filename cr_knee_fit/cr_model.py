@@ -11,9 +11,9 @@ from cr_knee_fit.elements import (
     Element,
     element_name_to_Z_A,
     isotope_average_A,
+    low_energy_CR_spectra,
     unresolved_element_names,
     unresolved_element_normalized_abundances_at_1TV,
-    low_energy_CR_spectra,
 )
 from cr_knee_fit.types_ import Packable
 

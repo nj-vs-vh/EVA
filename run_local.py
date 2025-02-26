@@ -46,64 +46,26 @@ if __name__ == "__main__":
     experiments_lnA = [experiments.lhaaso_epos]
 
     def generate_guess() -> Model:
-        initial_guess_lgI = {
-            Element.H: -4,
-            Element.He: -4.65,
-            Element.C: -6.15,
-            Element.O: -6.1,
-            Element.Mg: -6.85,
-            Element.Si: -6.9,
-            Element.Fe: -6.9,
-            Element.FreeZ: -8,
-        }
-        main_population = CosmicRaysModel(
-            base_spectra=[
-                SharedPowerLawSpectrum(
-                    lgI_per_element={
-                        element: stats.norm.rvs(loc=initial_guess_lgI[element], scale=0.05)
-                        for element in Element.regular()
-                    },
-                    alpha=stats.norm.rvs(loc=2.6, scale=0.05),
-                    lg_scale_contrib_to_all=stats.uniform.rvs(loc=0.01, scale=0.3),
-                )
-            ],
-            breaks=[
-                initial_guess_break(
-                    SpectralBreakConfig(fixed_lg_sharpness=None, quantity="R"),
-                    break_idx=i,
-                )
-                for i in range(3)
-            ],
-            all_particle_lg_shift=None,
-            free_Z=None,
-            unresolved_elements_spectrum=None,
-        )
-
-        low_energy_population = CosmicRaysModel(
-            base_spectra=[
-                SharedPowerLawSpectrum.single_element(
-                    Element.H,
-                    lgI=stats.norm.rvs(loc=-4.5, scale=0.05),
-                    alpha=stats.norm.rvs(loc=3, scale=0.1),
-                )
-            ],
-            breaks=[],
-            all_particle_lg_shift=None,
-            free_Z=None,
-            unresolved_elements_spectrum=None,
-            population_meta=PopulationMetadata(
-                name="Low energy",
-                linestyle="--",
-            ),
-        )
-        return Model(
-            populations=[main_population, low_energy_population],
-            energy_shifts=ExperimentEnergyScaleShifts(
-                lg_shifts={
-                    exp: stats.norm.rvs(loc=0, scale=0.01)
-                    for exp in set(experiments_detailed + experiments_all_particle)
-                }
-            ),
+        return initial_guess_one_population_model(
+            config=ModelConfig(
+                population_configs=[
+                    CosmicRaysModelConfig(
+                        components=[[Element.H], [Element.He], Element.nuclei()],
+                        breaks=[
+                            SpectralBreakConfig(fixed_lg_sharpness=None, quantity="R"),
+                            SpectralBreakConfig(fixed_lg_sharpness=None, quantity="R"),
+                            SpectralBreakConfig(fixed_lg_sharpness=None, quantity="R"),
+                        ],
+                        rescale_all_particle=False,
+                        add_unresolved_elements=True,
+                    )
+                ],
+                shifted_experiments=[
+                    e
+                    for e in set(experiments_detailed + experiments_all_particle)
+                    if e != experiments.ams02
+                ],
+            )
         )
 
     generate_guess().validate_packing()
