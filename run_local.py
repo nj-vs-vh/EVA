@@ -39,10 +39,10 @@ def run_local(config: FitConfig) -> None:
 
 
 if __name__ == "__main__":
-    analysis_name = "additional-population-and-dsa-1"
+    analysis_name = "unresolved-elements-try-1"
 
     experiments_detailed = experiments.direct_experiments + [experiments.grapes]
-    experiments_all_particle = [experiments.dampe, experiments.hawc, experiments.lhaaso_epos]
+    experiments_all_particle = [experiments.hawc, experiments.lhaaso_epos]
     experiments_lnA = [experiments.lhaaso_epos]
 
     def generate_guess() -> Model:
@@ -61,9 +61,9 @@ if __name__ == "__main__":
                     )
                 ],
                 shifted_experiments=[
-                    e
-                    for e in set(experiments_detailed + experiments_all_particle)
-                    if e != experiments.ams02
+                    exp
+                    for exp in set(experiments_detailed + experiments_all_particle)
+                    if exp != experiments.ams02
                 ],
             )
         )
@@ -76,8 +76,8 @@ if __name__ == "__main__":
         experiments_all_particle=experiments_all_particle,
         experiments_lnA=experiments_lnA,
         mcmc=McmcConfig(
-            n_steps=300_000,
-            n_walkers=128,
+            n_steps=400_000,
+            n_walkers=64,
             processes=8,
             reuse_saved=True,
         ),

@@ -30,7 +30,7 @@ from cr_knee_fit.plotting import (
     tricontourf_kwargs_transparent_colors,
 )
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
-from cr_knee_fit.types_ import Element
+from cr_knee_fit.elements import Element, unresolved_element_names
 from cr_knee_fit.utils import E_GEV_LABEL, add_log_margin, legend_with_added_items
 
 # as recommended by emceee parallelization guide
@@ -360,6 +360,28 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
                 bounds=E_bounds_all,
                 tricontourf_kwargs=tricontourf_kwargs_transparent_colors(color="gray", levels=15),
             )
+        if any(pop_conf.add_unresolved_elements for pop_conf in config.model.population_configs):
+            plot_posterior_contours(
+                ax_all,
+                scale=scale,
+                theta_sample=theta_sample,
+                model_config=config.model,
+                observable=lambda model, E: sum(
+                    (
+                        sum(
+                            (
+                                pop.compute(E, element=element)
+                                for element in unresolved_element_names
+                            ),
+                            np.zeros_like(E),
+                        )
+                        for pop in model.populations
+                    ),
+                    np.zeros_like(E),
+                ),
+                bounds=E_bounds_all,
+                tricontourf_kwargs=tricontourf_kwargs_transparent_colors(color="magenta", levels=15),
+            )
 
         legend_with_added_items(
             ax_all,
@@ -423,6 +445,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
     posterior_best = model_sample[best_fit_idx]
     # TODO: transform fit data to include energy shifts!!!
     posterior_best.plot(fit_data, scale=scale).savefig(outdir / "best-fitting-posterior-point.png")
+    posterior_best.plot_abundances().savefig(outdir / "abundances.png")
 
     print_delim()
     print("Running ML analysis from the best-fitting posterior point")

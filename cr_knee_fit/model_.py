@@ -1,4 +1,5 @@
 import itertools
+from cr_knee_fit.elements import low_energy_CR_spectra, Z_to_element_name, unresolved_element_names
 import warnings
 from dataclasses import dataclass, field
 
@@ -181,6 +182,53 @@ class Model(Packable[ModelConfig]):
         pop_abundances = [pop.compute_abundances(R) for pop in self.populations]
         all_elements = list(set(itertools.chain.from_iterable(ab.keys() for ab in pop_abundances)))
         return {el: sum(ab.get(el, 0.0) for ab in pop_abundances) for el in all_elements}
+
+    def plot_abundances(self) -> Figure:
+        fitted_abundances = {
+            el.name if isinstance(el, Element) else el: ab
+            for el, ab in self.compute_abundances(R=1e3).items()
+        }
+
+        Z_grid = np.arange(1, 29, step=1, dtype=int)
+        pre = []
+        post = []
+        for Z in Z_grid:
+            element_name = Z_to_element_name[Z]
+            pre.append(low_energy_CR_spectra[element_name][0])
+            post.append(fitted_abundances[element_name])
+        pre = np.array(pre)
+        post = np.array(post)
+
+        fig, ax = plt.subplots()
+        ax.plot(
+            Z_grid,
+            pre,
+            label="Extrapolated from GeV range",
+            zorder=-10,
+        )
+        is_unresolved_mask = np.array(
+            [Z_to_element_name[Z] in unresolved_element_names for Z in Z_grid]
+        )
+        ax.scatter(
+            Z_grid[~is_unresolved_mask],
+            post[~is_unresolved_mask],
+            marker="o",
+            label="From TeV - PeV element data",
+            color="tab:orange",
+        )
+        ax.scatter(
+            Z_grid[is_unresolved_mask],
+            post[is_unresolved_mask],
+            marker="x",
+            label="From all-particle (relative abundances fixed)",
+            color="tab:orange",
+        )
+        ax.set_xlabel("Z")
+        ax.set_ylabel("Abundance")
+        ax.set_yscale("log")
+        ax.grid(True, "major", "y")
+        ax.legend()
+        return fig
 
 
 if __name__ == "__main__":
