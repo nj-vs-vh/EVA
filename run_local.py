@@ -39,25 +39,32 @@ def run_local(config: FitConfig) -> None:
 
 
 if __name__ == "__main__":
-    analysis_name = "unresolved-elements-try-1"
+    analysis_name = "scale-only-nuclei"
 
     experiments_detailed = experiments.direct_experiments + [experiments.grapes]
     experiments_all_particle = [experiments.hawc, experiments.lhaaso_epos]
-    experiments_lnA = [experiments.lhaaso_epos]
+    experiments_lnA = []
 
     def generate_guess() -> Model:
         return initial_guess_one_population_model(
             config=ModelConfig(
                 population_configs=[
                     CosmicRaysModelConfig(
-                        components=[[Element.H], [Element.He], Element.nuclei()],
+                        components=[
+                            [Element.H],
+                            [Element.He],
+                            SpectralComponentConfig(
+                                Element.nuclei(),
+                                scale_contrib_to_allpart=True,
+                            ),
+                        ],
                         breaks=[
                             SpectralBreakConfig(fixed_lg_sharpness=None, quantity="R"),
                             SpectralBreakConfig(fixed_lg_sharpness=None, quantity="R"),
                             SpectralBreakConfig(fixed_lg_sharpness=None, quantity="R"),
                         ],
                         rescale_all_particle=False,
-                        add_unresolved_elements=True,
+                        add_unresolved_elements=False,
                     )
                 ],
                 shifted_experiments=[
@@ -76,8 +83,8 @@ if __name__ == "__main__":
         experiments_all_particle=experiments_all_particle,
         experiments_lnA=experiments_lnA,
         mcmc=McmcConfig(
-            n_steps=400_000,
-            n_walkers=64,
+            n_steps=100_000,
+            n_walkers=96,
             processes=8,
             reuse_saved=True,
         ),

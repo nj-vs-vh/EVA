@@ -1,5 +1,4 @@
 import itertools
-from cr_knee_fit.elements import low_energy_CR_spectra, Z_to_element_name, unresolved_element_names
 import warnings
 from dataclasses import dataclass, field
 
@@ -12,6 +11,11 @@ from cr_knee_fit.cr_model import (
     CosmicRaysModelConfig,
     SharedPowerLawSpectrum,
     SpectralBreak,
+)
+from cr_knee_fit.elements import (
+    Z_to_element_name,
+    low_energy_CR_spectra,
+    unresolved_element_names,
 )
 from cr_knee_fit.experiments import Experiment
 from cr_knee_fit.fit_data import FitData
@@ -36,6 +40,12 @@ class ModelConfig:
                 )
             self.population_configs = [self.cr_model_config]
             self.cr_model_config = None
+        deduplicated_shifted_experiments: list[Experiment] = []
+        for e in self.shifted_experiments:
+            if e in deduplicated_shifted_experiments:
+                continue
+            deduplicated_shifted_experiments.append(e)
+        self.shifted_experiments = deduplicated_shifted_experiments
 
     def elements(self, only_fixed_Z: bool) -> list[Element]:
         return sorted(
@@ -195,7 +205,7 @@ class Model(Packable[ModelConfig]):
         for Z in Z_grid:
             element_name = Z_to_element_name[Z]
             pre.append(low_energy_CR_spectra[element_name][0])
-            post.append(fitted_abundances[element_name])
+            post.append(fitted_abundances.get(element_name, np.nan))
         pre = np.array(pre)
         post = np.array(post)
 

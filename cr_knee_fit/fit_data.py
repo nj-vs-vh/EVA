@@ -246,7 +246,7 @@ class FitData:
     def plot(self, scale: float, describe: bool = False) -> Figure:
         print_ = print if describe else lambda _: None
         if self.lnA:
-            fig, axes = plt.subplots(ncols=2, figsize=(12, 5))
+            fig, axes = plt.subplots(ncols=2, figsize=(20, 8))
             axes = cast(Sequence[Axes], axes)
         else:
             fig, ax = plt.subplots(figsize=(10, 8))
@@ -261,7 +261,7 @@ class FitData:
         print_("All particle data:")
         for exp, s in self.all_particle_spectra.items():
             print_(f"    {exp.name}: {s.E.size} points from {s.E.min():.1e} to {s.E.max():.1e} GeV")
-            s.plot(scale=scale, ax=axes[0])
+            s.plot(scale=scale, ax=axes[0], add_label=False)
         print_("lnA data:")
         for exp, lnA_data in self.lnA.items():
             print_(
@@ -277,7 +277,7 @@ class FitData:
             [(exp.legend_artist(), exp.name) for exp in sorted(self.spectra.keys())],
             fontsize="x-small",
         )
-        if len(axes) > 2:
+        if len(axes) > 1:
             label_energy_flux(axes[1], scale=0)
             axes[1].set_ylabel("$ \\langle \\ln A \\rangle $")
             axes[1].legend(fontsize="xx-small")

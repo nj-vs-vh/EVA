@@ -5,7 +5,6 @@ import datetime
 import itertools
 import multiprocessing
 import os
-import random
 import sys
 import traceback
 from pathlib import Path
@@ -21,16 +20,17 @@ from matplotlib.figure import Figure
 from pydantic_numpy.typing import Np2DArrayFp64  # type: ignore
 from scipy import optimize  # type: ignore
 
+from cr_knee_fit.elements import Element, unresolved_element_names
 from cr_knee_fit.experiments import Experiment
 from cr_knee_fit.fit_data import FitData
 from cr_knee_fit.inference import loglikelihood, logposterior, set_global_fit_data
 from cr_knee_fit.model_ import Model, ModelConfig
 from cr_knee_fit.plotting import (
+    Observable,
     plot_posterior_contours,
     tricontourf_kwargs_transparent_colors,
 )
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
-from cr_knee_fit.elements import Element, unresolved_element_names
 from cr_knee_fit.utils import E_GEV_LABEL, add_log_margin, legend_with_added_items
 
 # as recommended by emceee parallelization guide
@@ -252,6 +252,12 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
     print("Median model:")
     median_model.print_params()
 
+    model_sample = [Model.unpack(theta, layout_info=config.model) for theta in theta_sample]
+    loglike_values = [loglikelihood(model, fit_data, config=config.model) for model in model_sample]
+    best_fit_idx = np.argmax(loglike_values)
+    print(f"Best-fitting model idx: {best_fit_idx}; loglike = {loglike_values[best_fit_idx]}")
+    posterior_best_model = model_sample[best_fit_idx]
+
     print_delim()
     print("Plotting corner plot of the posterior")
     sample_to_plot = theta_sample
@@ -290,6 +296,8 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
         ]
     )
     Emin, Emax = add_log_margin(E_comp_all.min(), E_comp_all.max())
+    E_grid = np.geomspace(Emin, Emax, 100)
+    E_factor = E_grid**scale
     for element in elements:
         plot_posterior_contours(
             ax_comp,
@@ -302,6 +310,11 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
                 color=element.color, levels=15
             ),
         )
+        ax_comp.plot(
+            E_grid,
+            E_factor * posterior_best_model.compute_spectrum(E_grid, element=element),
+            color=element.color,
+        )
     legend_with_added_items(
         ax_comp,
         (
@@ -313,8 +326,10 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
 
     if fit_data.all_particle_spectra:
         ax_all.set_title("All particle")
-        E_all_all = np.hstack([s.E for s in fit_data.all_particle_spectra.values()])
-        E_bounds_all = add_log_margin(E_all_all.min(), E_all_all.max())
+        E_allpart_everything = np.hstack([s.E for s in fit_data.all_particle_spectra.values()])
+        E_bounds_all = add_log_margin(E_allpart_everything.min(), E_allpart_everything.max())
+        E_grid_all = np.geomspace(*E_bounds_all, 100)
+        E_factor_all = E_grid_all**scale
         for exp, spectrum in fit_data.all_particle_spectra.items():
             spectrum.with_shifted_energy_scale(f=median_model.energy_shifts.f(exp)).plot(
                 scale=scale,
@@ -331,6 +346,11 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
             bounds=E_bounds_all,
             tricontourf_kwargs={"levels": 15},
         )
+        ax_all.plot(
+            E_grid_all,
+            E_factor_all * posterior_best_model.compute_spectrum(E_grid_all, element=None),
+            color="black",
+        )
         for element in elements:
             plot_posterior_contours(
                 ax_all,
@@ -343,22 +363,33 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
                     color=element.color, levels=15
                 ),
             )
+            ax_all.plot(
+                E_grid_all,
+                E_factor_all * posterior_best_model.compute_spectrum(E_grid_all, element=element),
+                color=element.color,
+            )
         if any(
             pop_conf.rescale_all_particle
             or any(comp.scale_contrib_to_allpart for comp in pop_conf.component_configs)
             for pop_conf in config.model.population_configs
         ):
+            extra_allpart_contrib_obs: Observable = lambda model, E: sum(
+                (pop.compute_extra_all_particle_contribution(E) for pop in model.populations),
+                np.zeros_like(E),
+            )
             plot_posterior_contours(
                 ax_all,
                 scale=scale,
                 theta_sample=theta_sample,
                 model_config=config.model,
-                observable=lambda model, E: sum(
-                    (pop.compute_extra_all_particle_contribution(E) for pop in model.populations),
-                    np.zeros_like(E),
-                ),
+                observable=extra_allpart_contrib_obs,
                 bounds=E_bounds_all,
                 tricontourf_kwargs=tricontourf_kwargs_transparent_colors(color="gray", levels=15),
+            )
+            ax_all.plot(
+                E_grid_all,
+                E_factor_all * extra_allpart_contrib_obs(posterior_best_model, E_grid_all),
+                color="gray",
             )
         if any(pop_conf.add_unresolved_elements for pop_conf in config.model.population_configs):
             plot_posterior_contours(
@@ -380,7 +411,9 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
                     np.zeros_like(E),
                 ),
                 bounds=E_bounds_all,
-                tricontourf_kwargs=tricontourf_kwargs_transparent_colors(color="magenta", levels=15),
+                tricontourf_kwargs=tricontourf_kwargs_transparent_colors(
+                    color="magenta", levels=15
+                ),
             )
 
         legend_with_added_items(
@@ -416,6 +449,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
             model_config=config.model,
             observable=lambda model, E: model.compute_lnA(E),
             bounds=add_log_margin(E_lnA_all.min(), E_lnA_all.max()),
+            tricontourf_kwargs=tricontourf_kwargs_transparent_colors(color="gray"),
         )
         legend_with_added_items(
             ax_lnA,
@@ -438,14 +472,12 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
 
     print_delim()
     print("Plotting best-fitting model from the posterior sample")
-    model_sample = [Model.unpack(theta, layout_info=config.model) for theta in theta_sample]
-    loglike_values = [loglikelihood(model, fit_data, config=config.model) for model in model_sample]
-    best_fit_idx = np.argmax(loglike_values)
-    print(f"Best-fitting model idx: {best_fit_idx}; loglike = {loglike_values[best_fit_idx]}")
-    posterior_best = model_sample[best_fit_idx]
+
     # TODO: transform fit data to include energy shifts!!!
-    posterior_best.plot(fit_data, scale=scale).savefig(outdir / "best-fitting-posterior-point.png")
-    posterior_best.plot_abundances().savefig(outdir / "abundances.png")
+    posterior_best_model.plot(fit_data, scale=scale).savefig(
+        outdir / "best-fitting-posterior-point.png"
+    )
+    posterior_best_model.plot_abundances().savefig(outdir / "abundances.png")
 
     print_delim()
     print("Running ML analysis from the best-fitting posterior point")
@@ -453,7 +485,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
         config=config,
         fit_data=fit_data,
         freeze_shifts=True,
-        initial_model=posterior_best,
+        initial_model=posterior_best_model,
     )
     if posterior_ml_best is not None:
         posterior_ml_best.print_params()

@@ -26,7 +26,13 @@ class Experiment:
         return hash(self.name)
 
     def legend_artist(self):
-        return lines.Line2D([], [], color="black", marker=self.marker, linestyle="none")
+        return lines.Line2D(
+            [],  # type: ignore
+            [],  # type: ignore
+            color="black",
+            marker=self.marker,
+            linestyle="none",
+        )
 
     @property
     def filename_prefix(self) -> str:
