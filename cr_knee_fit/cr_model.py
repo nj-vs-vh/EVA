@@ -241,7 +241,8 @@ class PopulationMetadata:
 class CosmicRaysModelConfig:
     components: Sequence[list[Element] | SpectralComponentConfig]
     breaks: Sequence[SpectralBreakConfig]
-    rescale_all_particle: bool
+
+    rescale_all_particle: bool = False
     add_unresolved_elements: bool = False
 
     population_name: str | None = None

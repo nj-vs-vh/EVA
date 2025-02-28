@@ -1,6 +1,7 @@
 import numpy as np
 from scipy import stats  # type: ignore
 
+from cr_knee_fit import experiments
 from cr_knee_fit.cr_model import SpectralBreak
 from cr_knee_fit.fit_data import FitData
 from cr_knee_fit.model_ import Model, ModelConfig
@@ -22,6 +23,43 @@ def break_prior(
         if not (0.1 < s < 20):
             return -np.inf
     return res
+
+
+def lg_from_percent(percent: float) -> float:
+    return np.log10(1 + percent / 100)
+
+
+energy_scale_lg_uncertainties = {
+    # 10.1103/PhysRevLett.113.121101
+    # > This comparison limits the uncertainty of the absolute energy scale to 2% in the range covered by
+    #   the beam test results, 10–290 GeV. It increases to 5% at 0.5 GeV and to 3% at 500 GeV.
+    experiments.ams02: lg_from_percent(3),
+    # 10.1103/PhysRevLett.119.181101
+    # > It is found that the average ratio of the expected to measured cutoff position in the electron flux
+    #   is 1.035 +/- 0.009 (stat). As a result, a correction of the energy scale by 3.5% was implemented in
+    #   the analysis.
+    experiments.calet: lg_from_percent(0.9),
+    # 10.22323/1.301.0197
+    # > we provide an estimation on absolute energy scale of DAMPE 1.25% higher than expected at about 13GeV
+    #   energy with uncertainty about ±1.75%(stat)±1.34%(sys)
+    # combining 1.75 and 1.34 in lg quadratures, we get 2.2
+    experiments.dampe: lg_from_percent(2.2),
+    # no direct statement found on energy scale uncertainty found, but arXiV:2004.10371 lists energy resolution
+    # at a level of 6.4% at 150 GeV, so we take the same value for energy scale uncertainty
+    experiments.cream: lg_from_percent(6.4),
+    experiments.iss_cream: lg_from_percent(6.4),
+    # arXiv:1710.00890
+    # no direct statement on energy scale uncertainty, but 10% is used as a plausible shift
+    experiments.hawc: lg_from_percent(10),
+    # 10.1016/j.nima.2004.11.025
+    # no energy scale data found, but energy resolution is said to be ~10%
+    experiments.grapes: lg_from_percent(10),
+    # 10.1103/PhysRevD.104.062007 and 10.1051/epjconf/202328302002
+    # > The uncertainty of 30% is statistics dominant in the measurement of the shift.
+    experiments.lhaaso_epos: lg_from_percent(30),
+    experiments.lhaaso_qgsjet: lg_from_percent(30),
+    experiments.lhaaso_sibyll: lg_from_percent(30),
+}
 
 
 def logprior(model: Model) -> float:
@@ -60,10 +98,8 @@ def logprior(model: Model) -> float:
             return -np.inf
 
     # experimental energy shifts' prior
-    # TODO: realistic priors from experiments' energy scale systematic uncertainties
-    for _, lg_shift in model.energy_shifts.lg_shifts.items():
-        resolution_percent = 10
-        lg_sigma = np.abs(np.log10(1 + resolution_percent / 100))
+    for exp, lg_shift in model.energy_shifts.lg_shifts.items():
+        lg_sigma = energy_scale_lg_uncertainties.get(exp, lg_from_percent(10))
         res += stats.norm.logpdf(lg_shift, loc=0, scale=lg_sigma)
 
     return res  # type: ignore

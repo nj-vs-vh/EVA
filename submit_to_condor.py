@@ -58,64 +58,53 @@ def submit_job(config: FitConfig) -> None:
 
 
 if __name__ == "__main__":
-    for with_lhaaso in (True, False):
-        analysis_name = f"scale-only-nuclei-try-{with_lhaaso=}"
+    analysis_name = "basic-model-full-scale-nuclei"
 
-        experiments_detailed = experiments.direct_experiments + [experiments.grapes]
-        experiments_all_particle = [experiments.dampe, experiments.hawc]
-        experiments_lnA = []
-        if with_lhaaso:
-            experiments_all_particle.append(experiments.lhaaso_epos)
+    experiments_detailed = experiments.direct_experiments + [experiments.grapes]
+    experiments_all_particle = [experiments.hawc, experiments.lhaaso_epos]
+    experiments_lnA = []
 
-            experiments_lnA.append(experiments.lhaaso_epos)
-
-        model_config = ModelConfig(
-            cr_model_config=CosmicRaysModelConfig(
-                components=[
-                    [Element.H],
-                    [Element.He],
-                    SpectralComponentConfig(
-                        elements=[
-                            Element.C,
-                            Element.O,
-                            Element.Mg,
-                            Element.Si,
-                            Element.Fe,
-                        ],
-                        scale_contrib_to_allpart=True,
-                    ),
-                ],
-                breaks=[
-                    SpectralBreakConfig(fixed_lg_sharpness=None, quantity="R"),
-                    SpectralBreakConfig(fixed_lg_sharpness=None, quantity="R"),
-                ]
-                + (
-                    [
-                        SpectralBreakConfig(fixed_lg_sharpness=None, quantity="R"),
-                    ]
-                    if with_lhaaso
-                    else []
+    model_config = ModelConfig(
+        cr_model_config=CosmicRaysModelConfig(
+            components=[
+                [Element.H],
+                [Element.He],
+                SpectralComponentConfig(
+                    elements=[
+                        Element.C,
+                        Element.O,
+                        Element.Mg,
+                        Element.Si,
+                        Element.Fe,
+                    ],
+                    scale_contrib_to_allpart=True,
                 ),
-                rescale_all_particle=False,
-            ),
-            shifted_experiments=[
-                e
-                for e in itertools.chain(experiments_detailed, experiments_all_particle)
-                if e != experiments.ams02
             ],
-        )
+            breaks=[
+                SpectralBreakConfig(fixed_lg_sharpness=None, quantity="R"),
+                SpectralBreakConfig(fixed_lg_sharpness=None, quantity="R"),
+                SpectralBreakConfig(fixed_lg_sharpness=None, quantity="R"),
+            ],
+        ),
+        shifted_experiments=[
+            e
+            for e in itertools.chain(experiments_detailed, experiments_all_particle)
+            if e != experiments.ams02
+        ],
+    )
 
-        config = FitConfig.from_guessing_func(
-            name=analysis_name,
-            experiments_detailed=experiments_detailed,
-            experiments_all_particle=experiments_all_particle,
-            experiments_lnA=experiments_lnA,
-            mcmc=McmcConfig(
-                n_steps=50_000,
-                n_walkers=64,
-                processes=8,
-                reuse_saved=True,
-            ),
-            generate_guess=lambda: initial_guess_one_population_model(model_config),
-        )
-        submit_job(config)
+    config = FitConfig.from_guessing_func(
+        name=analysis_name,
+        experiments_detailed=experiments_detailed,
+        experiments_all_particle=experiments_all_particle,
+        experiments_lnA=experiments_lnA,
+        mcmc=McmcConfig(
+            n_steps=500_000,
+            n_walkers=128,
+            processes=8,
+            reuse_saved=True,
+        ),
+        generate_guess=lambda: initial_guess_one_population_model(model_config),
+        n_guesses=50,
+    )
+    submit_job(config)

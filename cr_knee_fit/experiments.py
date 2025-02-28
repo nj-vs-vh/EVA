@@ -48,7 +48,7 @@ iss_cream = Experiment("ISS-CREAM")
 direct_experiments = [ams02, calet, dampe, cream, iss_cream]
 
 hawc = Experiment("HAWC", filename_stem="HAWC_QGSJET-II-04")
-grapes = Experiment("GRAPES")
+grapes = Experiment("GRAPES-3", filename_stem="GRAPES")
 tale = Experiment("TALE (QGS)", filename_stem="TALE_QGSJET-II-04")
 gamma = Experiment("GAMMA (SIBYLL)", filename_stem="GAMMA_SIBYLL")
 lhaaso_epos = Experiment("LHAASO (EPOS)", filename_stem="LHAASO_EPOS-LHC")
