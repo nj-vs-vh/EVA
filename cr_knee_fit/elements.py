@@ -1,8 +1,6 @@
 import enum
 from typing import Any
 
-import crdb  # type: ignore
-import crdb.experimental  # type: ignore
 import matplotlib.pyplot as plt
 from matplotlib import lines
 
@@ -56,8 +54,68 @@ class Element(enum.IntEnum):
         return lines.Line2D([], [], color=self.color, marker="none")
 
 
-Z_to_element_name = {Z: name for name, Z in crdb.ELEMENTS.items()}
-element_name_to_Z_A = crdb.experimental.energy_conversion_numbers()
+element_names = [
+    "H",
+    "He",
+    "Li",
+    "Be",
+    "B",
+    "C",
+    "N",
+    "O",
+    "F",
+    "Ne",
+    "Na",
+    "Mg",
+    "Al",
+    "Si",
+    "P",
+    "S",
+    "Cl",
+    "Ar",
+    "K",
+    "Ca",
+    "Sc",
+    "Ti",
+    "V",
+    "Cr",
+    "Mn",
+    "Fe",
+    "Co",
+    "Ni",
+    "Cu",
+]
+Z_to_element_name = {idx + 1: name for idx, name in enumerate(element_names)}
+element_name_to_Z_A = {
+    "H": (1, 1.000019399047775),
+    "He": (2, 3.999834043764567),
+    "Li": (3, 6.9241031188029565),
+    "Be": (4, 9.0),
+    "B": (5, 10.801789838337182),
+    "C": (6, 12.011077178638928),
+    "N": (7, 14.003662808317134),
+    "O": (8, 16.004372580664562),
+    "F": (9, 19.0),
+    "Ne": (10, 20.13894018679578),
+    "Na": (11, 23.0),
+    "Mg": (12, 24.320196078431373),
+    "Al": (13, 27.0),
+    "Si": (14, 28.10857),
+    "P": (15, 31.0),
+    "S": (16, 32.092486276766486),
+    "Cl": (17, 35.48462860416269),
+    "Ar": (18, 36.30858536585366),
+    "K": (19, 39.13473464157374),
+    "Ca": (20, 40.11566174225073),
+    "Sc": (21, 45.0),
+    "Ti": (22, 47.918662262592896),
+    "V": (23, 50.997503467406375),
+    "Cr": (24, 52.055365474339034),
+    "Mn": (25, 55.0),
+    "Fe": (26, 55.909928400954655),
+    "Co": (27, 59.0),
+    "Ni": (28, 58.75944096909848),
+}
 
 
 def isotope_average_A(Z: int) -> float:
@@ -100,7 +158,7 @@ low_energy_CR_spectra = {
 resolved_elements = [el.name for el in Element.regular()]
 unresolved_element_names = [
     el
-    for el in crdb.ELEMENTS
+    for el in element_names
     if el in low_energy_CR_spectra and el not in resolved_elements
     # and element_name_to_Z_A[el][0] < 27
 ]
