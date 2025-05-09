@@ -56,9 +56,10 @@ energy_scale_lg_uncertainties = {
     experiments.grapes: lg_from_percent(10),
     # 10.1103/PhysRevD.104.062007 and 10.1051/epjconf/202328302002
     # > The uncertainty of 30% is statistics dominant in the measurement of the shift.
-    experiments.lhaaso_epos: lg_from_percent(30),
-    experiments.lhaaso_qgsjet: lg_from_percent(30),
-    experiments.lhaaso_sibyll: lg_from_percent(30),
+    # however, we tentatively set the uncertainty to ~10 to roughly match other inidirect experiments
+    experiments.lhaaso_epos: lg_from_percent(10),
+    experiments.lhaaso_qgsjet: lg_from_percent(10),
+    experiments.lhaaso_sibyll: lg_from_percent(10),
 }
 
 
