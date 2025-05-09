@@ -3,8 +3,6 @@ from typing import Generic, Type, TypeVar
 
 import numpy as np
 
-from cr_knee_fit.elements import Element, isotope_average_A
-
 T = TypeVar("T")
 LayoutInfo = TypeVar("LayoutInfo")
 

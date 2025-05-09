@@ -13,14 +13,16 @@ from cr_knee_fit.cr_model import (
     SpectralBreak,
 )
 from cr_knee_fit.elements import (
+    Element,
     Z_to_element_name,
+    isotope_average_A,
     low_energy_CR_spectra,
     unresolved_element_names,
 )
 from cr_knee_fit.experiments import Experiment
 from cr_knee_fit.fit_data import FitData
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
-from cr_knee_fit.types_ import Element, Packable, isotope_average_A
+from cr_knee_fit.types_ import Packable
 from cr_knee_fit.utils import legend_with_added_items
 
 
@@ -200,14 +202,14 @@ class Model(Packable[ModelConfig]):
         }
 
         Z_grid = np.arange(1, 29, step=1, dtype=int)
-        pre = []
-        post = []
+        pre_list: list[float] = []
+        post_list: list[float] = []
         for Z in Z_grid:
             element_name = Z_to_element_name[Z]
-            pre.append(low_energy_CR_spectra[element_name][0])
-            post.append(fitted_abundances.get(element_name, np.nan))
-        pre = np.array(pre)
-        post = np.array(post)
+            pre_list.append(low_energy_CR_spectra[element_name][0])
+            post_list.append(fitted_abundances.get(element_name, np.nan))
+        pre = np.array(pre_list)
+        post = np.array(post_list)
 
         fig, ax = plt.subplots()
         ax.plot(

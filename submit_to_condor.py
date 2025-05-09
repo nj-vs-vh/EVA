@@ -12,9 +12,9 @@ from cr_knee_fit.cr_model import (
     SpectralBreakConfig,
     SpectralComponentConfig,
 )
+from cr_knee_fit.elements import Element
 from cr_knee_fit.guesses import initial_guess_one_population_model
 from cr_knee_fit.model_ import ModelConfig
-from cr_knee_fit.types_ import Element
 
 
 def submit_job(config: FitConfig) -> None:
@@ -60,9 +60,14 @@ def submit_job(config: FitConfig) -> None:
 if __name__ == "__main__":
     analysis_name = "basic-model-full-scale-nuclei"
 
-    experiments_detailed = experiments.direct_experiments + [experiments.grapes]
-    experiments_all_particle = [experiments.hawc, experiments.lhaaso_epos]
-    experiments_lnA = []
+    experiments_detailed: list[experiments.Experiment] = experiments.direct_experiments + [
+        experiments.grapes
+    ]
+    experiments_all_particle: list[experiments.Experiment] = [
+        experiments.hawc,
+        experiments.lhaaso_epos,
+    ]
+    experiments_lnA: list[experiments.Experiment] = []
 
     model_config = ModelConfig(
         cr_model_config=CosmicRaysModelConfig(

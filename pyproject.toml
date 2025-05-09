@@ -1,15 +1,12 @@
-[tool.black]
+[tool.ruff]
 line-length = 100
-extend-exclude = '''
-(
-    ^/(model|data)/.*
-)
-'''
+indent-width = 4
+target-version = "py312"
+extend-exclude = [".devenv", "venv", "model", "data"]
 
-
-[tool.isort]
-profile = 'black'
-extend_skip = ["model", "data", ".devenv"]
+[tool.ruff.lint]
+extend-select = ["I"]  # check and fix imports
+ignore = ["E741"]
 
 
 [tool.mypy]

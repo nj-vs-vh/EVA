@@ -70,9 +70,9 @@ class FitConfig(pydantic.BaseModel):
         n_guesses: int = 100,
     ) -> "FitConfig":
         guesses = [generate_guess() for _ in range(n_guesses)]
-        assert (
-            len({g.ndim() for g in guesses}) == 1
-        ), "guess generation function generates different-dimensional models"
+        assert len({g.ndim() for g in guesses}) == 1, (
+            "guess generation function generates different-dimensional models"
+        )
 
         return FitConfig(
             name=name,
@@ -373,7 +373,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
             or any(comp.scale_contrib_to_allpart for comp in pop_conf.component_configs)
             for pop_conf in config.model.population_configs
         ):
-            extra_allpart_contrib_obs: Observable = lambda model, E: sum(
+            extra_allpart_contrib_obs: Observable = lambda model, E: sum(  # noqa: E731
                 (pop.compute_extra_all_particle_contribution(E) for pop in model.populations),
                 np.zeros_like(E),
             )

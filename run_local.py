@@ -1,24 +1,17 @@
 import contextlib
-import itertools
 import sys
 from pathlib import Path
-
-from scipy import stats  # type: ignore
 
 from bayesian_analysis import FitConfig, McmcConfig, run_bayesian_analysis
 from cr_knee_fit import experiments
 from cr_knee_fit.cr_model import (
-    CosmicRaysModel,
     CosmicRaysModelConfig,
-    PopulationMetadata,
-    SharedPowerLawSpectrum,
     SpectralBreakConfig,
     SpectralComponentConfig,
 )
-from cr_knee_fit.guesses import initial_guess_break, initial_guess_one_population_model
+from cr_knee_fit.elements import Element
+from cr_knee_fit.guesses import initial_guess_one_population_model
 from cr_knee_fit.model_ import Model, ModelConfig
-from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
-from cr_knee_fit.types_ import Element
 
 
 def run_local(config: FitConfig) -> None:
@@ -39,11 +32,13 @@ def run_local(config: FitConfig) -> None:
 
 
 if __name__ == "__main__":
-    analysis_name = "scale-only-nuclei"
+    analysis_name = "vanilla-plus-lhaaso-rescale-all"
 
-    experiments_detailed = experiments.direct_experiments + [experiments.grapes]
-    experiments_all_particle = [experiments.hawc, experiments.lhaaso_epos]
-    experiments_lnA = []
+    experiments_detailed: list[experiments.Experiment] = experiments.direct_experiments + [
+        experiments.grapes
+    ]
+    experiments_all_particle: list[experiments.Experiment] = [experiments.lhaaso_sibyll]
+    experiments_lnA: list[experiments.Experiment] = []
 
     def generate_guess() -> Model:
         return initial_guess_one_population_model(
@@ -51,27 +46,23 @@ if __name__ == "__main__":
                 population_configs=[
                     CosmicRaysModelConfig(
                         components=[
-                            [Element.H],
-                            [Element.He],
+                            SpectralComponentConfig([Element.H]),
+                            SpectralComponentConfig([Element.He]),
                             SpectralComponentConfig(
                                 Element.nuclei(),
-                                scale_contrib_to_allpart=True,
+                                scale_contrib_to_allpart=False,
                             ),
                         ],
                         breaks=[
-                            SpectralBreakConfig(fixed_lg_sharpness=None, quantity="R"),
-                            SpectralBreakConfig(fixed_lg_sharpness=None, quantity="R"),
+                            SpectralBreakConfig(fixed_lg_sharpness=0.7, quantity="R"),
+                            SpectralBreakConfig(fixed_lg_sharpness=0.7, quantity="R"),
                             SpectralBreakConfig(fixed_lg_sharpness=None, quantity="R"),
                         ],
-                        rescale_all_particle=False,
+                        rescale_all_particle=True,
                         add_unresolved_elements=False,
                     )
                 ],
-                shifted_experiments=[
-                    exp
-                    for exp in set(experiments_detailed + experiments_all_particle)
-                    if exp != experiments.ams02
-                ],
+                shifted_experiments=experiments_detailed + experiments_all_particle,
             )
         )
 
@@ -83,8 +74,8 @@ if __name__ == "__main__":
         experiments_all_particle=experiments_all_particle,
         experiments_lnA=experiments_lnA,
         mcmc=McmcConfig(
-            n_steps=100_000,
-            n_walkers=96,
+            n_steps=200_000,
+            n_walkers=128,
             processes=8,
             reuse_saved=True,
         ),

@@ -9,9 +9,9 @@ from cr_knee_fit.cr_model import (
     SpectralBreakConfig,
     UnresolvedElementsSpectrum,
 )
+from cr_knee_fit.elements import Element
 from cr_knee_fit.model_ import Model, ModelConfig
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
-from cr_knee_fit.types_ import Element
 
 
 def initial_guess_break(bc: SpectralBreakConfig, break_idx: int) -> SpectralBreak:

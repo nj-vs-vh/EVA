@@ -1,6 +1,6 @@
 import itertools
 from dataclasses import dataclass
-from typing import ClassVar, Literal, Sequence
+from typing import Literal, Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -23,7 +23,7 @@ from cr_knee_fit.types_ import Packable
 @dataclass
 class SpectralComponentConfig:
     elements: list[Element]
-    scale_contrib_to_allpart: bool
+    scale_contrib_to_allpart: bool = False
 
 
 R0 = 1e3  # GV; reference rigidity
@@ -249,9 +249,9 @@ class CosmicRaysModelConfig:
     population_meta: PopulationMetadata | None = None
 
     def __post_init__(self) -> None:
-        assert len(self.resolved_elements) == len(
-            set(self.resolved_elements)
-        ), "Duplicate elements in components!"
+        assert len(self.resolved_elements) == len(set(self.resolved_elements)), (
+            "Duplicate elements in components!"
+        )
         if self.population_name is not None:
             if self.population_meta is not None:
                 raise ValueError("population name and metadata are mutually exclusive")
@@ -270,7 +270,7 @@ class CosmicRaysModelConfig:
             (
                 conf_or_elements
                 if isinstance(conf_or_elements, SpectralComponentConfig)
-                else SpectralComponentConfig(conf_or_elements, scale_contrib_to_allpart=False)
+                else SpectralComponentConfig(conf_or_elements)
             )
             for conf_or_elements in self.components
         ]
@@ -357,7 +357,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         if element is Element.FreeZ:
             if self.free_Z is None:
                 raise ValueError(
-                    f"Attempted to get FreeZ element but it's Z is not included in the model"
+                    "Attempted to get FreeZ element but it's Z is not included in the model"
                 )
             return self.free_Z
         elif isinstance(element, str):
@@ -369,7 +369,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         if element is Element.FreeZ:
             if self.free_Z is None:
                 raise ValueError(
-                    f"Attempted to get FreeZ element but it's Z is not included in the model"
+                    "Attempted to get FreeZ element but it's Z is not included in the model"
                 )
             return f"Z = {int(self.free_Z)}"
         elif isinstance(element, str):

@@ -7,8 +7,8 @@ import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
+from cr_knee_fit.elements import Element
 from cr_knee_fit.experiments import Experiment
-from cr_knee_fit.types_ import Element
 from cr_knee_fit.utils import label_energy_flux, legend_with_added_items
 from model.utils import load_data
 
