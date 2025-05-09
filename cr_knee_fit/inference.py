@@ -3,7 +3,7 @@ from scipy import stats  # type: ignore
 
 from cr_knee_fit import experiments
 from cr_knee_fit.cr_model import SpectralBreak
-from cr_knee_fit.fit_data import FitData
+from cr_knee_fit.fit_data import Data
 from cr_knee_fit.model_ import Model, ModelConfig
 
 
@@ -129,12 +129,12 @@ def chi_squared_loglikelihood(
 
 def loglikelihood(
     model_or_theta: Model | np.ndarray,
-    fit_data: FitData,
+    fit_data: Data,
     config: ModelConfig,
 ) -> float:
     model = to_model(model_or_theta, config)
     res = 0.0
-    for exp, data_by_element in fit_data.spectra.items():
+    for exp, data_by_element in fit_data.element_spectra.items():
         for element, el_data in data_by_element.items():
             el_data = el_data.with_shifted_energy_scale(f=model.energy_shifts.f(exp))
             res += chi_squared_loglikelihood(
@@ -168,16 +168,16 @@ def loglikelihood(
 
 # to optimize logposterior evaluation in a multiprocessing setup
 # see https://emcee.readthedocs.io/en/stable/tutorials/parallel/#pickling-data-transfer-arguments
-fit_data_global: FitData | None = None
+fit_data_global: Data | None = None
 
 
-def set_global_fit_data(fit_data: FitData):
+def set_global_fit_data(fit_data: Data):
     global fit_data_global
     fit_data_global = fit_data
 
 
 def logposterior(
-    model_or_theta: Model | np.ndarray, fit_data: FitData | None, config: ModelConfig
+    model_or_theta: Model | np.ndarray, fit_data: Data | None, config: ModelConfig
 ) -> float:
     model = to_model(model_or_theta, config)
     logpi = logprior(model)

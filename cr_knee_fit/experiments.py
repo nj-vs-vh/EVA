@@ -25,13 +25,14 @@ class Experiment:
     def __hash__(self):
         return hash(self.name)
 
-    def legend_artist(self):
+    def legend_artist(self, is_fitted: bool = True):
         return lines.Line2D(
             [],  # type: ignore
             [],  # type: ignore
             color="black",
             marker=self.marker,
             linestyle="none",
+            alpha=1.0 if is_fitted else 0.3,
         )
 
     @property
@@ -52,5 +53,5 @@ grapes = Experiment("GRAPES-3", filename_stem="GRAPES")
 tale = Experiment("TALE (QGS)", filename_stem="TALE_QGSJET-II-04")
 gamma = Experiment("GAMMA (SIBYLL)", filename_stem="GAMMA_SIBYLL")
 lhaaso_epos = Experiment("LHAASO (EPOS)", filename_stem="LHAASO_EPOS-LHC")
-lhaaso_sibyll = Experiment("LHAASO (QGSJET-II-04)", filename_stem="LHAASO_QGSJET-II-04")
-lhaaso_qgsjet = Experiment("LHAASO (SIBYLL)", filename_stem="LHAASO_SIBYLL-23")
+lhaaso_sibyll = Experiment("LHAASO (SIBYLL)", filename_stem="LHAASO_SIBYLL-23")
+lhaaso_qgsjet = Experiment("LHAASO (QGSJET-II-04)", filename_stem="LHAASO_QGSJET-II-04")

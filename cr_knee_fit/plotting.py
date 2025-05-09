@@ -22,6 +22,8 @@ def plot_credible_band(
     color: str,
     add_median: bool = False,
     label: str | None = None,
+    cl: float = 0.9,
+    alpha: float = 0.3,
 ) -> None:
     x_min, x_max = bounds
     x_grid = np.logspace(np.log10(x_min), np.log10(x_max), 100)
@@ -29,15 +31,16 @@ def plot_credible_band(
 
     model_sample = [Model.unpack(theta, layout_info=model_config) for theta in theta_sample]
     observable_sample = np.vstack([observable(model, x_grid) for model in model_sample])
-    lower = np.quantile(observable_sample, q=0.05, axis=0)
-    upper = np.quantile(observable_sample, q=0.95, axis=0)
+    quantile = (1 - cl) / 2
+    lower = np.quantile(observable_sample, q=quantile, axis=0)
+    upper = np.quantile(observable_sample, q=1 - quantile, axis=0)
 
     ax.fill_between(
         x_grid,
         scale_factor * lower,
         scale_factor * upper,
         color=color,
-        alpha=0.3,
+        alpha=alpha,
         edgecolor="none",
         label=label,
     )

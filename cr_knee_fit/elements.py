@@ -2,7 +2,8 @@ import enum
 from typing import Any
 
 import matplotlib.pyplot as plt
-from matplotlib import lines
+
+from cr_knee_fit.utils import legend_artist_line
 
 _ELEMENT_CMAP = plt.colormaps["rainbow_r"]
 
@@ -51,7 +52,7 @@ class Element(enum.IntEnum):
             return _ELEMENT_CMAP(idx / (len(Element.regular()) - 1))
 
     def legend_artist(self):
-        return lines.Line2D([], [], color=self.color, marker="none")
+        return legend_artist_line(color=self.color)
 
 
 element_names = [

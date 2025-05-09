@@ -20,7 +20,7 @@ from cr_knee_fit.elements import (
     unresolved_element_names,
 )
 from cr_knee_fit.experiments import Experiment
-from cr_knee_fit.fit_data import FitData
+from cr_knee_fit.fit_data import Data
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 from cr_knee_fit.types_ import Packable
 from cr_knee_fit.utils import legend_with_added_items
@@ -103,10 +103,10 @@ class Model(Packable[ModelConfig]):
             energy_shifts=energy_shifts,
         )
 
-    def plot(self, fit_data: FitData, scale: float) -> Figure:
+    def plot(self, fit_data: Data, scale: float) -> Figure:
         fig, ax = plt.subplots(figsize=(10, 8))
 
-        for exp, data_by_particle in fit_data.spectra.items():
+        for exp, data_by_particle in fit_data.element_spectra.items():
             for _, data in data_by_particle.items():
                 data.with_shifted_energy_scale(f=self.energy_shifts.f(exp)).plot(
                     scale=scale,
@@ -179,7 +179,7 @@ class Model(Packable[ModelConfig]):
         spectra = [self.compute_spectrum(E, element=element) for element in simple_elements]
         lnA = [np.log(p.A) for p in simple_elements]
 
-        # adding FreeZ components per-population as they are not additive
+        # adding FreeZ components per-population as they are potentially distinct
         for pop in self.populations:
             if Element.FreeZ not in pop.layout_info().resolved_elements:
                 continue

@@ -1,11 +1,10 @@
-import itertools
 import os
 import sys
 from pathlib import Path
 
 import htcondor  # type: ignore
 
-from bayesian_analysis import FitConfig, McmcConfig
+from bayesian_analysis import FitConfig, McmcConfig, PlotsConfig
 from cr_knee_fit import experiments
 from cr_knee_fit.cr_model import (
     CosmicRaysModelConfig,
@@ -13,6 +12,7 @@ from cr_knee_fit.cr_model import (
     SpectralComponentConfig,
 )
 from cr_knee_fit.elements import Element
+from cr_knee_fit.fit_data import DataConfig
 from cr_knee_fit.guesses import initial_guess_one_population_model
 from cr_knee_fit.model_ import ModelConfig
 
@@ -60,14 +60,12 @@ def submit_job(config: FitConfig) -> None:
 if __name__ == "__main__":
     analysis_name = "basic-model-full-scale-nuclei"
 
-    experiments_detailed: list[experiments.Experiment] = experiments.direct_experiments + [
-        experiments.grapes
-    ]
-    experiments_all_particle: list[experiments.Experiment] = [
-        experiments.hawc,
-        experiments.lhaaso_epos,
-    ]
-    experiments_lnA: list[experiments.Experiment] = []
+    fit_data_config = DataConfig(
+        experiments_detailed=experiments.direct_experiments + [experiments.grapes],
+        experiments_all_particle=[experiments.lhaaso_sibyll],
+        experiments_lnA=[],
+        detailed_elements=Element.regular(),
+    )
 
     model_config = ModelConfig(
         cr_model_config=CosmicRaysModelConfig(
@@ -91,24 +89,19 @@ if __name__ == "__main__":
                 SpectralBreakConfig(fixed_lg_sharpness=None, quantity="R"),
             ],
         ),
-        shifted_experiments=[
-            e
-            for e in itertools.chain(experiments_detailed, experiments_all_particle)
-            if e != experiments.ams02
-        ],
+        shifted_experiments=fit_data_config.experiments_spectrum,
     )
 
     config = FitConfig.from_guessing_func(
         name=analysis_name,
-        experiments_detailed=experiments_detailed,
-        experiments_all_particle=experiments_all_particle,
-        experiments_lnA=experiments_lnA,
+        fit_data=fit_data_config,
         mcmc=McmcConfig(
             n_steps=500_000,
             n_walkers=128,
             processes=8,
             reuse_saved=True,
         ),
+        plots=PlotsConfig(),
         generate_guess=lambda: initial_guess_one_population_model(model_config),
         n_guesses=50,
     )

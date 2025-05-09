@@ -1,5 +1,5 @@
 import itertools
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Iterable, Sequence, cast
 
 import matplotlib.pyplot as plt
@@ -9,7 +9,7 @@ from matplotlib.figure import Figure
 
 from cr_knee_fit.elements import Element
 from cr_knee_fit.experiments import Experiment
-from cr_knee_fit.utils import label_energy_flux, legend_with_added_items
+from cr_knee_fit.utils import energy_shift_suffix, label_energy_flux, legend_with_added_items
 from model.utils import load_data
 
 
@@ -55,6 +55,7 @@ class GenericExperimentData:
         color: Any | None = None,
         add_label: bool = True,
         scale: float = 0,
+        is_fitted: bool = True,
     ) -> Axes:
         if ax is None:
             _, ax = plt.subplots()
@@ -72,6 +73,7 @@ class GenericExperimentData:
             capsize=2.0,
             label=label if add_label else None,
             fmt=self.experiment.marker,
+            alpha=1.0 if is_fitted else 0.3,
         )
         if add_label:
             ax.legend()
@@ -147,12 +149,9 @@ class CRSpectrumData:
             element_label = "+".join(p.name for p in self.element)
         else:
             element_label = self.element.name
-        label = f"{self.experiment.name} {element_label}"
-        if not np.isclose(self.energy_scale_shift, 1.0):
-            shift_percent = abs(100 * (self.energy_scale_shift - 1))
-            shift_sign = "+" if self.energy_scale_shift > 1 else "-"
-            label += f" $(E \\; {shift_sign} {shift_percent:.1g} \\%)$"
-        return label
+        return f"{self.experiment.name} {element_label}" + energy_shift_suffix(
+            self.energy_scale_shift
+        )
 
     def plot(
         self,
@@ -160,6 +159,7 @@ class CRSpectrumData:
         ax: Axes | None = None,
         color: Any | None = None,
         add_label: bool = True,
+        is_fitted: bool = True,
     ) -> Axes:
         if ax is None:
             _, ax = plt.subplots()
@@ -181,6 +181,7 @@ class CRSpectrumData:
             elinewidth=0.75,
             capsize=2.0,
             fmt=self.experiment.marker,
+            alpha=1.0 if is_fitted else 0.3,
         )
         label_energy_flux(ax, scale)
         if add_label:
@@ -189,17 +190,34 @@ class CRSpectrumData:
 
 
 @dataclass
-class FitData:
-    spectra: dict[Experiment, dict[Element, CRSpectrumData]]
-    all_particle_spectra: dict[Experiment, CRSpectrumData]
-    R_bounds: tuple[float, float]
+class DataConfig:
+    experiments_detailed: list[Experiment]
+    experiments_all_particle: list[Experiment]
+    experiments_lnA: list[Experiment]
 
-    lnA: dict[Experiment, GenericExperimentData] = field(default_factory=dict)
+    # detailed spectra config
+    detailed_elements: list[Element]
+    detailed_R_bounds: tuple[float, float] = (7e2, 1e8)
+
+    @property
+    def experiments_spectrum(self) -> list[Experiment]:
+        return self.experiments_detailed + self.experiments_all_particle
+
+
+@dataclass
+class Data:
+    """Top-level container for a set of experimental data"""
+
+    element_spectra: dict[Experiment, dict[Element, CRSpectrumData]]
+    all_particle_spectra: dict[Experiment, CRSpectrumData]
+    lnA: dict[Experiment, GenericExperimentData]
+
+    config: DataConfig
 
     def all_experiments(self) -> list[Experiment]:
         all = set[Experiment]()
         for e in itertools.chain(
-            self.spectra.keys(),
+            self.element_spectra.keys(),
             self.all_particle_spectra.keys(),
             self.lnA.keys(),
         ):
@@ -207,7 +225,7 @@ class FitData:
         return sorted(all)
 
     def all_spectra(self) -> Iterable[CRSpectrumData]:
-        for element_spectra in self.spectra.values():
+        for element_spectra in self.element_spectra.values():
             yield from element_spectra.values()
         yield from self.all_particle_spectra.values()
 
@@ -218,18 +236,15 @@ class FitData:
         return max([s.E.max() for s in self.all_spectra()])
 
     @classmethod
-    def load(
-        cls,
-        experiments_detailed: list[Experiment],
-        experiments_all_particle: list[Experiment],
-        experiments_lnA: list[Experiment],
-        elements: list[Element],
-        R_bounds: tuple[float, float],
-    ) -> "FitData":
-        return FitData(
-            spectra={exp: load_spectra(exp, elements, R_bounds) for exp in experiments_detailed},
+    def load(cls, config: DataConfig) -> "Data":
+        return Data(
+            element_spectra={
+                exp: load_spectra(exp, config.detailed_elements, config.detailed_R_bounds)
+                for exp in config.experiments_detailed
+            },
             all_particle_spectra={
-                exp: CRSpectrumData.load_all_particle(exp) for exp in experiments_all_particle
+                exp: CRSpectrumData.load_all_particle(exp)
+                for exp in config.experiments_all_particle
             },
             lnA={
                 exp: GenericExperimentData.load(
@@ -238,9 +253,9 @@ class FitData:
                     x_bounds=(0, np.inf),
                     label="$ \\langle \\ln A \\rangle $",
                 )
-                for exp in experiments_lnA
+                for exp in config.experiments_lnA
             },
-            R_bounds=R_bounds,
+            config=config,
         )
 
     def plot(self, scale: float, describe: bool = False) -> Figure:
@@ -253,7 +268,7 @@ class FitData:
             axes = [ax]
 
         print_("Data by element:")
-        for exp, ps in self.spectra.items():
+        for exp, ps in self.element_spectra.items():
             print_(exp.name)
             for p, s in ps.items():
                 print_(f"  {p.name}: {s.E.size} points from {s.E.min():.1e} to {s.E.max():.1e} GeV")
@@ -274,7 +289,7 @@ class FitData:
         axes[0].set_yscale("log")
         legend_with_added_items(
             axes[0],
-            [(exp.legend_artist(), exp.name) for exp in sorted(self.spectra.keys())],
+            [(exp.legend_artist(), exp.name) for exp in sorted(self.element_spectra.keys())],
             fontsize="x-small",
         )
         if len(axes) > 1:
