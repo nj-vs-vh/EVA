@@ -58,7 +58,7 @@ def submit_job(config: FitConfig) -> None:
 
 
 if __name__ == "__main__":
-    analysis_name = "basic-model-full-scale-nuclei"
+    analysis_name = "vanilla+lhaaso"
 
     fit_data_config = DataConfig(
         experiments_elements=experiments.direct_experiments + [experiments.grapes],
@@ -67,26 +67,27 @@ if __name__ == "__main__":
         elements=Element.regular(),
     )
 
+    validation_data_config = DataConfig(
+        experiments_elements=[],
+        experiments_all_particle=[experiments.hawc],
+        experiments_lnA=[experiments.lhaaso_epos],
+        elements=[],
+    )
+
     model_config = ModelConfig(
         cr_model_config=CosmicRaysModelConfig(
             components=[
                 [Element.H],
                 [Element.He],
                 SpectralComponentConfig(
-                    elements=[
-                        Element.C,
-                        Element.O,
-                        Element.Mg,
-                        Element.Si,
-                        Element.Fe,
-                    ],
+                    elements=Element.nuclei(),
                     scale_contrib_to_allpart=True,
                 ),
             ],
             breaks=[
-                SpectralBreakConfig(fixed_lg_sharpness=None, quantity="R"),
-                SpectralBreakConfig(fixed_lg_sharpness=None, quantity="R"),
-                SpectralBreakConfig(fixed_lg_sharpness=None, quantity="R"),
+                SpectralBreakConfig(fixed_lg_sharpness=0.7, quantity="R"),
+                SpectralBreakConfig(fixed_lg_sharpness=0.7, quantity="R"),
+                SpectralBreakConfig(fixed_lg_sharpness=0.7, quantity="R"),
             ],
         ),
         shifted_experiments=fit_data_config.experiments_spectrum,
@@ -97,11 +98,13 @@ if __name__ == "__main__":
         fit_data=fit_data_config,
         mcmc=McmcConfig(
             n_steps=500_000,
-            n_walkers=128,
+            n_walkers=256,
             processes=8,
             reuse_saved=True,
         ),
-        plots=PlotsConfig(),
+        plots=PlotsConfig(
+            validation_data_config=validation_data_config,
+        ),
         generate_guess=lambda: initial_guess_one_population_model(model_config),
         n_guesses=50,
     )
