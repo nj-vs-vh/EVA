@@ -33,18 +33,22 @@ def run_local(config: FitConfig) -> None:
 
 
 if __name__ == "__main__":
-    analysis_name = "vanilla+lhaaso"
+    analysis_name = "vanilla+kascade"
 
     fit_data_config = DataConfig(
         experiments_elements=experiments.direct_experiments + [experiments.grapes],
-        experiments_all_particle=[experiments.lhaaso_sibyll],
+        experiments_all_particle=[experiments.kascade_sibyll, experiments.kascade_grande_sibyll],
         experiments_lnA=[],
         elements=Element.regular(),
     )
 
     validation_data_config = DataConfig(
         experiments_elements=[],
-        experiments_all_particle=[experiments.hawc],
+        experiments_all_particle=[
+            experiments.lhaaso_sibyll,
+            experiments.ice_top_sibyll,
+            experiments.gamma,
+        ],
         experiments_lnA=[experiments.lhaaso_sibyll],
         elements=[],
     )

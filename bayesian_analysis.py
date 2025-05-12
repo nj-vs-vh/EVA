@@ -201,6 +201,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
 
     scale = 2.8 if fit_data.E_max() > 2e6 else 2.6
     fit_data.plot(scale=scale, describe=True).savefig(outdir / "data.png")
+    validation_data.plot(scale=scale, describe=True).savefig(outdir / "data-validation.png")
 
     print_delim()
     print("Initial guess model (example):")

@@ -214,15 +214,20 @@ class Data:
 
     config: DataConfig
 
-    def all_experiments(self) -> list[Experiment]:
+    def experiments(self, spectra_only: bool = False) -> list[Experiment]:
         all = set[Experiment]()
         for e in itertools.chain(
-            self.element_spectra.keys(),
+            [exp for exp, elements in self.element_spectra.items() if elements],
             self.all_particle_spectra.keys(),
-            self.lnA.keys(),
         ):
             all.add(e)
+        if not spectra_only:
+            for e in self.lnA.keys():
+                all.add(e)
         return sorted(all)
+
+    def is_empty(self) -> bool:
+        return len(self.experiments()) > 0
 
     def all_spectra(self) -> Iterable[CRSpectrumData]:
         for element_spectra in self.element_spectra.values():
@@ -285,11 +290,13 @@ class Data:
             lnA_data.plot(ax=axes[1])
 
         [ax.set_xscale("log") for ax in axes]
-
         axes[0].set_yscale("log")
         legend_with_added_items(
             axes[0],
-            [(exp.legend_artist(), exp.name) for exp in sorted(self.element_spectra.keys())],
+            [
+                (exp.legend_artist(), exp.name)
+                for exp in sorted(self.experiments(spectra_only=True))
+            ],
             fontsize="x-small",
         )
         if len(axes) > 1:

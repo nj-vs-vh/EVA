@@ -155,7 +155,7 @@ class Model(Packable[ModelConfig]):
 
         legend_with_added_items(
             ax,
-            [(e.legend_artist(), e.name) for e in fit_data.all_experiments()],
+            [(e.legend_artist(), e.name) for e in fit_data.experiments()],
             fontsize="x-small",
         )
         ax.set_ylim(*ylim)
