@@ -92,7 +92,7 @@ class FitConfig(pydantic.BaseModel):
 
     def __post_init__(self) -> None:
         model_elements = set(self.model.elements(only_fixed_Z=True))
-        data_elements = set(self.fit_data_config.detailed_elements)
+        data_elements = set(self.fit_data_config.elements)
         unconstrained_elements = model_elements - data_elements
         if unconstrained_elements:
             warn(
@@ -193,9 +193,9 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
         config.plots.validation_data_config
         or DataConfig(
             experiments_all_particle=[],
-            experiments_detailed=[],
+            experiments_elements=[],
             experiments_lnA=[],
-            detailed_elements=[],
+            elements=[],
         )
     )
 

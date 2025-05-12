@@ -191,17 +191,17 @@ class CRSpectrumData:
 
 @dataclass
 class DataConfig:
-    experiments_detailed: list[Experiment]
+    experiments_elements: list[Experiment]
     experiments_all_particle: list[Experiment]
     experiments_lnA: list[Experiment]
 
     # detailed spectra config
-    detailed_elements: list[Element]
-    detailed_R_bounds: tuple[float, float] = (7e2, 1e8)
+    elements: list[Element]
+    elements_R_bounds: tuple[float, float] = (7e2, 1e8)
 
     @property
     def experiments_spectrum(self) -> list[Experiment]:
-        return self.experiments_detailed + self.experiments_all_particle
+        return list(set(self.experiments_elements + self.experiments_all_particle))
 
 
 @dataclass
@@ -239,8 +239,8 @@ class Data:
     def load(cls, config: DataConfig) -> "Data":
         return Data(
             element_spectra={
-                exp: load_spectra(exp, config.detailed_elements, config.detailed_R_bounds)
-                for exp in config.experiments_detailed
+                exp: load_spectra(exp, config.elements, config.elements_R_bounds)
+                for exp in config.experiments_elements
             },
             all_particle_spectra={
                 exp: CRSpectrumData.load_all_particle(exp)

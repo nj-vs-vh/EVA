@@ -61,10 +61,10 @@ if __name__ == "__main__":
     analysis_name = "basic-model-full-scale-nuclei"
 
     fit_data_config = DataConfig(
-        experiments_detailed=experiments.direct_experiments + [experiments.grapes],
+        experiments_elements=experiments.direct_experiments + [experiments.grapes],
         experiments_all_particle=[experiments.lhaaso_sibyll],
         experiments_lnA=[],
-        detailed_elements=Element.regular(),
+        elements=Element.regular(),
     )
 
     model_config = ModelConfig(
