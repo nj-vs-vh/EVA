@@ -82,7 +82,7 @@ def logprior(model: Model) -> float:
         res += break_prior(main.breaks[1], lg_break_min=4.5, lg_break_max=6, is_softening=False)
     if len(main.breaks) > 2:
         # all-particle knee
-        res += break_prior(main.breaks[2], lg_break_min=5.5, lg_break_max=7, is_softening=True)
+        res += break_prior(main.breaks[2], lg_break_min=5.5, lg_break_max=9, is_softening=True)
 
     # components prior
     for component in main.base_spectra:

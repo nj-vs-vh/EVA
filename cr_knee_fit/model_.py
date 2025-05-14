@@ -1,3 +1,4 @@
+import dataclasses
 import itertools
 import warnings
 from dataclasses import dataclass, field
@@ -23,7 +24,7 @@ from cr_knee_fit.experiments import Experiment
 from cr_knee_fit.fit_data import Data
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 from cr_knee_fit.types_ import Packable
-from cr_knee_fit.utils import legend_with_added_items
+from cr_knee_fit.utils import E_GEV_LABEL, LegendItem, energy_shift_suffix, legend_with_added_items
 
 
 @dataclass
@@ -103,18 +104,49 @@ class Model(Packable[ModelConfig]):
             energy_shifts=energy_shifts,
         )
 
-    def plot(self, fit_data: Data, scale: float) -> Figure:
+    def plot_spectra(
+        self,
+        fit_data: Data,
+        scale: float,
+        validation_data: Data | None = None,
+    ) -> Figure:
         fig, ax = plt.subplots(figsize=(10, 8))
 
-        for exp, data_by_particle in fit_data.element_spectra.items():
-            for _, data in data_by_particle.items():
-                data.with_shifted_energy_scale(f=self.energy_shifts.f(exp)).plot(
-                    scale=scale,
-                    ax=ax,
-                    add_label=False,
+        legend_items_by_exp: dict[Experiment, LegendItem] = {}
+        plot_allpart = False
+        all_energies: list[float] = []
+        for data_, is_fitted in ((fit_data, True), (validation_data, False)):
+            if data_ is None:
+                continue
+            for exp, data_by_particle in data_.element_spectra.items():
+                f_exp = self.energy_shifts.f(exp)
+                for _, element_data in data_by_particle.items():
+                    element_data = element_data.with_shifted_energy_scale(f=f_exp)
+                    element_data.plot(
+                        scale=scale,
+                        ax=ax,
+                        add_label=False,
+                        is_fitted=is_fitted,
+                    )
+                    all_energies.extend(element_data.E)
+                    legend_items_by_exp.setdefault(
+                        exp,
+                        (
+                            exp.legend_artist(is_fitted=is_fitted),
+                            exp.name + energy_shift_suffix(f_exp),
+                        ),
+                    )
+            for exp, allpart_data in data_.all_particle_spectra.items():
+                all_energies.extend(allpart_data.E)
+                allpart_data.plot(scale=scale, ax=ax, add_label=False, is_fitted=is_fitted)
+                legend_items_by_exp.setdefault(
+                    exp,
+                    (exp.legend_artist(is_fitted=is_fitted), exp.name),
                 )
-        for _, data in fit_data.all_particle_spectra.items():
-            data.plot(scale=scale, ax=ax, add_label=False)
+                plot_allpart = True
+
+        E_min = np.min(all_energies)
+        E_max = np.max(all_energies)
 
         ax.set_xscale("log")
         ax.set_yscale("log")
@@ -122,11 +154,11 @@ class Model(Packable[ModelConfig]):
 
         for pop in self.populations:
             pop.plot(
-                Emin=fit_data.E_min(),
-                Emax=fit_data.E_max(),
+                Emin=E_min,
+                Emax=E_max,
                 scale=scale,
                 axes=ax,
-                all_particle=len(fit_data.all_particle_spectra) > 0 and len(pop.all_elements) > 1,
+                all_particle=plot_allpart and len(pop.all_elements) > 1,
             )
         if len(self.populations) > 1:
             multipop_elements = [
@@ -134,7 +166,7 @@ class Model(Packable[ModelConfig]):
                 for element in Element.regular()
                 if len([pop for pop in self.populations if element in pop.all_elements]) > 1
             ]
-            E_grid = np.logspace(np.log10(fit_data.E_min()), np.log10(fit_data.E_max()), 100)
+            E_grid = np.geomspace(E_min, E_max, 100)
             E_factor = E_grid**scale
             for element in multipop_elements:
                 ax.plot(
@@ -144,7 +176,7 @@ class Model(Packable[ModelConfig]):
                     color=element.color,
                     linewidth=2,
                 )
-            if len(fit_data.all_particle_spectra) > 0:
+            if plot_allpart:
                 ax.plot(
                     E_grid,
                     E_factor * self.compute_spectrum(E_grid, element=None),
@@ -153,12 +185,50 @@ class Model(Packable[ModelConfig]):
                     linewidth=2,
                 )
 
-        legend_with_added_items(
-            ax,
-            [(e.legend_artist(), e.name) for e in fit_data.experiments()],
-            fontsize="x-small",
-        )
+        legend_with_added_items(ax, list(legend_items_by_exp.values()), fontsize="x-small")
         ax.set_ylim(*ylim)
+        return fig
+
+    def plot_lnA(
+        self,
+        fit_data: Data,
+        validation_data: Data | None = None,
+    ) -> Figure:
+        fig, ax = plt.subplots(figsize=(10, 8))
+
+        all_energies: list[float] = []
+        legend_items = []
+        for data, is_fitted in ((fit_data, True), (validation_data, False)):
+            if data is None:
+                continue
+            for exp, lnA_data in data.lnA.items():
+                f_exp = self.energy_shifts.f(exp)
+                lnA_data = dataclasses.replace(lnA_data, x=lnA_data.x * f_exp)
+                lnA_data.plot(
+                    scale=0,
+                    ax=ax,
+                    add_label=False,
+                    color="black",
+                    is_fitted=is_fitted,
+                )
+                legend_items.append(
+                    (exp.legend_artist(is_fitted), exp.name + energy_shift_suffix(f_exp))
+                )
+                all_energies.extend(lnA_data.x)
+
+        E_min = np.min(all_energies)
+        E_max = np.max(all_energies)
+        E_grid = np.geomspace(E_min, E_max, 100)
+        ax.plot(
+            E_grid,
+            self.compute_lnA(E_grid),
+            color="red",
+        )
+
+        ax.set_xscale("log")
+        ax.set_xlabel(E_GEV_LABEL)
+        ax.set_ylabel("$ \\langle \\ln A \\rangle $")
+        legend_with_added_items(ax, legend_items, fontsize="x-small")
         return fig
 
     def compute_spectrum(self, E: np.ndarray, element: Element | None) -> np.ndarray:

@@ -206,7 +206,9 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
     print_delim()
     print("Initial guess model (example):")
     initial_guess = config.generate_initial_guess(fit_data)
-    initial_guess.plot(fit_data, scale=scale).savefig(outdir / "initial_guess.png")
+    initial_guess.plot_spectra(fit_data, scale=scale, validation_data=validation_data).savefig(
+        outdir / "initial_guess.png"
+    )
     initial_guess.print_params()
     print(
         "Logposterior value:",
@@ -226,7 +228,12 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
         initial_model=None,
     )
     if mle_model is not None:
-        mle_model.plot(fit_data, scale=scale).savefig(outdir / "preliminary-mle-result.png")
+        mle_model.plot_spectra(fit_data, scale=scale, validation_data=validation_data).savefig(
+            outdir / "preliminary-mle-result.png"
+        )
+        mle_model.plot_lnA(fit_data, validation_data=validation_data).savefig(
+            outdir / "preliminary-mle-result-lnA.png"
+        )
         mle_model.print_params()
 
     if config.mcmc is None:
@@ -413,6 +420,8 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
                     (exp.legend_artist(is_fitted=is_fitted), exp.name + energy_shift_suffix(f_exp))
                 )
 
+        ax_all_ylim = ax_all.get_ylim()  # respecting ylim set by data
+
         E_merged_all = np.hstack(
             [
                 spectrum.E
@@ -486,6 +495,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
             legend_items.append((legend_artist_line("magenta"), "Unresolved elements"))
 
         legend_with_added_items(ax_all, legend_items, fontsize="x-small")
+        ax_all.set_ylim(*ax_all_ylim)
 
     if fit_data.lnA or validation_data.lnA:
         LN_A_COLOR = "red"
@@ -500,7 +510,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
                     ax=ax_lnA,
                     add_label=False,
                     color=LN_A_COLOR,
-                    is_fitted=False,
+                    is_fitted=is_fitted,
                 )
                 legend_items.append(
                     (exp.legend_artist(is_fitted), exp.name + energy_shift_suffix(f_exp))
@@ -533,9 +543,9 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
     print_delim()
     print("Plotting best-fitting model from the posterior sample")
 
-    posterior_best_model.plot(fit_data, scale=scale).savefig(
-        outdir / "best-fitting-posterior-point.png"
-    )
+    posterior_best_model.plot_spectra(
+        fit_data, scale=scale, validation_data=validation_data
+    ).savefig(outdir / "best-fitting-posterior-point.png")
     posterior_best_model.plot_abundances().savefig(outdir / "abundances.png")
 
     print_delim()
@@ -548,8 +558,11 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
     )
     if posterior_ml_best is not None:
         posterior_ml_best.print_params()
-        posterior_ml_best.plot(fit_data, scale=scale).savefig(
-            outdir / "mle-from-posterior-best.png"
+        posterior_ml_best.plot_spectra(
+            fit_data, scale=scale, validation_data=validation_data
+        ).savefig(outdir / "mle-from-posterior-best.png")
+        posterior_ml_best.plot_lnA(fit_data, validation_data=validation_data).savefig(
+            outdir / "mle-from-posterior-best-lnA.png"
         )
 
 
