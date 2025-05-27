@@ -160,11 +160,13 @@ def run_ml_analysis(
                 energy_shifts=ExperimentEnergyScaleShifts(dict()),
             )
 
-        def negloglike(v: np.ndarray) -> float:
-            return -loglikelihood(v, fit_data, model_config)
+        def to_minimize(v: np.ndarray) -> float:
+            # technically it should be -loglikelihood, but as we're using mostly flat priors
+            # plus gaussian regularization for experimental scale shifts, let us use logposterior instead
+            return -logposterior(v, fit_data, model_config)
 
         res = optimize.minimize(
-            negloglike,
+            to_minimize,
             x0=initial_model.pack(),
             method="Nelder-Mead",
             options={
@@ -224,7 +226,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
     mle_model = run_ml_analysis(
         config=config,
         fit_data=fit_data,
-        freeze_shifts=True,
+        freeze_shifts=False,
         initial_model=None,
     )
     if mle_model is not None:

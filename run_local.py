@@ -3,7 +3,7 @@ import contextlib
 import sys
 from pathlib import Path
 
-from bayesian_analysis import FitConfig, McmcConfig, PlotsConfig, run_bayesian_analysis
+from bayesian_analysis import FitConfig, PlotsConfig, run_bayesian_analysis
 from cr_knee_fit import experiments
 from cr_knee_fit.cr_model import (
     CosmicRaysModelConfig,
@@ -37,7 +37,7 @@ def run_local(config: FitConfig) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("run_dir", default=None)
+    parser.add_argument("--run-dir", default=None)
     args = parser.parse_args()
     if args.run_dir is not None:
         run_dir = Path(args.run_dir).absolute()
@@ -51,34 +51,40 @@ if __name__ == "__main__":
         input("Press Enter to confirm")
 
     else:
-        analysis_name = "vanilla+all"
+        analysis_name = "lhaaso-protons"
 
         print(f"Running pre-configured analysis: {analysis_name}")
 
         fit_data_config = DataConfig(
-            experiments_elements=experiments.direct_experiments + [experiments.grapes],
+            experiments_elements=experiments.direct_experiments
+            + [
+                # experiments.grapes,
+                experiments.lhaaso_epos,
+            ],
             experiments_all_particle=[
-                experiments.kascade_sibyll,
-                experiments.kascade_grande_sibyll,
-                experiments.ice_top_sibyll,
-                experiments.lhaaso_sibyll,
-                experiments.gamma,
+                # experiments.kascade_sibyll,
+                # experiments.kascade_grande_sibyll,
+                # experiments.ice_top_sibyll,
+                # experiments.lhaaso_epos,
+                # experiments.gamma,
             ],
             experiments_lnA=[],
             elements=Element.regular(),
         )
 
         validation_data_config = DataConfig(
-            experiments_elements=[],
-            experiments_all_particle=[
-                # experiments.kascade_sibyll,
-                # experiments.kascade_grande_sibyll,
-                # experiments.ice_top_sibyll,
-                # experiments.lhaaso_sibyll,
-                # experiments.gamma,
+            experiments_elements=[
+                # experiments.lhaaso_qgsjet,
             ],
-            experiments_lnA=[experiments.lhaaso_sibyll],
-            elements=[],
+            experiments_all_particle=[
+                experiments.kascade_sibyll,
+                experiments.kascade_grande_sibyll,
+                experiments.ice_top_sibyll,
+                # experiments.lhaaso_sibyll,
+                experiments.gamma,
+            ],
+            experiments_lnA=[experiments.lhaaso_epos],
+            elements=[Element.H],
         )
 
         def generate_guess() -> Model:
@@ -91,7 +97,7 @@ if __name__ == "__main__":
                                 SpectralComponentConfig([Element.He]),
                                 SpectralComponentConfig(
                                     Element.nuclei(),
-                                    scale_contrib_to_allpart=True,
+                                    scale_contrib_to_allpart=False,
                                 ),
                             ],
                             breaks=[
@@ -115,12 +121,13 @@ if __name__ == "__main__":
         config = FitConfig.from_guessing_func(
             name=analysis_name,
             fit_data=fit_data_config,
-            mcmc=McmcConfig(
-                n_steps=100_000,
-                n_walkers=256,
-                processes=8,
-                reuse_saved=True,
-            ),
+            # mcmc=McmcConfig(
+            #     n_steps=100_000,
+            #     n_walkers=256,
+            #     processes=8,
+            #     reuse_saved=True,
+            # ),
+            mcmc=None,
             generate_guess=generate_guess,
             plots=PlotsConfig(validation_data_config=validation_data_config),
         )
