@@ -3,14 +3,14 @@ from dataclasses import dataclass
 
 from matplotlib import lines
 
-markers_iter = itertools.cycle(["o", "v", "^", "<", ">", "s", "p", "P", "8", "X", "D"])
+markers_iter = itertools.cycle(["o", "v", "^", "<", ">", "s", "p", "P", "8", "X", "D", "d"])
 markers_cache: dict[str, str] = {}
 
 
 @dataclass
 class Experiment:
     name: str
-    filename_stem: str | None = None
+    filename_stem: str
 
     def __post_init__(self) -> None:
         marker = markers_cache.get(self.name)
@@ -37,24 +37,43 @@ class Experiment:
 
     @property
     def filename_prefix(self) -> str:
-        return self.filename_stem or self.name
+        return self.filename_stem
 
 
-ams02 = Experiment("AMS-02")
-calet = Experiment("CALET")
-dampe = Experiment("DAMPE")
-cream = Experiment("CREAM")
-iss_cream = Experiment("ISS-CREAM")
+ams02 = Experiment("AMS-02", filename_stem="AMS-02")
+calet = Experiment("CALET", filename_stem="CALET")
+dampe = Experiment("DAMPE", filename_stem="DAMPE")
+cream = Experiment("CREAM", filename_stem="CREAM")
+iss_cream = Experiment("ISS-CREAM", filename_stem="ISS-CREAM")
 
-direct_experiments = [ams02, calet, dampe, cream, iss_cream]
+DIRECT = [ams02, calet, dampe, cream, iss_cream]
 
-hawc = Experiment("HAWC", filename_stem="HAWC_QGSJET-II-04")
+hawc = Experiment("HAWC (QGSJet II-04)", filename_stem="HAWC_QGSJET-II-04")
 grapes = Experiment("GRAPES-3", filename_stem="GRAPES")
-tale = Experiment("TALE (QGS)", filename_stem="TALE_QGSJET-II-04")
+tale = Experiment("TALE (QGSJet II-04)", filename_stem="TALE_QGSJET-II-04")
 gamma = Experiment("GAMMA (Sibyll)", filename_stem="GAMMA_SIBYLL")
 lhaaso_epos = Experiment("LHAASO (EPOS)", filename_stem="LHAASO_EPOS-LHC")
 lhaaso_sibyll = Experiment("LHAASO (Sibyll 2.3)", filename_stem="LHAASO_SIBYLL-23")
-lhaaso_qgsjet = Experiment("LHAASO (QGSJET-II-04)", filename_stem="LHAASO_QGSJET-II-04")
+lhaaso_qgsjet = Experiment("LHAASO (QGSJET II-04)", filename_stem="LHAASO_QGSJET-II-04")
 ice_top_sibyll = Experiment("IceTop (Sibyll 2.1)", filename_stem="ICETOP_SIBYLL_21")
 kascade_sibyll = Experiment("KASCADE (Sibyll 2.1)", filename_stem="KASCADE_SIBYLL_21")
+kascade_re_qgsjet = Experiment(
+    "KASCADE re-analysis (QGSJet II-04)", filename_stem="KASCADE_re_QGSJET-II-04"
+)
 kascade_grande_sibyll = Experiment("KASCADE-Grande (Sibyll 2.3)", filename_stem="KGRANDE_SIBYLL_23")
+
+INDIRECT = [
+    hawc,
+    grapes,
+    tale,
+    gamma,
+    lhaaso_epos,
+    lhaaso_sibyll,
+    lhaaso_qgsjet,
+    ice_top_sibyll,
+    kascade_sibyll,
+    kascade_re_qgsjet,
+    kascade_grande_sibyll,
+]
+
+ALL = DIRECT + INDIRECT

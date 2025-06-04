@@ -9,16 +9,13 @@ from cr_knee_fit.model_ import Model, ModelConfig
 
 def break_prior(
     b: SpectralBreak,
-    lg_break_min: float,
-    lg_break_max: float,
-    is_softening: bool,
 ) -> float:
     res = 0
-    if not (lg_break_min < b.lg_break < lg_break_max):
+    if not (b.config.lg_break_prior_limits[0] < b.lg_break < b.config.lg_break_prior_limits[1]):
         return -np.inf
-    if (b.d_alpha > 0) != is_softening:
+    if (b.d_alpha > 0) != b.config.is_softening:
         return -np.inf
-    if not b.fix_sharpness:
+    if b.config.fixed_lg_sharpness is None:
         s = 10**b.lg_sharpness
         if not (0.1 < s < 20):
             return -np.inf
@@ -63,40 +60,42 @@ energy_scale_lg_uncertainties = {
 }
 
 
+# if len(main.breaks) > 1:
+#     # grapes hardening
+#     res += break_prior(main.breaks[1], lg_break_min=4.5, lg_break_max=6, is_softening=False)
+# if len(main.breaks) > 2:
+#     # all-particle knee
+#     res += break_prior(main.breaks[2], lg_break_min=5.5, lg_break_max=9, is_softening=True)
+
+
 def logprior(model: Model) -> float:
     res = 0.0
 
-    # main population prior
-
-    main = model.populations[0]
-
-    # breaks must be ordered in R to avoid ambiguity
-    breaks_lgR = [m.lg_break for m in main.breaks]
-    if breaks_lgR != sorted(breaks_lgR):
-        return -np.inf
-
-    # dampe break
-    res += break_prior(main.breaks[0], lg_break_min=3, lg_break_max=5, is_softening=True)
-    if len(main.breaks) > 1:
-        # grapes hardening
-        res += break_prior(main.breaks[1], lg_break_min=4.5, lg_break_max=6, is_softening=False)
-    if len(main.breaks) > 2:
-        # all-particle knee
-        res += break_prior(main.breaks[2], lg_break_min=5.5, lg_break_max=9, is_softening=True)
-
-    # components prior
-    for component in main.base_spectra:
-        if component.lg_scale_contrib_to_all is not None and component.lg_scale_contrib_to_all < 0:
+    for population in model.populations:
+        # breaks must be ordered to avoid ambiguity
+        breaks_lgR = [m.lg_break for m in population.breaks]
+        if breaks_lgR != sorted(breaks_lgR):
             return -np.inf
 
-    # other model params
-    lgK = main.all_particle_lg_shift
-    if lgK is not None:
-        if not (1 <= 10**lgK <= 2):
-            return -np.inf
-    if main.free_Z is not None:
-        if not (1 <= main.free_Z <= 26.5):
-            return -np.inf
+        for break_ in population.breaks:
+            res += break_prior(break_)
+
+        # components prior
+        for component in population.base_spectra:
+            if (
+                component.lg_scale_contrib_to_all is not None
+                and component.lg_scale_contrib_to_all < 0
+            ):
+                return -np.inf
+
+        # other model params
+        lgK = population.all_particle_lg_shift
+        if lgK is not None:
+            if not (1 <= 10**lgK <= 2):
+                return -np.inf
+        if population.free_Z is not None:
+            if not (1 <= population.free_Z <= 26.5):
+                return -np.inf
 
     # experimental energy shifts' prior
     for exp, lg_shift in model.energy_shifts.lg_shifts.items():

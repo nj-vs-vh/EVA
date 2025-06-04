@@ -203,6 +203,19 @@ class DataConfig:
     def experiments_spectrum(self) -> list[Experiment]:
         return list(set(self.experiments_elements + self.experiments_all_particle))
 
+    def excluding(self, other: "DataConfig") -> "DataConfig":
+        return DataConfig(
+            experiments_elements=list(
+                set(self.experiments_elements).difference(other.experiments_elements)
+            ),
+            experiments_all_particle=list(
+                set(self.experiments_all_particle).difference(other.experiments_elements)
+            ),
+            experiments_lnA=list(set(self.experiments_lnA).difference(other.experiments_lnA)),
+            elements=self.elements,
+            elements_R_bounds=self.elements_R_bounds,
+        )
+
 
 @dataclass
 class Data:
@@ -242,24 +255,32 @@ class Data:
 
     @classmethod
     def load(cls, config: DataConfig) -> "Data":
-        return Data(
-            element_spectra={
-                exp: load_spectra(exp, config.elements, config.elements_R_bounds)
-                for exp in config.experiments_elements
-            },
-            all_particle_spectra={
-                exp: CRSpectrumData.load_all_particle(exp)
-                for exp in config.experiments_all_particle
-            },
-            lnA={
-                exp: GenericExperimentData.load(
+        allparticle = {}
+        for exp in config.experiments_all_particle:
+            try:
+                allparticle[exp] = CRSpectrumData.load_all_particle(exp)
+            except Exception as e:
+                print(f"Failed to load all particle spectrum data for {exp}: {e}")
+
+        lnA = {}
+        for exp in config.experiments_lnA:
+            try:
+                lnA[exp] = GenericExperimentData.load(
                     exp,
                     suffix="lnA_energy",
                     x_bounds=(0, np.inf),
                     label="$ \\langle \\ln A \\rangle $",
                 )
-                for exp in config.experiments_lnA
+            except Exception as e:
+                print(f"Failed to load lnA for {exp}: {e}")
+
+        return Data(
+            element_spectra={
+                exp: load_spectra(exp, config.elements, config.elements_R_bounds)
+                for exp in config.experiments_elements
             },
+            all_particle_spectra=allparticle,
+            lnA=lnA,
             config=config,
         )
 
@@ -312,9 +333,9 @@ def load_spectra(
     R_bounds: tuple[float, float],
 ) -> dict[Element, "CRSpectrumData"]:
     res = dict[Element, CRSpectrumData]()
-    for p in elements:
+    for element in elements:
         try:
-            res[p] = CRSpectrumData.load(experiment, p, R_bounds)
-        except Exception:
-            pass
+            res[element] = CRSpectrumData.load(experiment, element, R_bounds)
+        except Exception as e:
+            print(f"Failed to load {element.name} spectrum from {experiment}: {e}")
     return res

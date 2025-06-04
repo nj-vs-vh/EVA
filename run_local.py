@@ -3,17 +3,23 @@ import contextlib
 import sys
 from pathlib import Path
 
-from bayesian_analysis import FitConfig, PlotsConfig, run_bayesian_analysis
+from scipy import stats  # type: ignore
+
+from bayesian_analysis import FitConfig, McmcConfig, PlotsConfig, run_bayesian_analysis
 from cr_knee_fit import experiments
 from cr_knee_fit.cr_model import (
+    CosmicRaysModel,
     CosmicRaysModelConfig,
+    PopulationMetadata,
+    SharedPowerLawSpectrum,
     SpectralBreakConfig,
     SpectralComponentConfig,
 )
 from cr_knee_fit.elements import Element
 from cr_knee_fit.fit_data import DataConfig
-from cr_knee_fit.guesses import initial_guess_one_population_model
-from cr_knee_fit.model_ import Model, ModelConfig
+from cr_knee_fit.guesses import initial_guess_break, initial_guess_main_population
+from cr_knee_fit.model_ import Model
+from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 
 OUT_DIR = Path(__file__).parent / "out"
 
@@ -51,83 +57,121 @@ if __name__ == "__main__":
         input("Press Enter to confirm")
 
     else:
-        analysis_name = "lhaaso-protons"
+        analysis_name = "second-component-energy-extended"
 
         print(f"Running pre-configured analysis: {analysis_name}")
 
         fit_data_config = DataConfig(
-            experiments_elements=experiments.direct_experiments
+            experiments_elements=experiments.DIRECT
             + [
-                # experiments.grapes,
+                experiments.grapes,
                 experiments.lhaaso_epos,
             ],
             experiments_all_particle=[
-                # experiments.kascade_sibyll,
-                # experiments.kascade_grande_sibyll,
-                # experiments.ice_top_sibyll,
-                # experiments.lhaaso_epos,
-                # experiments.gamma,
+                experiments.lhaaso_epos,
+                experiments.hawc,
+                experiments.tale,
+                experiments.kascade_sibyll,
             ],
-            experiments_lnA=[],
+            experiments_lnA=[experiments.lhaaso_epos],
             elements=Element.regular(),
         )
 
         validation_data_config = DataConfig(
-            experiments_elements=[
-                # experiments.lhaaso_qgsjet,
-            ],
-            experiments_all_particle=[
-                experiments.kascade_sibyll,
-                experiments.kascade_grande_sibyll,
-                experiments.ice_top_sibyll,
-                # experiments.lhaaso_sibyll,
-                experiments.gamma,
-            ],
-            experiments_lnA=[experiments.lhaaso_epos],
-            elements=[Element.H],
-        )
+            experiments_elements=experiments.ALL,
+            experiments_all_particle=experiments.ALL,
+            experiments_lnA=experiments.ALL,
+            elements=Element.regular(),
+        ).excluding(fit_data_config)
 
         def generate_guess() -> Model:
-            return initial_guess_one_population_model(
-                config=ModelConfig(
-                    population_configs=[
-                        CosmicRaysModelConfig(
-                            components=[
-                                SpectralComponentConfig([Element.H]),
-                                SpectralComponentConfig([Element.He]),
-                                SpectralComponentConfig(
-                                    Element.nuclei(),
-                                    scale_contrib_to_allpart=False,
-                                ),
-                            ],
-                            breaks=[
-                                SpectralBreakConfig(fixed_lg_sharpness=0.7, quantity="R"),
-                                SpectralBreakConfig(fixed_lg_sharpness=0.7, quantity="R"),
-                                SpectralBreakConfig(fixed_lg_sharpness=0.7, quantity="R"),
-                            ],
-                            rescale_all_particle=False,
-                        )
+            shifted_experiments = (
+                fit_data_config.experiments_elements + fit_data_config.experiments_all_particle
+            )
+            pop1_model = initial_guess_main_population(
+                pop_config=CosmicRaysModelConfig(
+                    components=[
+                        SpectralComponentConfig([Element.H]),
+                        SpectralComponentConfig([Element.He]),
+                        SpectralComponentConfig(Element.nuclei()),
                     ],
-                    shifted_experiments=(
-                        fit_data_config.experiments_elements
-                        + fit_data_config.experiments_all_particle
-                    ),
+                    breaks=[
+                        SpectralBreakConfig(
+                            fixed_lg_sharpness=0.7,
+                            quantity="R",
+                            lg_break_prior_limits=(3.5, 4.5),
+                            is_softening=True,
+                            lg_break_hint=4.0,
+                        ),
+                        # SpectralBreakConfig(
+                        #     fixed_lg_sharpness=0.7,
+                        #     quantity="R",
+                        #     lg_break_prior_limits=(4.5, 6.5),
+                        #     is_softening=False,
+                        #     lg_break_hint=5.3,
+                        # ),
+                    ],
+                    rescale_all_particle=False,
+                    population_meta=PopulationMetadata(name="Main", linestyle="--"),
                 )
             )
 
+            pop2_model = CosmicRaysModel(
+                base_spectra=[
+                    SharedPowerLawSpectrum(
+                        lgI_per_element={
+                            Element.H: stats.norm.rvs(loc=-5, scale=0.05),
+                            Element.He: stats.norm.rvs(loc=-6, scale=0.05),
+                        },
+                        alpha=stats.norm.rvs(loc=2.4, scale=0.05),
+                    )
+                ],
+                breaks=[
+                    initial_guess_break(
+                        SpectralBreakConfig(
+                            fixed_lg_sharpness=0.7,
+                            quantity="R",
+                            lg_break_prior_limits=(6, 7),
+                            is_softening=True,
+                            lg_break_hint=6.5,
+                        ),
+                    )
+                ],
+                all_particle_lg_shift=None,
+                free_Z=None,
+                unresolved_elements_spectrum=None,
+                population_meta=PopulationMetadata(
+                    name="Nearby source",
+                    linestyle=":",
+                ),
+            )
+
+            return Model(
+                populations=[pop1_model, pop2_model],
+                energy_shifts=ExperimentEnergyScaleShifts(
+                    lg_shifts={
+                        exp: stats.norm.rvs(loc=0, scale=0.01) for exp in shifted_experiments
+                    }
+                ),
+            )
+
         m = generate_guess()
+        # m.layout_info()
+        # m.plot_spectra(fit_data=Data.load(fit_data_config), scale=2.8).savefig("temp.png")
+        # print()
+        # print(m)
+        # print()
         m.validate_packing()
 
         config = FitConfig.from_guessing_func(
             name=analysis_name,
             fit_data=fit_data_config,
-            # mcmc=McmcConfig(
-            #     n_steps=100_000,
-            #     n_walkers=256,
-            #     processes=8,
-            #     reuse_saved=True,
-            # ),
-            mcmc=None,
+            mcmc=McmcConfig(
+                n_steps=30_000,
+                n_walkers=64,
+                processes=8,
+                reuse_saved=True,
+            ),
             generate_guess=generate_guess,
             plots=PlotsConfig(validation_data_config=validation_data_config),
         )

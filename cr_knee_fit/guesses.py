@@ -13,22 +13,24 @@ from cr_knee_fit.elements import Element
 from cr_knee_fit.model_ import Model, ModelConfig
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 
+# break_pos_guesses = [4.2, 5.3, 6.5]
 
-def initial_guess_break(bc: SpectralBreakConfig, break_idx: int) -> SpectralBreak:
+
+def initial_guess_break(bc: SpectralBreakConfig) -> SpectralBreak:
     if bc.fixed_lg_sharpness:
         lg_s = bc.fixed_lg_sharpness
     else:
         lg_s = stats.norm.rvs(loc=np.log10(5), scale=0.01)
 
-    break_pos_guesses = [4.2, 5.3, 6.5]
-    d_alpha_guesses = [0.3, -0.3, 0.5]
+    lg_break_min, lg_break_max = bc.lg_break_prior_limits
+    lg_break_mean = bc.lg_break_initial_guess()
+    lg_break_width = min(0.1, lg_break_max - lg_break_mean, lg_break_mean - lg_break_min)
 
     return SpectralBreak(
-        lg_break=stats.norm.rvs(loc=break_pos_guesses[break_idx], scale=0.1),
-        d_alpha=stats.norm.rvs(loc=d_alpha_guesses[break_idx], scale=0.05),
+        lg_break=stats.uniform.rvs(loc=lg_break_mean - lg_break_width / 2, scale=lg_break_width),
+        d_alpha=stats.norm.rvs(loc=0.5 * (1 if bc.is_softening else -1), scale=0.1),
         lg_sharpness=lg_s,
-        fix_sharpness=bc.fixed_lg_sharpness is not None,
-        quantity=bc.quantity,
+        config=bc,
     )
 
 
@@ -69,7 +71,7 @@ def initial_guess_main_population(
             )
             for comp_conf in pop_config.component_configs
         ],
-        breaks=[initial_guess_break(bc, break_idx=i) for i, bc in enumerate(pop_config.breaks)],
+        breaks=[initial_guess_break(bc) for bc in pop_config.breaks],
         all_particle_lg_shift=(
             np.log10(stats.uniform.rvs(loc=1.1, scale=0.9))
             if pop_config.rescale_all_particle
@@ -83,6 +85,7 @@ def initial_guess_main_population(
             if pop_config.add_unresolved_elements
             else None
         ),
+        population_meta=pop_config.population_meta,
     )
 
 

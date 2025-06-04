@@ -555,7 +555,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
     posterior_ml_best = run_ml_analysis(
         config=config,
         fit_data=fit_data,
-        freeze_shifts=True,
+        freeze_shifts=False,
         initial_model=posterior_best_model,
     )
     if posterior_ml_best is not None:

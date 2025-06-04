@@ -12,6 +12,7 @@ from cr_knee_fit.cr_model import (
     CosmicRaysModelConfig,
     SharedPowerLawSpectrum,
     SpectralBreak,
+    SpectralBreakConfig,
 )
 from cr_knee_fit.elements import (
     Element,
@@ -137,11 +138,13 @@ class Model(Packable[ModelConfig]):
                         ),
                     )
             for exp, allpart_data in data_.all_particle_spectra.items():
+                f_exp = self.energy_shifts.f(exp)
                 all_energies.extend(allpart_data.E)
+                allpart_data = allpart_data.with_shifted_energy_scale(f_exp)
                 allpart_data.plot(scale=scale, ax=ax, add_label=False, is_fitted=is_fitted)
                 legend_items_by_exp.setdefault(
                     exp,
-                    (exp.legend_artist(is_fitted=is_fitted), exp.name),
+                    (exp.legend_artist(is_fitted=is_fitted), exp.name + energy_shift_suffix(f_exp)),
                 )
                 plot_allpart = True
 
@@ -330,7 +333,12 @@ if __name__ == "__main__":
                         lg_break=np.random.random(),
                         d_alpha=np.random.random(),
                         lg_sharpness=np.random.random(),
-                        quantity="R",
+                        config=SpectralBreakConfig(
+                            quantity="R",
+                            fixed_lg_sharpness=None,
+                            lg_break_prior_limits=(4, 10),
+                            is_softening=True,
+                        ),
                     )
                     for _ in range(5)
                 ],

@@ -1,6 +1,7 @@
 import logging
 import re
 from pathlib import Path
+from typing import Sequence
 
 import numpy as np
 
@@ -43,7 +44,7 @@ def transform_T2E(T_min, T_max, I_T, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up, A=1
     return [E_mean, I_E, e_sta_lo / A, e_sta_up / A, e_sys_lo / A, e_sys_up / A]
 
 
-def dump(data, filename):
+def dump(data: np.ndarray | Sequence[np.ndarray], filename: str) -> None:
     """Write transformed data to a file in the output directory."""
     output_dir = Path("output")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -61,7 +62,7 @@ def dump(data, filename):
         raise
 
 
-def transform_simple(filename: str) -> None:
+def transform_crdb_generic(filename: str) -> None:
     x_min, x_max, value, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = readfile(f"crdb/{filename}")
     dump([geom_mean(x_min, x_max), value, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up], filename)
 
@@ -87,7 +88,7 @@ def transform_AMS02():
         data = transform_R2E(R_min, R_max, I_R, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up, Z=Z)
         dump(data, energy_file)
 
-    transform_simple("AMS-02_p_He_ratio_rigidity.txt")
+    transform_crdb_generic("AMS-02_p_He_ratio_rigidity.txt")
 
 
 def transform_CALET():
@@ -108,7 +109,7 @@ def transform_CALET():
             data = transform_T2E(E_min, E_max, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up, A=A)
         dump(data, output_file)
 
-    transform_simple("CALET_p_He_ratio_rigidity.txt")
+    transform_crdb_generic("CALET_p_He_ratio_rigidity.txt")
 
 
 def transform_DAMPE():
@@ -188,8 +189,6 @@ def transform_Cagnoli2024():
         e_sta_up[mask],
         e_sta_lo[mask],
         e_sta_up[mask],
-        # 0. * e_sta_lo[mask],
-        # 0. * e_sta_up[mask],
     ]
     dump(data, "DAMPE_all_energy.txt")
 
@@ -284,8 +283,6 @@ def transform_LHAASO_protons() -> None:
     def dump_table(table: list[tuple[float, ...]], filename: str):
         dump(np.array(table).T, filename)
 
-
-
     dump_table(
         [
             (
@@ -317,7 +314,19 @@ def transform_LHAASO_protons() -> None:
     )
 
 
+def transform_KASCADE_elements_new() -> None:
+    # protons
+    E, flux, stat, syst = np.loadtxt(
+        "lake/from-kike/KASCADE_proton_data_QGSJet2-04.txt", unpack=True
+    )
+    dump((E, flux, stat, stat, syst, syst), "KASCADE_re_QGSJET-II-04_H_energy.txt")
+
+
 if __name__ == "__main__":
+    import sys
+
+    transform_KASCADE_elements_new()
+    sys.exit()
 
     logging.info("Starting AMS02 transformation")
     transform_AMS02()
@@ -352,7 +361,7 @@ if __name__ == "__main__":
     logging.info("Starting GRAPES transformation")
     transform_GRAPES()
 
-    transform_simple("NUCLEON_p_He_ratio_rigidity.txt")
+    transform_crdb_generic("NUCLEON_p_He_ratio_rigidity.txt")
     transform_LHAASO_protons()
 
     logging.info("All transformations completed")

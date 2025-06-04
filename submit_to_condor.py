@@ -61,7 +61,7 @@ if __name__ == "__main__":
     analysis_name = "vanilla+icetop"
 
     fit_data_config = DataConfig(
-        experiments_elements=experiments.direct_experiments + [experiments.grapes],
+        experiments_elements=experiments.DIRECT + [experiments.grapes],
         experiments_all_particle=[experiments.ice_top_sibyll],
         experiments_lnA=[],
         elements=Element.regular(),

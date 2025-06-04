@@ -151,7 +151,19 @@ BreakQuantity = Literal[
 @dataclass
 class SpectralBreakConfig:
     fixed_lg_sharpness: float | None
-    quantity: BreakQuantity = "R"  # backcompat for legacy configs
+    lg_break_prior_limits: tuple[float, float]
+    is_softening: bool
+    quantity: BreakQuantity = "R"
+    lg_break_hint: float | None = None
+
+    def lg_break_initial_guess(self) -> float:
+        if (
+            self.lg_break_hint is not None
+            and self.lg_break_prior_limits[0] < self.lg_break_hint < self.lg_break_prior_limits[1]
+        ):
+            return self.lg_break_hint
+        else:
+            return (self.lg_break_prior_limits[0] + self.lg_break_prior_limits[1]) / 2
 
 
 @dataclass
@@ -160,27 +172,23 @@ class SpectralBreak(Packable[SpectralBreakConfig]):
     d_alpha: float  # PL index change at the break
     lg_sharpness: float  # 0 is very smooth, 10+ is very sharp
 
-    fix_sharpness: bool = False
-    quantity: BreakQuantity = "R"
+    config: SpectralBreakConfig
 
     def ndim(self) -> int:
-        return 2 if self.fix_sharpness else 3
+        return 2 if self.config.fixed_lg_sharpness else 3
 
     def pack(self) -> np.ndarray:
         return np.array([self.lg_break, self.d_alpha, self.lg_sharpness][: self.ndim()])
 
     def labels(self, latex: bool) -> list[str]:
         if latex:
-            labels = [f"\\lg({self.quantity}^\\text{{b}})", "\\Delta \\alpha", "\\lg(s)"]
+            labels = [f"\\lg({self.config.quantity}^\\text{{b}})", "\\Delta \\alpha", "\\lg(s)"]
         else:
-            labels = [f"lg({self.quantity}^b)", "d_alpha", "lg(s)"]
+            labels = [f"lg({self.config.quantity}^b)", "d_alpha", "lg(s)"]
         return labels[: self.ndim()]
 
     def layout_info(self) -> SpectralBreakConfig:
-        return SpectralBreakConfig(
-            fixed_lg_sharpness=self.lg_sharpness if self.fix_sharpness else None,
-            quantity=self.quantity,
-        )
+        return self.config
 
     @classmethod
     def unpack(cls, theta: np.ndarray, layout_info: SpectralBreakConfig) -> "SpectralBreak":
@@ -189,12 +197,11 @@ class SpectralBreak(Packable[SpectralBreakConfig]):
             lg_break=lg_R,
             d_alpha=d_alpha,
             lg_sharpness=layout_info.fixed_lg_sharpness or theta[2],
-            fix_sharpness=layout_info.fixed_lg_sharpness is not None,
-            quantity=layout_info.quantity,
+            config=layout_info,
         )
 
     def compute(self, R: np.ndarray, Z: int, A: float) -> np.ndarray:
-        match self.quantity:
+        match self.config.quantity:
             case "E":
                 quantity = R * float(Z)
             case "R":
@@ -218,12 +225,12 @@ class SpectralBreak(Packable[SpectralBreakConfig]):
 
     def description(self) -> str:
         parts: list[str] = []
-        unit = "GV" if self.quantity == "R" else "GeV"
+        unit = "GV" if self.config.quantity == "R" else "GeV"
         parts.append(
-            f"$ {self.quantity}^\\text{{b}} = {num2tex(10**self.lg_break, precision=2, exp_format='cdot')}~\\text{{{unit}}} $"
+            f"$ {self.config.quantity}^\\text{{b}} = {num2tex(10**self.lg_break, precision=2, exp_format='cdot')}~\\text{{{unit}}} $"
         )
         parts.append(f"$ \\Delta \\alpha = {self.d_alpha:.2f} $")
-        if not self.fix_sharpness:
+        if self.config.fixed_lg_sharpness is not None:
             parts.append(f"$ s = {10**self.lg_sharpness:.2f} $")
         return ", ".join(parts)
 
@@ -245,20 +252,12 @@ class CosmicRaysModelConfig:
     rescale_all_particle: bool = False
     add_unresolved_elements: bool = False
 
-    population_name: str | None = None
     population_meta: PopulationMetadata | None = None
 
     def __post_init__(self) -> None:
         assert len(self.resolved_elements) == len(set(self.resolved_elements)), (
             "Duplicate elements in components!"
         )
-        if self.population_name is not None:
-            if self.population_meta is not None:
-                raise ValueError("population name and metadata are mutually exclusive")
-            self.population_meta = PopulationMetadata(
-                name=self.population_name,
-                linestyle=None,
-            )
 
     @property
     def has_free_Z_component(self) -> bool:
@@ -444,11 +443,17 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         E_factor = E_grid**scale
         label_prefix = self.population_prefix(latex=False)
 
+        def with_prefix(name: str) -> str:
+            if not label_prefix:
+                return name.capitalize()
+            else:
+                return label_prefix + name.lower()
+
         for element in elements or self.resolved_elements:
             ax.plot(
                 E_grid,
                 E_factor * self.compute(E_grid, element),
-                label=label_prefix + self.element_name(element),
+                label=with_prefix(self.element_name(element)),
                 color=element.color,
                 linestyle=self._linestyle,
             )
@@ -466,7 +471,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
                         start=np.zeros_like(E_grid),
                     )
                 ),
-                label=label_prefix + "Unresolved elements",
+                label=with_prefix("Unresolved elements"),
                 color="magenta",
                 linestyle=self._linestyle,
             )
@@ -477,7 +482,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             ax.plot(
                 E_grid,
                 E_factor * extra_all_particle_contrib,
-                label=label_prefix + "Extra contribution to all-particle",
+                label=with_prefix("Extra contribution to all-particle"),
                 color="gray",
                 linestyle=self._linestyle,
             )
@@ -485,7 +490,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             ax.plot(
                 E_grid,
                 E_factor * self.compute_all_particle(E_grid),
-                label=label_prefix + "All particle",
+                label=with_prefix("All particle"),
                 color="black",
                 linestyle=self._linestyle,
             )
@@ -505,7 +510,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         )
 
     def population_prefix(self, latex: bool) -> str:
-        if self.population_meta is not None:
+        if self.population_meta is not None and self.population_meta.name:
             return (
                 f"\\text{{{self.population_meta.name}}}\\;"
                 if latex
@@ -629,9 +634,39 @@ if __name__ == "__main__":
             ),
         ],
         breaks=[
-            SpectralBreak(lg_break=5.0, d_alpha=-0.4, lg_sharpness=0.5),
-            SpectralBreak(lg_break=5.0, d_alpha=-0.4, lg_sharpness=0.5, fix_sharpness=True),
-            SpectralBreak(lg_break=5.0, d_alpha=-0.4, lg_sharpness=0.5),
+            SpectralBreak(
+                lg_break=5.0,
+                d_alpha=-0.4,
+                lg_sharpness=0.5,
+                config=SpectralBreakConfig(
+                    fixed_lg_sharpness=0.5,
+                    lg_break_prior_limits=(5, 10),
+                    quantity="R",
+                    is_softening=True,
+                ),
+            ),
+            SpectralBreak(
+                lg_break=5.0,
+                d_alpha=-0.4,
+                lg_sharpness=0.5,
+                config=SpectralBreakConfig(
+                    fixed_lg_sharpness=None,
+                    lg_break_prior_limits=(3, 18),
+                    quantity="R",
+                    is_softening=False,
+                ),
+            ),
+            SpectralBreak(
+                lg_break=5.0,
+                d_alpha=-0.4,
+                lg_sharpness=0.5,
+                config=SpectralBreakConfig(
+                    fixed_lg_sharpness=None,
+                    lg_break_prior_limits=(10, 17),
+                    quantity="E",
+                    is_softening=True,
+                ),
+            ),
         ],
         unresolved_elements_spectrum=UnresolvedElementsSpectrum(
             lgI=np.random.random(),
