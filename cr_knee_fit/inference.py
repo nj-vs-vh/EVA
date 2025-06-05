@@ -59,6 +59,8 @@ energy_scale_lg_uncertainties = {
     experiments.lhaaso_sibyll: lg_from_percent(10),
 }
 
+default_energy_scale_lg_uncertainty = lg_from_percent(10)
+
 
 # if len(main.breaks) > 1:
 #     # grapes hardening
@@ -99,7 +101,7 @@ def logprior(model: Model) -> float:
 
     # experimental energy shifts' prior
     for exp, lg_shift in model.energy_shifts.lg_shifts.items():
-        lg_sigma = energy_scale_lg_uncertainties.get(exp, lg_from_percent(10))
+        lg_sigma = energy_scale_lg_uncertainties.get(exp, default_energy_scale_lg_uncertainty)
         res += stats.norm.logpdf(lg_shift, loc=0, scale=lg_sigma)
 
     return res  # type: ignore

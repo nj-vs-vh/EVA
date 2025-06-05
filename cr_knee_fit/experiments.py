@@ -57,6 +57,7 @@ lhaaso_sibyll = Experiment("LHAASO (Sibyll 2.3)", filename_stem="LHAASO_SIBYLL-2
 lhaaso_qgsjet = Experiment("LHAASO (QGSJET II-04)", filename_stem="LHAASO_QGSJET-II-04")
 ice_top_sibyll = Experiment("IceTop (Sibyll 2.1)", filename_stem="ICETOP_SIBYLL_21")
 kascade_sibyll = Experiment("KASCADE (Sibyll 2.1)", filename_stem="KASCADE_SIBYLL_21")
+kascade_qgsjet = Experiment("KASCADE (QGSJet II-04)", filename_stem="KASCADE_QGSJET-II-04")
 kascade_re_qgsjet = Experiment(
     "KASCADE re-analysis (QGSJet II-04)", filename_stem="KASCADE_re_QGSJET-II-04"
 )
@@ -72,6 +73,7 @@ INDIRECT = [
     lhaaso_qgsjet,
     ice_top_sibyll,
     kascade_sibyll,
+    kascade_qgsjet,
     kascade_re_qgsjet,
     kascade_grande_sibyll,
 ]

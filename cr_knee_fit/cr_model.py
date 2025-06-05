@@ -443,17 +443,17 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         E_factor = E_grid**scale
         label_prefix = self.population_prefix(latex=False)
 
-        def with_prefix(name: str) -> str:
+        def with_prefix(name: str, preserve_capitalization: bool = False) -> str:
             if not label_prefix:
                 return name.capitalize()
             else:
-                return label_prefix + name.lower()
+                return label_prefix + (name if preserve_capitalization else name.lower())
 
         for element in elements or self.resolved_elements:
             ax.plot(
                 E_grid,
                 E_factor * self.compute(E_grid, element),
-                label=with_prefix(self.element_name(element)),
+                label=with_prefix(self.element_name(element), preserve_capitalization=True),
                 color=element.color,
                 linestyle=self._linestyle,
             )

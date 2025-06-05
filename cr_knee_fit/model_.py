@@ -25,7 +25,13 @@ from cr_knee_fit.experiments import Experiment
 from cr_knee_fit.fit_data import Data
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 from cr_knee_fit.types_ import Packable
-from cr_knee_fit.utils import E_GEV_LABEL, LegendItem, energy_shift_suffix, legend_with_added_items
+from cr_knee_fit.utils import (
+    E_GEV_LABEL,
+    LegendItem,
+    add_elements_lnA_secondary_axis,
+    energy_shift_suffix,
+    legend_with_added_items,
+)
 
 
 @dataclass
@@ -117,6 +123,7 @@ class Model(Packable[ModelConfig]):
         plot_allpart = False
         all_energies: list[float] = []
         for data_, is_fitted in ((fit_data, True), (validation_data, False)):
+            print(data_)
             if data_ is None:
                 continue
             for exp, data_by_particle in data_.element_spectra.items():
@@ -188,8 +195,28 @@ class Model(Packable[ModelConfig]):
                     linewidth=2,
                 )
 
-        legend_with_added_items(ax, list(legend_items_by_exp.values()), fontsize="x-small")
+        legend_with_added_items(
+            ax,
+            list(legend_items_by_exp.values()),
+            fontsize="small",
+            bbox_to_anchor=(0.00, 1.05, 1.0, 0.0),
+            loc="lower left",
+            fancybox=True,
+            shadow=True,
+            ncol=4,
+        )
         ax.set_ylim(*ylim)
+
+        fig.tight_layout()
+        # fig.canvas.draw()
+        # legend_bbox = legend.get_window_extent()
+        # legend_bbox_fig = legend_bbox.transformed(fig.transFigure.inverted())
+        # legend_height = legend_bbox_fig.height
+        # box = ax.get_position()
+        # padding = 0.05
+        # ax.set_position((box.x0, box.y0, box.width, box.height - legend_height - padding))
+        # fig.canvas.draw()
+
         return fig
 
     def plot_lnA(
@@ -219,6 +246,9 @@ class Model(Packable[ModelConfig]):
                 )
                 all_energies.extend(lnA_data.x)
 
+        if not all_energies:
+            return fig
+
         E_min = np.min(all_energies)
         E_max = np.max(all_energies)
         E_grid = np.geomspace(E_min, E_max, 100)
@@ -232,6 +262,7 @@ class Model(Packable[ModelConfig]):
         ax.set_xlabel(E_GEV_LABEL)
         ax.set_ylabel("$ \\langle \\ln A \\rangle $")
         legend_with_added_items(ax, legend_items, fontsize="x-small")
+        add_elements_lnA_secondary_axis(ax)
         return fig
 
     def compute_spectrum(self, E: np.ndarray, element: Element | None) -> np.ndarray:
@@ -349,7 +380,13 @@ if __name__ == "__main__":
             for _ in range(3)
         ],
         energy_shifts=ExperimentEnergyScaleShifts(
-            lg_shifts={e: np.random.random() for e in [Experiment("a"), Experiment("b")]}
+            lg_shifts={
+                e: np.random.random()
+                for e in [
+                    Experiment("a", filename_stem="aaa"),
+                    Experiment("b", filename_stem="bbb"),
+                ]
+            }
         ),
     )
     m.validate_packing()

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from scipy import stats  # type: ignore
 
-from bayesian_analysis import FitConfig, McmcConfig, PlotsConfig, run_bayesian_analysis
+from bayesian_analysis import FitConfig, PlotsConfig, run_bayesian_analysis
 from cr_knee_fit import experiments
 from cr_knee_fit.cr_model import (
     CosmicRaysModel,
@@ -57,7 +57,7 @@ if __name__ == "__main__":
         input("Press Enter to confirm")
 
     else:
-        analysis_name = "second-component-energy-extended"
+        analysis_name = "H-He-compat-test"
 
         print(f"Running pre-configured analysis: {analysis_name}")
 
@@ -66,23 +66,35 @@ if __name__ == "__main__":
             + [
                 experiments.grapes,
                 experiments.lhaaso_epos,
+                experiments.kascade_re_qgsjet,
             ],
             experiments_all_particle=[
-                experiments.lhaaso_epos,
-                experiments.hawc,
-                experiments.tale,
-                experiments.kascade_sibyll,
+                # experiments.lhaaso_epos,
+                # experiments.hawc,
+                # experiments.tale,
+                # experiments.kascade_re_qgsjet,
             ],
-            experiments_lnA=[experiments.lhaaso_epos],
-            elements=Element.regular(),
+            experiments_lnA=[],
+            elements=[
+                Element.H,
+                Element.He,
+            ],
         )
 
         validation_data_config = DataConfig(
-            experiments_elements=experiments.ALL,
-            experiments_all_particle=experiments.ALL,
-            experiments_lnA=experiments.ALL,
-            elements=Element.regular(),
+            experiments_elements=[],
+            # experiments_all_particle=experiments.ALL,
+            experiments_all_particle=[
+                experiments.hawc,
+                experiments.lhaaso_epos,
+            ],
+            experiments_lnA=[],
+            elements=[
+                Element.H,
+                Element.He,
+            ],
         ).excluding(fit_data_config)
+        print(validation_data_config)
 
         def generate_guess() -> Model:
             shifted_experiments = (
@@ -93,26 +105,34 @@ if __name__ == "__main__":
                     components=[
                         SpectralComponentConfig([Element.H]),
                         SpectralComponentConfig([Element.He]),
-                        SpectralComponentConfig(Element.nuclei()),
+                        # SpectralComponentConfig([Element.Fe]),
+                        # SpectralComponentConfig(Element.nuclei()),
                     ],
                     breaks=[
                         SpectralBreakConfig(
                             fixed_lg_sharpness=0.7,
                             quantity="R",
-                            lg_break_prior_limits=(3.5, 4.5),
+                            lg_break_prior_limits=(3.8, 4.3),
                             is_softening=True,
                             lg_break_hint=4.0,
                         ),
                         # SpectralBreakConfig(
                         #     fixed_lg_sharpness=0.7,
                         #     quantity="R",
-                        #     lg_break_prior_limits=(4.5, 6.5),
+                        #     lg_break_prior_limits=(4.3, 8.8),
                         #     is_softening=False,
-                        #     lg_break_hint=5.3,
+                        #     lg_break_hint=5.0,
+                        # ),
+                        # SpectralBreakConfig(
+                        #     fixed_lg_sharpness=0.7,
+                        #     quantity="R",
+                        #     lg_break_prior_limits=(6.0, 7),
+                        #     is_softening=True,
+                        #     lg_break_hint=6.2,
                         # ),
                     ],
                     rescale_all_particle=False,
-                    population_meta=PopulationMetadata(name="Main", linestyle="--"),
+                    population_meta=PopulationMetadata(name="Base", linestyle="--"),
                 )
             )
 
@@ -122,6 +142,9 @@ if __name__ == "__main__":
                         lgI_per_element={
                             Element.H: stats.norm.rvs(loc=-5, scale=0.05),
                             Element.He: stats.norm.rvs(loc=-6, scale=0.05),
+                            # Element.C: stats.norm.rvs(loc=-7, scale=0.05),
+                            # Element.Si: stats.norm.rvs(loc=-8, scale=0.05),
+                            # Element.Fe: stats.norm.rvs(loc=-8, scale=0.05),
                         },
                         alpha=stats.norm.rvs(loc=2.4, scale=0.05),
                     )
@@ -141,13 +164,16 @@ if __name__ == "__main__":
                 free_Z=None,
                 unresolved_elements_spectrum=None,
                 population_meta=PopulationMetadata(
-                    name="Nearby source",
+                    name="Knee",
                     linestyle=":",
                 ),
             )
 
             return Model(
-                populations=[pop1_model, pop2_model],
+                populations=[
+                    pop1_model,
+                    pop2_model,
+                ],
                 energy_shifts=ExperimentEnergyScaleShifts(
                     lg_shifts={
                         exp: stats.norm.rvs(loc=0, scale=0.01) for exp in shifted_experiments
@@ -156,22 +182,18 @@ if __name__ == "__main__":
             )
 
         m = generate_guess()
-        # m.layout_info()
-        # m.plot_spectra(fit_data=Data.load(fit_data_config), scale=2.8).savefig("temp.png")
-        # print()
-        # print(m)
-        # print()
         m.validate_packing()
 
         config = FitConfig.from_guessing_func(
             name=analysis_name,
             fit_data=fit_data_config,
-            mcmc=McmcConfig(
-                n_steps=30_000,
-                n_walkers=64,
-                processes=8,
-                reuse_saved=True,
-            ),
+            # mcmc=McmcConfig(
+            #     n_steps=30_000,
+            #     n_walkers=64,
+            #     processes=8,
+            #     reuse_saved=True,
+            # ),
+            mcmc=None,
             generate_guess=generate_guess,
             plots=PlotsConfig(validation_data_config=validation_data_config),
         )

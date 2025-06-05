@@ -402,7 +402,8 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
             plot_config=config.plots.elements,
             color=element.color,
         )
-        legend_items.append((element.legend_artist(), element.name))
+        legend_items.append((legend_artist_line(element.color), element.name))
+
     legend_with_added_items(ax_comp, legend_items, fontsize="x-small")
 
     if fit_data.all_particle_spectra or validation_data.all_particle_spectra:
@@ -453,7 +454,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
                     plot_config=config.plots.all_particle_elements_contribution,
                     color=element.color,
                 )
-                legend_items.append((element.legend_artist(), element.name))
+                legend_items.append((legend_artist_line(element.color), element.name))
 
         if config.plots.all_particle_scaled_elements_contribution and any(
             pop_conf.rescale_all_particle

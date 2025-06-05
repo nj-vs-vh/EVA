@@ -314,20 +314,108 @@ def transform_LHAASO_protons() -> None:
     )
 
 
-def transform_KASCADE_elements_new() -> None:
-    # protons
-    E, flux, stat, syst = np.loadtxt(
-        "lake/from-kike/KASCADE_proton_data_QGSJet2-04.txt", unpack=True
+def transform_KASCADE_reanalysis() -> None:
+    output_prefix = "KASCADE_re_QGSJET-II-04"
+    text = Path("lake/KASCADE_re_table_2.txt").read_text()
+
+    paragraphs = text.split("\n\n")
+
+    def apply_exp(f: float, fstat: float, fsyst: float, exp: float) -> tuple[float, float, float]:
+        mult = 10 ** (-exp)
+        return f * mult, fstat * mult, fsyst * mult
+
+    def dump_table(table: list[tuple[float, float, float, float]], filename: str) -> None:
+        table_arr = np.array(table).T
+        E, flux, stat, syst = table_arr
+        dump((E, flux, stat, stat, syst, syst), filename)
+
+    H_table = []
+    He_table = []
+    C_table = []
+
+    energy_regex = r"(\d+\.\d+)\s*−\s*(\d+\.\d+)"
+    value_regex = r"\((\d+\.\d+)\s*±\s*(\d+\.\d+)\s*±\s*(\d+\.\d+)\)\s*×\s*10−(\d+)"
+    delim = r"\s+"
+    table_row_regex_1 = re.compile(
+        energy_regex + delim + value_regex + delim + value_regex + delim + value_regex
     )
-    dump((E, flux, stat, stat, syst, syst), "KASCADE_re_QGSJET-II-04_H_energy.txt")
+    for line in paragraphs[1].splitlines():
+        m = table_row_regex_1.match(line)
+        assert m is not None
+        (
+            lgE_min,
+            lgE_max,
+            p,
+            pstat,
+            psyst,
+            pexp,
+            He,
+            Hestat,
+            Hesyst,
+            Heexp,
+            C,
+            Cstat,
+            Csyst,
+            Cexp,
+        ) = (float(val_str) for val_str in m.groups())
+        E = 10 ** ((lgE_min + lgE_max) / 2)
+        H_table.append((E, *apply_exp(p, pstat, psyst, pexp)))
+        He_table.append((E, *apply_exp(He, Hestat, Hesyst, Heexp)))
+        C_table.append((E, *apply_exp(C, Cstat, Csyst, Cexp)))
+
+    dump_table(H_table, f"{output_prefix}_H_energy.txt")
+    dump_table(He_table, f"{output_prefix}_He_energy.txt")
+    dump_table(C_table, f"{output_prefix}_C_energy.txt")
+
+    table_row_regex_2 = re.compile(energy_regex + delim + value_regex + delim + value_regex)
+    Si_table = []
+    Fe_table = []
+    for line in paragraphs[2].splitlines():
+        m = table_row_regex_2.match(line)
+        assert m is not None
+        lgE_min, lgE_max, Si, Sistat, Sisyst, Siexp, Fe, Festat, Fesyst, Feexp = (
+            float(val_str) for val_str in m.groups()
+        )
+        E = 10 ** ((lgE_min + lgE_max) / 2)
+        Si_table.append((E, *apply_exp(Si, Sistat, Sisyst, Siexp)))
+        Fe_table.append((E, *apply_exp(Fe, Festat, Fesyst, Feexp)))
+
+    dump_table(Si_table, f"{output_prefix}_Si_energy.txt")
+    dump_table(Fe_table, f"{output_prefix}_Fe_energy.txt")
+
+    # lnA
+    text = Path("lake/KASCADE_re_table_1.txt").read_text()
+    lnA_table = []
+    for line in text.splitlines():
+        if not line or line.startswith("#"):
+            continue
+        print(line)
+        line = line.replace("−", " ")
+        lgE_min, lgE_max, lnA, stat, syst, _syst_th_lo, _syst_th_up = list(map(float, line.split()))
+        E = 10 ** ((lgE_min + lgE_max) / 2)
+        lnA_table.append(
+            (E, lnA, stat, syst)
+        )
+    dump_table(lnA_table, f"{output_prefix}_lnA_energy.txt")
+
+    # allparticle 
+    text = Path("lake/KASCADE_re_table_3.txt").read_text()
+    all_table = []
+    for line in text.splitlines():
+        if not line or line.startswith("#"):
+            continue
+        print(line)
+        line = line.replace("×10−", " ")
+        line = line.replace("−", " ")
+        lgE_min, lgE_max, flux, stat, syst, _syst_th_lo, _syst_th_up, exp = list(map(float, line.split()))
+        E = 10 ** ((lgE_min + lgE_max) / 2)
+        all_table.append(
+            (E, *apply_exp(flux, stat, syst, exp))
+        )
+    dump_table(all_table, f"{output_prefix}_all_energy.txt")
 
 
 if __name__ == "__main__":
-    import sys
-
-    transform_KASCADE_elements_new()
-    sys.exit()
-
     logging.info("Starting AMS02 transformation")
     transform_AMS02()
 
@@ -363,5 +451,7 @@ if __name__ == "__main__":
 
     transform_crdb_generic("NUCLEON_p_He_ratio_rigidity.txt")
     transform_LHAASO_protons()
+
+    transform_KASCADE_reanalysis()
 
     logging.info("All transformations completed")

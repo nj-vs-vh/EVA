@@ -2,8 +2,7 @@ import enum
 from typing import Any
 
 import matplotlib.pyplot as plt
-
-from cr_knee_fit.utils import legend_artist_line
+import numpy as np
 
 _ELEMENT_CMAP = plt.colormaps["rainbow_r"]
 
@@ -44,15 +43,16 @@ class Element(enum.IntEnum):
         return isotope_average_A(round(self.Z))
 
     @property
+    def lnA(self) -> float:
+        return np.log(self.A)
+
+    @property
     def color(self) -> Any:
         if self is Element.FreeZ:
             return "gray"
         else:
             idx = sorted(Element.regular()).index(self)
             return _ELEMENT_CMAP(idx / (len(Element.regular()) - 1))
-
-    def legend_artist(self):
-        return legend_artist_line(color=self.color)
 
 
 element_names = [

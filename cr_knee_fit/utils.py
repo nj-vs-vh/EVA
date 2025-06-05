@@ -3,7 +3,10 @@ from typing import Iterable
 import numpy as np
 from matplotlib.artist import Artist
 from matplotlib.axes import Axes
+from matplotlib.legend import Legend
 from matplotlib.lines import Line2D
+
+from cr_knee_fit.elements import Element
 
 
 def add_log_margin(min: float, max: float, log_margin: float = 0.1) -> tuple[float, float]:
@@ -30,12 +33,26 @@ def label_energy_flux(ax: Axes, scale: float) -> None:
 LegendItem = tuple[Artist, str]
 
 
-def legend_with_added_items(ax: Axes, items: Iterable[LegendItem], **kwargs) -> None:
+def legend_with_added_items(ax: Axes, items: Iterable[LegendItem], **kwargs) -> Legend:
     handles, labels = ax.get_legend_handles_labels()
     for artist, label in items:
         handles.append(artist)
         labels.append(label)
-    ax.legend(handles, labels, **kwargs)
+    return ax.legend(handles, labels, **kwargs)
+
+
+def add_elements_lnA_secondary_axis(ax: Axes) -> None:
+    lnA_min, lnA_max = ax.get_ylim()
+    tick_elements = [el for el in Element.regular() if lnA_min < el.lnA < lnA_max]
+    ax_elements = ax.twinx()
+    ax_elements.set_yticks(
+        ticks=[e.lnA for e in tick_elements],
+        labels=[e.name for e in tick_elements],
+        minor=False,
+    )
+    ax_elements.grid(
+        visible=True, which="major", axis="y", color="gray", linestyle="--", linewidth=0.75
+    )
 
 
 def energy_shift_suffix(f: float) -> str:
