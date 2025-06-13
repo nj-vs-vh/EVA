@@ -90,9 +90,9 @@ if __name__ == "__main__":
                 ),
             ],
             breaks=[
-                SpectralBreakConfig(fixed_lg_sharpness=0.7, quantity="R"),
-                SpectralBreakConfig(fixed_lg_sharpness=0.7, quantity="R"),
-                SpectralBreakConfig(fixed_lg_sharpness=0.7, quantity="R"),
+                SpectralBreakConfig(fixed_lg_sharpness=0.7),
+                SpectralBreakConfig(fixed_lg_sharpness=0.7),
+                SpectralBreakConfig(fixed_lg_sharpness=0.7),
             ],
         ),
         shifted_experiments=fit_data_config.experiments_spectrum,

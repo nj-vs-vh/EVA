@@ -57,7 +57,7 @@ if __name__ == "__main__":
         input("Press Enter to confirm")
 
     else:
-        analysis_name = "H-He-compat-test"
+        analysis_name = "trans-knee-composition"
 
         print(f"Running pre-configured analysis: {analysis_name}")
 
