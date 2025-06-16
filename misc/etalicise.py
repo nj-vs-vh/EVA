@@ -18,7 +18,7 @@ from pathlib import Path
 
 import bibtexparser
 import bibtexparser.middlewares as m
-from bibtexparser.model import ExplicitComment
+from bibtexparser.model import Entry, ExplicitComment
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -46,10 +46,15 @@ if __name__ == "__main__":
     )
 
     class EtaliciseMiddleware(m.BlockMiddleware):
-        def transform_entry(self, entry, *args, **kwargs):
+        def transform_entry(self, entry: Entry, *args, **kwargs):
             if isinstance(entry["author"], list) and len(entry["author"]) > 10:
                 print(f"Shortening bib entry: {entry}")
                 entry["author"] = entry["author"][:10] + ["others"]
+            return entry
+
+    class VerbatimTitleMiddleware(m.BlockMiddleware):
+        def transform_entry(self, entry: Entry, *args, **kwargs):
+            entry["title"] = "{" + entry["title"] + "}"
             return entry
 
     bib_out = article_repo / "shortened.bib"
@@ -68,6 +73,7 @@ if __name__ == "__main__":
             m.SeparateCoAuthors(),
             EtaliciseMiddleware(),
             m.MergeCoAuthors(),
+            VerbatimTitleMiddleware(),
         ],
     )
 

@@ -9,6 +9,7 @@ from cr_knee_fit.cr_model import (
     SharedPowerLawSpectrum,
     SpectralBreakConfig,
     SpectralComponentConfig,
+    SpectralCutoffConfig,
 )
 from cr_knee_fit.elements import Element
 from cr_knee_fit.fit_data import DataConfig
@@ -18,7 +19,7 @@ from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 from run_local import run_local
 
 if __name__ == "__main__":
-    analysis_name = "trans-knee-composition"
+    analysis_name = "trans-knee-composition-2pop"
 
     print(f"Running pre-configured analysis: {analysis_name}")
 
@@ -58,20 +59,20 @@ if __name__ == "__main__":
         )
         pop1_model = initial_guess_main_population(
             pop_config=CosmicRaysModelConfig(
+                # components=[SpectralComponentConfig([el]) for el in Element.regular()],
                 components=[
                     SpectralComponentConfig([Element.H]),
                     SpectralComponentConfig([Element.He]),
-                    # SpectralComponentConfig([Element.Fe]),
-                    # SpectralComponentConfig(Element.nuclei()),
+                    [el for el in Element.nuclei()],
                 ],
                 breaks=[
-                    SpectralBreakConfig(
-                        fixed_lg_sharpness=0.7,
-                        quantity="R",
-                        lg_break_prior_limits=(3.8, 4.3),
-                        is_softening=True,
-                        lg_break_hint=4.0,
-                    ),
+                    # SpectralBreakConfig(
+                    #     fixed_lg_sharpness=0.7,
+                    #     quantity="R",
+                    #     lg_break_prior_limits=(3.8, 4.3),
+                    #     is_softening=True,
+                    #     lg_break_hint=4.0,
+                    # ),
                     # SpectralBreakConfig(
                     #     fixed_lg_sharpness=0.7,
                     #     quantity="R",
@@ -87,8 +88,13 @@ if __name__ == "__main__":
                     #     lg_break_hint=6.2,
                     # ),
                 ],
+                cutoff=SpectralCutoffConfig(
+                    fixed_lg_sharpness=None,
+                    lg_cut_prior_limits=(3, 5),
+                ),
                 rescale_all_particle=False,
-                population_meta=PopulationMetadata(name="Base", linestyle="--"),
+                population_meta=PopulationMetadata(name="LE", linestyle="--"),
+                # population_meta=None,
             )
         )
 
@@ -98,9 +104,9 @@ if __name__ == "__main__":
                     lgI_per_element={
                         Element.H: stats.norm.rvs(loc=-5, scale=0.05),
                         Element.He: stats.norm.rvs(loc=-6, scale=0.05),
-                        # Element.C: stats.norm.rvs(loc=-7, scale=0.05),
-                        # Element.Si: stats.norm.rvs(loc=-8, scale=0.05),
-                        # Element.Fe: stats.norm.rvs(loc=-8, scale=0.05),
+                        Element.C: stats.norm.rvs(loc=-7, scale=0.05),
+                        Element.Si: stats.norm.rvs(loc=-8, scale=0.05),
+                        Element.Fe: stats.norm.rvs(loc=-8, scale=0.05),
                     },
                     alpha=stats.norm.rvs(loc=2.4, scale=0.05),
                 )

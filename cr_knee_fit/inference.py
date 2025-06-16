@@ -2,24 +2,8 @@ import numpy as np
 from scipy import stats  # type: ignore
 
 from cr_knee_fit import experiments
-from cr_knee_fit.cr_model import SpectralBreak
 from cr_knee_fit.fit_data import Data
 from cr_knee_fit.model_ import Model, ModelConfig
-
-
-def break_prior(
-    b: SpectralBreak,
-) -> float:
-    res = 0
-    if not (b.config.lg_break_prior_limits[0] < b.lg_break < b.config.lg_break_prior_limits[1]):
-        return -np.inf
-    if (b.d_alpha > 0) != b.config.is_softening:
-        return -np.inf
-    if b.config.fixed_lg_sharpness is None:
-        s = 10**b.lg_sharpness
-        if not (0.1 < s < 20):
-            return -np.inf
-    return res
 
 
 def lg_from_percent(percent: float) -> float:
@@ -63,14 +47,6 @@ energy_scale_lg_uncertainties = {
 default_energy_scale_lg_uncertainty = lg_from_percent(10)
 
 
-# if len(main.breaks) > 1:
-#     # grapes hardening
-#     res += break_prior(main.breaks[1], lg_break_min=4.5, lg_break_max=6, is_softening=False)
-# if len(main.breaks) > 2:
-#     # all-particle knee
-#     res += break_prior(main.breaks[2], lg_break_min=5.5, lg_break_max=9, is_softening=True)
-
-
 def logprior(model: Model) -> float:
     res = 0.0
 
@@ -80,8 +56,32 @@ def logprior(model: Model) -> float:
         if breaks_lgR != sorted(breaks_lgR):
             return -np.inf
 
-        for break_ in population.breaks:
-            res += break_prior(break_)
+        for brk in population.breaks:
+            if not (
+                brk.config.lg_break_prior_limits[0]
+                < brk.lg_break
+                < brk.config.lg_break_prior_limits[1]
+            ):
+                return -np.inf
+            if (brk.d_alpha > 0) != brk.config.is_softening:
+                return -np.inf
+            if brk.config.fixed_lg_sharpness is None:
+                s = 10**brk.lg_sharpness
+                if not (0.1 < s < 20):
+                    return -np.inf
+
+        if population.cutoff is not None:
+            cutoff = population.cutoff
+            if not (
+                cutoff.config.lg_cut_prior_limits[0]
+                < cutoff.lg_cut
+                < cutoff.config.lg_cut_prior_limits[1]
+            ):
+                return -np.inf
+            if cutoff.config.fixed_lg_sharpness is None:
+                b = 10**cutoff.lg_sharpness
+                if not (0.1 < b < 20):
+                    return -np.inf
 
         # components prior
         for component in population.base_spectra:
