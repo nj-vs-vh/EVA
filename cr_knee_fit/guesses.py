@@ -59,7 +59,7 @@ def initial_guess_main_population(
                         for element in comp_conf.elements
                     },
                     alpha=stats.norm.rvs(
-                        loc=2.6 if comp_conf.elements == [Element.H] else 2.5,
+                        loc=2.6,
                         scale=0.05,
                     ),
                     lg_scale_contrib_to_all=(

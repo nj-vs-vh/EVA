@@ -3,6 +3,8 @@ from dataclasses import dataclass
 
 from matplotlib import lines
 
+from cr_knee_fit.constants import NON_FITTED_ALPHA
+
 markers_iter = itertools.cycle(["o", "v", "^", "<", ">", "s", "p", "P", "8", "X", "D", "d"])
 markers_cache: dict[str, str] = {}
 
@@ -13,11 +15,12 @@ class Experiment:
     filename_stem: str
 
     def __post_init__(self) -> None:
-        marker = markers_cache.get(self.name)
-        if not marker:
-            marker = next(markers_iter)
-            markers_cache[self.name] = marker
-        self.marker = marker
+        # marker = markers_cache.get(self.name)
+        # if not marker:
+        #     marker = next(markers_iter)
+        #     markers_cache[self.name] = marker
+        # self.marker = marker
+        self.marker = "$" + self.name[0].upper() + "$"
 
     def __gt__(self, other: "Experiment") -> bool:
         return self.name > other.name
@@ -32,7 +35,7 @@ class Experiment:
             color="black",
             marker=self.marker,
             linestyle="none",
-            alpha=1.0 if is_fitted else 0.3,
+            alpha=1.0 if is_fitted else NON_FITTED_ALPHA,
         )
 
     @property

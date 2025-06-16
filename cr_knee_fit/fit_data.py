@@ -1,3 +1,4 @@
+import dataclasses
 import itertools
 from dataclasses import dataclass
 from typing import Any, Iterable, Sequence, cast
@@ -7,6 +8,7 @@ import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
+from cr_knee_fit.constants import NON_FITTED_ALPHA
 from cr_knee_fit.elements import Element
 from cr_knee_fit.experiments import Experiment
 from cr_knee_fit.utils import energy_shift_suffix, label_energy_flux, legend_with_added_items
@@ -72,8 +74,9 @@ class GenericExperimentData:
             elinewidth=0.75,
             capsize=2.0,
             label=label if add_label else None,
-            fmt=self.experiment.marker,
-            alpha=1.0 if is_fitted else 0.3,
+            linestyle="none",
+            marker=self.experiment.marker,
+            alpha=1.0 if is_fitted else NON_FITTED_ALPHA,
         )
         if add_label:
             ax.legend()
@@ -188,8 +191,9 @@ class CRSpectrumData:
             markersize=4.0,
             elinewidth=0.75,
             capsize=2.0,
-            fmt=self.experiment.marker,
-            alpha=1.0 if is_fitted else 0.3,
+            linestyle="none",
+            marker=self.experiment.marker,
+            alpha=1.0 if is_fitted else NON_FITTED_ALPHA,
         )
         label_energy_flux(ax, scale)
         if add_label:
@@ -199,12 +203,12 @@ class CRSpectrumData:
 
 @dataclass
 class DataConfig:
-    experiments_elements: list[Experiment]
-    experiments_all_particle: list[Experiment]
-    experiments_lnA: list[Experiment]
+    experiments_elements: list[Experiment] = dataclasses.field(default_factory=list)
+    experiments_all_particle: list[Experiment] = dataclasses.field(default_factory=list)
+    experiments_lnA: list[Experiment] = dataclasses.field(default_factory=list)
 
     # detailed spectra config
-    elements: list[Element]
+    elements: list[Element] = dataclasses.field(default_factory=Element.regular)
     elements_R_bounds: tuple[float, float] = (7e2, 1e8)
 
     @property

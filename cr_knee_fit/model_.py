@@ -1,6 +1,5 @@
 import dataclasses
 import itertools
-import warnings
 from dataclasses import dataclass, field
 
 import matplotlib.pyplot as plt
@@ -43,7 +42,6 @@ class ModelConfig:
 
     def __post_init__(self) -> None:
         if self.cr_model_config is not None:
-            warnings.warn("cr_model_config class is deprecated, use population_configs")
             if self.population_configs:
                 raise ValueError(
                     "population_configs and cr_model_config parameters are mutually exclusive"

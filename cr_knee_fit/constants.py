@@ -1,0 +1,1 @@
+NON_FITTED_ALPHA = 0.3

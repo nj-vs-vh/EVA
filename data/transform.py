@@ -152,7 +152,6 @@ def transform_allParticles():
     datasets = [
         "NUCLEON_all_energy.txt",
         "GAMMA_SIBYLL_all_energy.txt",
-        "HAWC_QGSJET-II-04_all_energy.txt",
         "TALE_QGSJET-II-04_all_energy.txt",
         "TUNKA-133_QGSJET-01_all_energy.txt",
         "KASCADE_QGSJET-01_all_energy.txt",
@@ -276,7 +275,7 @@ def transform_LHAASO_protons() -> None:
         assert m is not None
         table.append([float(v) for v in m.groups()])
 
-    print(*table, sep="\n")
+    # print(*table, sep="\n")
     # LHAASO energies are in lg(E / PeV), so we shift by 6 orders to get GeV
     E = [10 ** ((lgE_min + lgE_max) / 2 + 6) for (lgE_min, lgE_max, *_) in table]
 
@@ -389,30 +388,61 @@ def transform_KASCADE_reanalysis() -> None:
     for line in text.splitlines():
         if not line or line.startswith("#"):
             continue
-        print(line)
         line = line.replace("−", " ")
         lgE_min, lgE_max, lnA, stat, syst, _syst_th_lo, _syst_th_up = list(map(float, line.split()))
         E = 10 ** ((lgE_min + lgE_max) / 2)
-        lnA_table.append(
-            (E, lnA, stat, syst)
-        )
+        lnA_table.append((E, lnA, stat, syst))
     dump_table(lnA_table, f"{output_prefix}_lnA_energy.txt")
 
-    # allparticle 
+    # allparticle
     text = Path("lake/KASCADE_re_table_3.txt").read_text()
     all_table = []
     for line in text.splitlines():
         if not line or line.startswith("#"):
             continue
-        print(line)
         line = line.replace("×10−", " ")
         line = line.replace("−", " ")
-        lgE_min, lgE_max, flux, stat, syst, _syst_th_lo, _syst_th_up, exp = list(map(float, line.split()))
-        E = 10 ** ((lgE_min + lgE_max) / 2)
-        all_table.append(
-            (E, *apply_exp(flux, stat, syst, exp))
+        lgE_min, lgE_max, flux, stat, syst, _syst_th_lo, _syst_th_up, exp = list(
+            map(float, line.split())
         )
+        E = 10 ** ((lgE_min + lgE_max) / 2)
+        all_table.append((E, *apply_exp(flux, stat, syst, exp)))
     dump_table(all_table, f"{output_prefix}_all_energy.txt")
+
+
+def transform_HAWC_2025() -> None:
+    text = Path("lake/HAWC_2025_table_2.txt").read_text()
+
+    val_re = r"(\d+\.\d+)"
+    flux_value_regex = (
+        r"\("
+        + val_re
+        + r"\s*±\s*"
+        + val_re
+        + r"\s*\+\s*"
+        + val_re
+        + r"\s*−\s*"
+        + val_re
+        + r"\)"
+        + r"\s*×\s*10−(\d+)"
+    )
+    delim = r"\s+"
+    table_row_regex = re.compile(
+        val_re + delim + val_re + delim + val_re + delim + flux_value_regex
+    )
+    rows = []
+    for line in text.splitlines():
+        m = table_row_regex.match(line)
+        assert m is not None
+        (_, _, E_mean_TeV, F, F_stat, F_sys_up, F_sys_low, F_exp) = (
+            float(val_str) for val_str in m.groups()
+        )
+        mult = 10**-F_exp
+        rows.append((E_mean_TeV * 1e3, F * mult, F_stat * mult, F_sys_up * mult, F_sys_low * mult))
+
+    table_arr = np.array(rows).T
+    E, flux, stat, syst_up, syst_low = table_arr
+    dump((E, flux, stat, stat, syst_low, syst_up), "HAWC_QGSJET-II-04_all_energy.txt")
 
 
 if __name__ == "__main__":
@@ -453,5 +483,6 @@ if __name__ == "__main__":
     transform_LHAASO_protons()
 
     transform_KASCADE_reanalysis()
+    transform_HAWC_2025()
 
     logging.info("All transformations completed")

@@ -154,13 +154,15 @@ if __name__ == "__main__":
             "GAMMA (2003/01-2007/12) SIBYLL",
             "GAMMA_SIBYLL_all_energy.txt",
         ),
-        DatasetDef(
-            "AllParticles",
-            "ETOT",
-            "HAWC",
-            "HAWC (2018-2019) QGSJet-II-04",
-            "HAWC_QGSJET-II-04_all_energy.txt",
-        ),
+        # overriden by manually parsed table from 10.1016/j.astropartphys.2024.103077
+        # see transform.py
+        # DatasetDef(
+        #     "AllParticles",
+        #     "ETOT",
+        #     "HAWC",
+        #     "HAWC (2018-2019) QGSJet-II-04",
+        #     "HAWC_QGSJET-II-04_all_energy.txt",
+        # ),
         DatasetDef(
             "AllParticles",
             "ETOT",

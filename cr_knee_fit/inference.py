@@ -45,9 +45,10 @@ energy_scale_lg_uncertainties = {
     # at a level of 6.4% at 150 GeV, so we take the same value for energy scale uncertainty
     experiments.cream: lg_from_percent(6.4),
     experiments.iss_cream: lg_from_percent(6.4),
-    # arXiv:1710.00890
-    # no direct statement on energy scale uncertainty, but 10% is used as a plausible shift
-    experiments.hawc: lg_from_percent(10),
+    # 10.1016/j.astropartphys.2024.103077
+    # > Fig. 9 [...] The uncertainty in the energy spectrum induced by a systematic error in the energy scale
+    # equal to deltaE = 9% is displayed in the upper-right corner of the figure using arrows.
+    experiments.hawc: lg_from_percent(9),
     # 10.1016/j.nima.2004.11.025
     # no energy scale data found, but energy resolution is said to be ~10%
     experiments.grapes: lg_from_percent(10),
