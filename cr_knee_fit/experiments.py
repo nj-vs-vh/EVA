@@ -15,12 +15,12 @@ class Experiment:
     filename_stem: str
 
     def __post_init__(self) -> None:
-        # marker = markers_cache.get(self.name)
-        # if not marker:
-        #     marker = next(markers_iter)
-        #     markers_cache[self.name] = marker
-        # self.marker = marker
-        self.marker = "$" + self.name[0].upper() + "$"
+        marker = markers_cache.get(self.name)
+        if not marker:
+            marker = next(markers_iter)
+            markers_cache[self.name] = marker
+        self.marker = marker
+        # self.marker = "$" + self.name[0].upper() + "$"
 
     def __gt__(self, other: "Experiment") -> bool:
         return self.name > other.name

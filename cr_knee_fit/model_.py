@@ -121,7 +121,6 @@ class Model(Packable[ModelConfig]):
         plot_allpart = False
         all_energies: list[float] = []
         for data_, is_fitted in ((fit_data, True), (validation_data, False)):
-            print(data_)
             if data_ is None:
                 continue
             for exp, data_by_particle in data_.element_spectra.items():

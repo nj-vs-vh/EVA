@@ -70,9 +70,9 @@ class GenericExperimentData:
             x_factor * self.y,
             yerr=[x_factor * self.y_errlo, x_factor * self.y_errhi],
             color=color,
-            markersize=4.0,
-            elinewidth=0.75,
-            capsize=2.0,
+            markersize=3.0,
+            elinewidth=0.5,
+            capsize=1.5,
             label=label if add_label else None,
             linestyle="none",
             marker=self.experiment.marker,
@@ -95,6 +95,9 @@ class CRSpectrumData:
     element: Element | None | tuple[Element, ...]
 
     energy_scale_shift: float = 1.0
+
+    def scaled_flux(self, scale: float) -> np.ndarray:
+        return self.F * (self.E**scale)
 
     def __post_init__(self) -> None:
         assert self.E.ndim == 1, "All arrays must be 1D"
@@ -188,9 +191,9 @@ class CRSpectrumData:
                 )
             ),
             label=self.plot_label() if add_label else None,
-            markersize=4.0,
-            elinewidth=0.75,
-            capsize=2.0,
+            markersize=3.0,
+            elinewidth=0.5,
+            capsize=1.5,
             linestyle="none",
             marker=self.experiment.marker,
             alpha=1.0 if is_fitted else NON_FITTED_ALPHA,
@@ -203,7 +206,9 @@ class CRSpectrumData:
 
 @dataclass
 class DataConfig:
-    experiments_elements: list[Experiment] = dataclasses.field(default_factory=list)
+    experiments_elements: list[Experiment | tuple[Experiment, list[Element]]] = dataclasses.field(
+        default_factory=list
+    )
     experiments_all_particle: list[Experiment] = dataclasses.field(default_factory=list)
     experiments_lnA: list[Experiment] = dataclasses.field(default_factory=list)
 
@@ -213,7 +218,13 @@ class DataConfig:
 
     @property
     def experiments_spectrum(self) -> list[Experiment]:
-        return list(set(self.experiments_elements + self.experiments_all_particle))
+        exp_els = [
+            exp_or_exp_elements
+            if isinstance(exp_or_exp_elements, Experiment)
+            else exp_or_exp_elements[0]
+            for exp_or_exp_elements in self.experiments_elements
+        ]
+        return list(set(itertools.chain(exp_els, self.experiments_all_particle)))
 
     def excluding(self, other: "DataConfig") -> "DataConfig":
         return DataConfig(
@@ -293,9 +304,14 @@ class Data:
                 log(f"Failed to load lnA for {exp}: {e}")
 
         element_spectra: dict[Experiment, dict[Element, CRSpectrumData]] = {}
-        for exp in config.experiments_elements:
+        for exp_elements_spec in config.experiments_elements:
             exp_data = dict[Element, CRSpectrumData]()
-            for element in config.elements:
+            if isinstance(exp_elements_spec, Experiment):
+                exp = exp_elements_spec
+                elements = config.elements
+            else:
+                exp, elements = exp_elements_spec
+            for element in elements:
                 log(f"Reading {element.name} data for {exp}...")
                 try:
                     exp_data[element] = CRSpectrumData.load(exp, element, config.elements_R_bounds)

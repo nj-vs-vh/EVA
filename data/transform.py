@@ -127,19 +127,31 @@ def transform_DAMPE():
 
 def transform_CREAM():
     """Transform and dump CREAM data."""
-    datasets = [
-        ("CREAM_H_kEnergy.txt", "CREAM_H_energy.txt", 1),
-        ("ISS-CREAM_H_kEnergy.txt", "ISS-CREAM_H_energy.txt", 1),
-        ("CREAM_He_kEnergyPerNucleon.txt", "CREAM_He_energy.txt", 4),
-        ("CREAM_C_kEnergyPerNucleon.txt", "CREAM_C_energy.txt", 12),
-        ("CREAM_O_kEnergyPerNucleon.txt", "CREAM_O_energy.txt", 16),
-        ("CREAM_Mg_kEnergyPerNucleon.txt", "CREAM_Mg_energy.txt", 24),
-        ("CREAM_Si_kEnergyPerNucleon.txt", "CREAM_Si_energy.txt", 28),
-        ("CREAM_Fe_kEnergyPerNucleon.txt", "CREAM_Fe_energy.txt", 56),
+    datasets: list[tuple[str, str, float, float | None]] = [
+        ("CREAM_H_kEnergy.txt", "CREAM_H_energy.txt", 1, None),
+        ("ISS-CREAM_H_kEnergy.txt", "ISS-CREAM_H_energy.txt", 1, None),
+        ("CREAM_He_kEnergyPerNucleon.txt", "CREAM_He_energy.txt", 4, None),
+        ("CREAM_C_kEnergyPerNucleon.txt", "CREAM_C_energy.txt", 12, None),
+        ("CREAM_O_kEnergyPerNucleon.txt", "CREAM_O_energy.txt", 16, None),
+        ("CREAM_Mg_kEnergyPerNucleon.txt", "CREAM_Mg_energy.txt", 24, 2e5),
+        ("CREAM_Si_kEnergyPerNucleon.txt", "CREAM_Si_energy.txt", 28, None),
+        ("CREAM_Fe_kEnergyPerNucleon.txt", "CREAM_Fe_energy.txt", 56, None),
     ]
 
-    for file, output_file, A in datasets:
+    for file, output_file, A, max_Etot in datasets:
         E_min, E_max, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = readfile(f"crdb/{file}")
+
+        if max_Etot is not None:
+            max_Epernucl = max_Etot / A
+            mask = E_max < max_Epernucl
+            E_min = E_min[mask]
+            E_max = E_max[mask]
+            I_E = I_E[mask]
+            e_sta_lo = e_sta_lo[mask]
+            e_sta_up = e_sta_up[mask]
+            e_sys_lo = e_sys_lo[mask]
+            e_sys_up = e_sys_up[mask]
+
         if A == 1:
             data = [geom_mean(E_min, E_max), I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up]
         else:

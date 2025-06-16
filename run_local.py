@@ -24,7 +24,7 @@ from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 OUT_DIR = Path(__file__).parent / "out"
 
 
-def run_local(config: FitConfig) -> None:
+def run_local(config: FitConfig, log_to_file: bool = True) -> None:
     print("Running:")
     print(config)
 
@@ -36,8 +36,11 @@ def run_local(config: FitConfig) -> None:
             sys.exit(0)
     outdir.mkdir(exist_ok=True, parents=True)
 
-    logfile = outdir / "log.txt"
-    with logfile.open("w") as log, contextlib.redirect_stdout(log):
+    if log_to_file:
+        logfile = outdir / "log.txt"
+        with logfile.open("w") as log, contextlib.redirect_stdout(log):
+            run_bayesian_analysis(config, outdir)
+    else:
         run_bayesian_analysis(config, outdir)
 
 

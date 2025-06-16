@@ -2,13 +2,12 @@ import argparse
 import contextlib
 import dataclasses
 import datetime
-import itertools
 import multiprocessing
 import os
 import sys
 import traceback
 from pathlib import Path
-from typing import Callable, Sequence, cast
+from typing import Callable, cast
 from warnings import warn
 
 import corner  # type: ignore
@@ -22,7 +21,7 @@ from pydantic_numpy.typing import Np2DArrayFp64  # type: ignore
 from scipy import optimize  # type: ignore
 
 from cr_knee_fit.elements import unresolved_element_names
-from cr_knee_fit.fit_data import Data, DataConfig
+from cr_knee_fit.fit_data import CRSpectrumData, Data, DataConfig, GenericExperimentData
 from cr_knee_fit.inference import loglikelihood, logposterior, set_global_fit_data
 from cr_knee_fit.model_ import Model, ModelConfig
 from cr_knee_fit.plotting import (
@@ -35,10 +34,14 @@ from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 from cr_knee_fit.utils import (
     E_GEV_LABEL,
     LegendItem,
+    add_elements_lnA_secondary_axis,
     add_log_margin,
+    clamp_log_margin,
     energy_shift_suffix,
+    export_fig,
     legend_artist_line,
     legend_with_added_items,
+    merged_lims,
 )
 
 # as recommended by emceee parallelization guide
@@ -58,28 +61,30 @@ class McmcConfig:
 
 @dataclasses.dataclass(frozen=True)
 class PosteriorPlotConfig:
-    best_fit: bool
-    contours: bool
-    band_cl: float | None
+    best_fit: bool = True
+    contours: bool = False
+    band_cl: float | None = 0.68
+    max_margin_around_data: None | float = None
 
-    @classmethod
-    def default(cls) -> "PosteriorPlotConfig":
-        return PosteriorPlotConfig(best_fit=True, contours=False, band_cl=0.68)
+
+@dataclasses.dataclass(frozen=True)
+class PlotExportOpts:
+    main: str | None = None
 
 
 @dataclasses.dataclass
 class PlotsConfig:
     validation_data_config: DataConfig | None = None
-    elements: PosteriorPlotConfig = PosteriorPlotConfig.default()
-    all_particle: PosteriorPlotConfig = PosteriorPlotConfig.default()
-    all_particle_elements_contribution: PosteriorPlotConfig | None = PosteriorPlotConfig.default()
-    all_particle_scaled_elements_contribution: PosteriorPlotConfig | None = (
-        PosteriorPlotConfig.default()
-    )
+    elements: PosteriorPlotConfig = PosteriorPlotConfig()
+    all_particle: PosteriorPlotConfig = PosteriorPlotConfig()
+    all_particle_elements_contribution: PosteriorPlotConfig | None = PosteriorPlotConfig()
+    all_particle_scaled_elements_contribution: PosteriorPlotConfig | None = PosteriorPlotConfig()
     all_particle_unresolved_elements_contribution: PosteriorPlotConfig | None = (
-        PosteriorPlotConfig.default()
+        PosteriorPlotConfig()
     )
-    lnA: PosteriorPlotConfig = PosteriorPlotConfig.default()
+    lnA: PosteriorPlotConfig = PosteriorPlotConfig()
+
+    export_opts: PlotExportOpts = PlotExportOpts()
 
 
 class FitConfig(pydantic.BaseModel):
@@ -324,8 +329,18 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
 
     best_fit_model = posterior_best_model  # ML?
 
-    fig, axes = plt.subplots(figsize=(18, 6), ncols=3)
-    axes = cast(Sequence[Axes], axes)
+    fig, axes = plt.subplot_mosaic(
+        [
+            ["Elements", "Elements"],
+            ["All particle", "lnA"],
+        ],
+        figsize=(8, 8),
+    )
+    fig = cast(Figure, fig)
+    axes = cast(dict[str, Axes], axes)
+    ax_el = axes["Elements"]
+    ax_all = axes["All particle"]
+    ax_lnA = axes["lnA"]
 
     def plot_model_predictions(
         ax: Axes,
@@ -365,96 +380,77 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
             E_factor = E_grid**scale_
             ax.plot(E_grid, E_factor * observable(best_fit_model, E_grid), color=color)
 
-    ax_comp = axes[0]
-    ax_all = axes[1]
-    ax_lnA = axes[2]
-
-    ax_comp.set_title("Elements")
-    legend_items: list[LegendItem] = []
+    model_legend_items: list[LegendItem] = []
+    experiment_legend_item_by_label: dict[str, LegendItem] = {}
+    plotted_elem_spectra: list[CRSpectrumData] = []
     for data, is_fitted in ((fit_data, True), (validation_data, False)):
         for exp, data_by_particle in data.element_spectra.items():
             f_exp = best_fit_model.energy_shifts.f(exp)
             for _, spec_data in data_by_particle.items():
-                spec_data.with_shifted_energy_scale(f=f_exp).plot(
-                    scale=scale, ax=ax_comp, add_label=False, is_fitted=is_fitted
-                )
-            legend_items.append(
-                (exp.legend_artist(is_fitted=is_fitted), exp.name + energy_shift_suffix(f_exp))
+                spec_data = spec_data.with_shifted_energy_scale(f=f_exp)
+                plotted_elem_spectra.append(spec_data)
+                spec_data.plot(scale=scale, ax=ax_el, add_label=False, is_fitted=is_fitted)
+            label = exp.name + energy_shift_suffix(f_exp)
+            experiment_legend_item_by_label.setdefault(
+                label, (exp.legend_artist(is_fitted=is_fitted), label)
             )
-
     elements = best_fit_model.layout_info().elements(only_fixed_Z=False)
-    E_merged_comp = np.hstack(
-        [
-            spectrum.E
-            for spectrum in itertools.chain.from_iterable(
-                spectra_by_element.values()
-                for spectra_by_element in itertools.chain(
-                    fit_data.element_spectra.values(), validation_data.element_spectra.values()
-                )
-            )
-        ]
-    )
+    comp_data_ylim = merged_lims([sp.scaled_flux(scale) for sp in plotted_elem_spectra])
+    comp_data_Elim = merged_lims([sp.E for sp in plotted_elem_spectra])
+    comp_Elim = add_log_margin(*comp_data_Elim)
     for element in elements:
         plot_model_predictions(
-            ax=ax_comp,
+            ax=ax_el,
             observable=lambda model, E: model.compute_spectrum(E, element=element),
-            E_bounds=add_log_margin(E_merged_comp.min(), E_merged_comp.max()),
+            E_bounds=comp_Elim,
             plot_config=config.plots.elements,
             color=element.color,
         )
-        legend_items.append((legend_artist_line(element.color), element.name))
-
-    legend_with_added_items(ax_comp, legend_items, fontsize="x-small")
+        model_legend_items.append((legend_artist_line(element.color), element.name))
+    if config.plots.elements.max_margin_around_data is not None:
+        clamp_log_margin(ax_el, comp_data_ylim, config.plots.elements.max_margin_around_data)
+    ax_el.set_xlim(*comp_Elim)
 
     if fit_data.all_particle_spectra or validation_data.all_particle_spectra:
-        ax_all.set_title("All particle")
-        legend_items = []
-
+        plotted_all_spectra: list[CRSpectrumData] = []
         for data, is_fitted in ((fit_data, True), (validation_data, False)):
             for exp, spec_data in data.all_particle_spectra.items():
                 f_exp = best_fit_model.energy_shifts.f(exp)
-                spec_data.with_shifted_energy_scale(f=f_exp).plot(
+                data = spec_data.with_shifted_energy_scale(f=f_exp)
+                plotted_all_spectra.append(data)
+                data.plot(
                     scale=scale,
                     ax=ax_all,
                     add_label=False,
                     is_fitted=is_fitted,
                 )
-                legend_items.append(
-                    (exp.legend_artist(is_fitted=is_fitted), exp.name + energy_shift_suffix(f_exp))
+                label = exp.name + energy_shift_suffix(f_exp)
+                experiment_legend_item_by_label.setdefault(
+                    label, (exp.legend_artist(is_fitted=is_fitted), label)
                 )
 
-        ax_all_ylim = ax_all.get_ylim()  # respecting ylim set by data
-
-        E_merged_all = np.hstack(
-            [
-                spectrum.E
-                for spectrum in itertools.chain(
-                    fit_data.all_particle_spectra.values(),
-                    validation_data.all_particle_spectra.values(),
-                )
-            ]
-        )
-        E_bounds_all = add_log_margin(E_merged_all.min(), E_merged_all.max())
+        all_data_ylim = merged_lims([sp.scaled_flux(scale) for sp in plotted_all_spectra])
+        all_data_Elim = merged_lims([sp.E for sp in plotted_all_spectra])
+        all_Elim = add_log_margin(*all_data_Elim)
         ALL_PARTICLE_COLOR = "black"
         plot_model_predictions(
             ax=ax_all,
             observable=lambda model, E: model.compute_spectrum(E, element=None),
-            E_bounds=E_bounds_all,
+            E_bounds=all_Elim,
             plot_config=config.plots.all_particle,
             color=ALL_PARTICLE_COLOR,
         )
-        legend_items.append((legend_artist_line(ALL_PARTICLE_COLOR), "All particle"))
+        model_legend_items.append((legend_artist_line(ALL_PARTICLE_COLOR), "All particle"))
 
         if config.plots.all_particle_elements_contribution is not None:
             for element in elements:
                 plot_model_predictions(
                     ax=ax_all,
                     observable=lambda model, E: model.compute_spectrum(E, element=element),
-                    E_bounds=E_bounds_all,
+                    E_bounds=all_Elim,
                     plot_config=config.plots.all_particle_elements_contribution,
                     color=element.color,
                 )
-                legend_items.append((legend_artist_line(element.color), element.name))
 
         if config.plots.all_particle_scaled_elements_contribution and any(
             pop_conf.rescale_all_particle
@@ -467,11 +463,11 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
                     (pop.compute_extra_all_particle_contribution(E) for pop in model.populations),
                     np.zeros_like(E),
                 ),
-                E_bounds=E_bounds_all,
+                E_bounds=all_Elim,
                 plot_config=config.plots.all_particle_scaled_elements_contribution,
                 color="gray",
             )
-            legend_items.append((legend_artist_line("gray"), "Extra contribution"))
+            model_legend_items.append((legend_artist_line("gray"), "Extra contribution"))
 
         if config.plots.all_particle_unresolved_elements_contribution and any(
             pop_conf.add_unresolved_elements for pop_conf in config.model.population_configs
@@ -491,23 +487,26 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
                     ),
                     np.zeros_like(E),
                 ),
-                E_bounds=E_bounds_all,
+                E_bounds=all_Elim,
                 plot_config=config.plots.all_particle_unresolved_elements_contribution,
                 color="magenta",
             )
-            legend_items.append((legend_artist_line("magenta"), "Unresolved elements"))
+            model_legend_items.append((legend_artist_line("magenta"), "Unresolved elements"))
 
-        legend_with_added_items(ax_all, legend_items, fontsize="x-small")
-        ax_all.set_ylim(*ax_all_ylim)
+        if config.plots.all_particle.max_margin_around_data is not None:
+            clamp_log_margin(
+                ax_all, all_data_ylim, config.plots.all_particle.max_margin_around_data
+            )
+        ax_all.set_xlim(*all_Elim)
 
     if fit_data.lnA or validation_data.lnA:
-        LN_A_COLOR = "red"
-        ax_lnA.set_title("$ \\langle \\ln A \\rangle $")
-        legend_items = []
+        LN_A_COLOR = "tab:green"
+        plotted_lnA_data: list[GenericExperimentData] = []
         for data, is_fitted in ((fit_data, True), (validation_data, False)):
             for exp, lnA_data in data.lnA.items():
                 f_exp = best_fit_model.energy_shifts.f(exp)
                 lnA_data = dataclasses.replace(lnA_data, x=lnA_data.x * f_exp)
+                plotted_lnA_data.append(lnA_data)
                 lnA_data.plot(
                     scale=0,
                     ax=ax_lnA,
@@ -515,32 +514,48 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
                     color=LN_A_COLOR,
                     is_fitted=is_fitted,
                 )
-                legend_items.append(
-                    (exp.legend_artist(is_fitted), exp.name + energy_shift_suffix(f_exp))
+                label = exp.name + energy_shift_suffix(f_exp)
+                experiment_legend_item_by_label.setdefault(
+                    label, (exp.legend_artist(is_fitted), label)
                 )
 
-        E_merged_lnA = np.hstack(
-            [s.x for s in itertools.chain(fit_data.lnA.values(), validation_data.lnA.values())]
-        )
+        lnA_data_ylim = merged_lims([s.y for s in plotted_lnA_data])
+        lnA_data_Elim = merged_lims([s.x for s in plotted_lnA_data])
+        lnA_Elim = add_log_margin(*lnA_data_Elim)
         plot_model_predictions(
             ax=ax_lnA,
             observable=lambda model, E: model.compute_lnA(E),
-            E_bounds=add_log_margin(E_merged_lnA.min(), E_merged_lnA.max()),
+            E_bounds=lnA_Elim,
             plot_config=config.plots.lnA,
             color=LN_A_COLOR,
             scale_override=0,
         )
-        legend_with_added_items(ax_lnA, legend_items, fontsize="x-small")
         ax_lnA.set_xscale("log")
         ax_lnA.set_xlabel(E_GEV_LABEL)
         ax_lnA.set_ylabel("$ \\langle \\ln A \\rangle $")
+        add_elements_lnA_secondary_axis(ax_lnA)
+        if config.plots.lnA.max_margin_around_data is not None:
+            clamp_log_margin(ax_lnA, lnA_data_ylim, config.plots.lnA.max_margin_around_data)
+        ax_lnA.set_xlim(*lnA_Elim)
 
-    for ax in (ax_comp, ax_all):
+    for ax in (ax_el, ax_all):
         ax.set_xscale("log")
         ax.set_yscale("log")
 
+    legend_with_added_items(
+        ax_el,
+        model_legend_items + list(experiment_legend_item_by_label.values()),
+        fontsize="medium",
+        bbox_to_anchor=(0.00, 1.05, 1.0, 0.0),
+        loc="lower left",
+        fancybox=True,
+        shadow=True,
+        ncol=4,
+    )
     fig.tight_layout()
     fig.savefig(outdir / "model.pdf")
+    if config.plots.export_opts.main is not None:
+        export_fig(fig, filename=config.plots.export_opts.main)
     fig.savefig(outdir / "model.png")
 
     print_delim()
