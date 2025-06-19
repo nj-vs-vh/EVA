@@ -28,6 +28,7 @@ from cr_knee_fit.utils import (
     E_GEV_LABEL,
     LegendItem,
     add_elements_lnA_secondary_axis,
+    add_log_margin,
     energy_shift_suffix,
     legend_with_added_items,
 )
@@ -152,8 +153,7 @@ class Model(Packable[ModelConfig]):
                 )
                 plot_allpart = True
 
-        E_min = np.min(all_energies)
-        E_max = np.max(all_energies)
+        E_min, E_max = add_log_margin(np.min(all_energies), np.max(all_energies))
 
         ax.set_xscale("log")
         ax.set_yscale("log")
@@ -173,7 +173,7 @@ class Model(Packable[ModelConfig]):
                 for element in Element.regular()
                 if len([pop for pop in self.populations if element in pop.all_elements]) > 1
             ]
-            E_grid = np.geomspace(E_min, E_max, 100)
+            E_grid = np.geomspace(E_min, E_max, 300)
             E_factor = E_grid**scale
             for element in multipop_elements:
                 ax.plot(
@@ -203,6 +203,7 @@ class Model(Packable[ModelConfig]):
             ncol=4,
         )
         ax.set_ylim(*ylim)
+        ax.set_xlim(E_min, E_max)
 
         fig.tight_layout()
         # fig.canvas.draw()

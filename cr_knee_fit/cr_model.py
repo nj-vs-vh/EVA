@@ -505,7 +505,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         }
 
     @property
-    def _linestyle(self) -> str | None:
+    def linestyle(self) -> str | None:
         if self.population_meta is None:
             return None
         else:
@@ -548,7 +548,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
                 E_factor * self.compute(E_grid, element),
                 label=with_prefix(self.element_name(element), preserve_capitalization=True),
                 color=element.color,
-                linestyle=self._linestyle,
+                linestyle=self.linestyle,
             )
 
         if self.unresolved_elements_spectrum:
@@ -566,7 +566,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
                 ),
                 label=with_prefix("Unresolved elements"),
                 color="magenta",
-                linestyle=self._linestyle,
+                linestyle=self.linestyle,
             )
 
         extra_all_particle_contrib = self.compute_extra_all_particle_contribution(E_grid)
@@ -577,7 +577,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
                 E_factor * extra_all_particle_contrib,
                 label=with_prefix("Extra contribution to all-particle"),
                 color="gray",
-                linestyle=self._linestyle,
+                linestyle=self.linestyle,
             )
         if all_particle or has_extra_allparticle_contrib:
             ax.plot(
@@ -585,23 +585,9 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
                 E_factor * self.compute_all_particle(E_grid),
                 label=with_prefix("All particle"),
                 color="black",
-                linestyle=self._linestyle,
+                linestyle=self.linestyle,
             )
         return ax
-
-    def ndim(self) -> int:
-        return (
-            sum(c.ndim() for c in self.base_spectra)
-            + sum(b.ndim() for b in self.breaks)
-            + (self.cutoff.ndim() if self.cutoff is not None else 0)
-            + (
-                self.unresolved_elements_spectrum.ndim()
-                if self.unresolved_elements_spectrum is not None
-                else 0
-            )
-            + int(self.all_particle_lg_shift is not None)
-            + int(self.free_Z is not None)
-        )
 
     def population_prefix(self, latex: bool) -> str:
         if self.population_meta is not None and self.population_meta.name:

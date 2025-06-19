@@ -51,20 +51,18 @@ iss_cream = Experiment("ISS-CREAM", filename_stem="ISS-CREAM")
 
 DIRECT = [ams02, calet, dampe, cream, iss_cream]
 
-hawc = Experiment("HAWC (QGSJet II-04)", filename_stem="HAWC_QGSJET-II-04")
+hawc = Experiment("HAWC (Q)", filename_stem="HAWC_QGSJET-II-04")
 grapes = Experiment("GRAPES-3", filename_stem="GRAPES")
-tale = Experiment("TALE (QGSJet II-04)", filename_stem="TALE_QGSJET-II-04")
-gamma = Experiment("GAMMA (Sibyll)", filename_stem="GAMMA_SIBYLL")
-lhaaso_epos = Experiment("LHAASO (EPOS)", filename_stem="LHAASO_EPOS-LHC")
-lhaaso_sibyll = Experiment("LHAASO (Sibyll 2.3)", filename_stem="LHAASO_SIBYLL-23")
-lhaaso_qgsjet = Experiment("LHAASO (QGSJET II-04)", filename_stem="LHAASO_QGSJET-II-04")
-ice_top_sibyll = Experiment("IceTop (Sibyll 2.1)", filename_stem="ICETOP_SIBYLL_21")
-kascade_sibyll = Experiment("KASCADE (Sibyll 2.1)", filename_stem="KASCADE_SIBYLL_21")
-kascade_qgsjet = Experiment("KASCADE (QGSJet II-04)", filename_stem="KASCADE_QGSJET-II-04")
-kascade_re_qgsjet = Experiment(
-    "KASCADE re-analysis (QGSJet II-04)", filename_stem="KASCADE_re_QGSJET-II-04"
-)
-kascade_grande_sibyll = Experiment("KASCADE-Grande (Sibyll 2.3)", filename_stem="KGRANDE_SIBYLL_23")
+tale = Experiment("TALE (Q)", filename_stem="TALE_QGSJET-II-04")
+gamma = Experiment("GAMMA (S)", filename_stem="GAMMA_SIBYLL")
+lhaaso_epos = Experiment("LHAASO (E)", filename_stem="LHAASO_EPOS-LHC")
+lhaaso_sibyll = Experiment("LHAASO (S)", filename_stem="LHAASO_SIBYLL-23")
+lhaaso_qgsjet = Experiment("LHAASO (Q)", filename_stem="LHAASO_QGSJET-II-04")
+ice_top_sibyll = Experiment("IceTop (S)", filename_stem="ICETOP_SIBYLL_21")
+kascade_sibyll = Experiment("KASCADE (S)", filename_stem="KASCADE_SIBYLL_21")
+kascade_qgsjet = Experiment("KASCADE (Q)", filename_stem="KASCADE_QGSJET-II-04")
+kascade_re_qgsjet = Experiment("KASCADE (2025, Q)", filename_stem="KASCADE_re_QGSJET-II-04")
+kascade_grande_sibyll = Experiment("KASCADE-Grande (S)", filename_stem="KGRANDE_SIBYLL_23")
 
 INDIRECT = [
     hawc,

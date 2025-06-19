@@ -1,7 +1,7 @@
 import argparse
-import contextlib
 import sys
 from pathlib import Path
+from typing import TextIO
 
 from scipy import stats  # type: ignore
 
@@ -24,7 +24,32 @@ from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 OUT_DIR = Path(__file__).parent / "out"
 
 
-def run_local(config: FitConfig, log_to_file: bool = True) -> None:
+class FileStdoutTee(TextIO):
+    def __init__(self, file: TextIO, write_to_stdout: bool):
+        self.file = file
+        self.write_to_stdout = write_to_stdout
+        self._old_stdout = sys.stdout
+
+    def write(self, data: str) -> int:
+        if self.write_to_stdout:
+            self._old_stdout.write(data)
+        return self.file.write(data)
+
+    def flush(self):
+        if self.write_to_stdout:
+            self._old_stdout.flush()
+        self.file.flush()
+
+    def __enter__(self):
+        self._old_stdout = sys.stdout
+        sys.stdout = self
+        return self
+
+    def __exit__(self, exctype, excinst, exctb):
+        sys.stdout = self._old_stdout
+
+
+def run_local(config: FitConfig, log_to_stdout: bool = False) -> None:
     print("Running:")
     print(config)
 
@@ -36,12 +61,10 @@ def run_local(config: FitConfig, log_to_file: bool = True) -> None:
             sys.exit(0)
     outdir.mkdir(exist_ok=True, parents=True)
 
-    if log_to_file:
+    if log_to_stdout:
         logfile = outdir / "log.txt"
-        with logfile.open("w") as log, contextlib.redirect_stdout(log):
+        with logfile.open("w") as log, FileStdoutTee(log, write_to_stdout=log_to_stdout):
             run_bayesian_analysis(config, outdir)
-    else:
-        run_bayesian_analysis(config, outdir)
 
 
 if __name__ == "__main__":

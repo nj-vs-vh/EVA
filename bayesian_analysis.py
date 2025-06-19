@@ -20,7 +20,7 @@ from matplotlib.figure import Figure
 from pydantic_numpy.typing import Np2DArrayFp64  # type: ignore
 from scipy import optimize  # type: ignore
 
-from cr_knee_fit.elements import unresolved_element_names
+from cr_knee_fit.elements import Element, unresolved_element_names
 from cr_knee_fit.fit_data import CRSpectrumData, Data, DataConfig, GenericExperimentData
 from cr_knee_fit.inference import loglikelihood, logposterior, set_global_fit_data
 from cr_knee_fit.model_ import Model, ModelConfig
@@ -64,7 +64,9 @@ class PosteriorPlotConfig:
     best_fit: bool = True
     contours: bool = False
     band_cl: float | None = 0.68
-    max_margin_around_data: None | float = None
+    max_margin_around_data: None | float = 0.5
+
+    population_contribs_best_fit: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -342,6 +344,8 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
     ax_all = axes["All particle"]
     ax_lnA = axes["lnA"]
 
+    POP_CONTRIB_LINEWIDTH = 0.75
+
     def plot_model_predictions(
         ax: Axes,
         observable: Observable,
@@ -380,7 +384,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
             E_factor = E_grid**scale_
             ax.plot(E_grid, E_factor * observable(best_fit_model, E_grid), color=color)
 
-    model_legend_items: list[LegendItem] = []
+    element_legend_items: list[LegendItem] = []
     experiment_legend_item_by_label: dict[str, LegendItem] = {}
     plotted_elem_spectra: list[CRSpectrumData] = []
     for data, is_fitted in ((fit_data, True), (validation_data, False)):
@@ -406,7 +410,28 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
             plot_config=config.plots.elements,
             color=element.color,
         )
-        model_legend_items.append((legend_artist_line(element.color), element.name))
+        element_legend_items.append((legend_artist_line(element.color), element.name))
+
+    if config.plots.elements.population_contribs_best_fit and len(best_fit_model.populations) > 1:
+        multipop_elements = [
+            element
+            for element in Element.regular()
+            if len([pop for pop in best_fit_model.populations if element in pop.all_elements]) > 1
+        ]
+        E_grid = np.geomspace(*comp_Elim, 300)
+        E_factor = E_grid**scale
+        for pop in best_fit_model.populations:
+            for element in pop.resolved_elements:
+                if element not in multipop_elements:
+                    continue
+                ax_el.plot(
+                    E_grid,
+                    E_factor * pop.compute(E_grid, element=element),
+                    color=element.color,
+                    linewidth=POP_CONTRIB_LINEWIDTH,
+                    linestyle=pop.linestyle,
+                )
+
     if config.plots.elements.max_margin_around_data is not None:
         clamp_log_margin(ax_el, comp_data_ylim, config.plots.elements.max_margin_around_data)
     ax_el.set_xlim(*comp_Elim)
@@ -440,7 +465,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
             plot_config=config.plots.all_particle,
             color=ALL_PARTICLE_COLOR,
         )
-        model_legend_items.append((legend_artist_line(ALL_PARTICLE_COLOR), "All particle"))
+        element_legend_items.append((legend_artist_line(ALL_PARTICLE_COLOR), "All particle"))
 
         if config.plots.all_particle_elements_contribution is not None:
             for element in elements:
@@ -467,7 +492,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
                 plot_config=config.plots.all_particle_scaled_elements_contribution,
                 color="gray",
             )
-            model_legend_items.append((legend_artist_line("gray"), "Extra contribution"))
+            element_legend_items.append((legend_artist_line("gray"), "Extra contribution"))
 
         if config.plots.all_particle_unresolved_elements_contribution and any(
             pop_conf.add_unresolved_elements for pop_conf in config.model.population_configs
@@ -491,7 +516,22 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
                 plot_config=config.plots.all_particle_unresolved_elements_contribution,
                 color="magenta",
             )
-            model_legend_items.append((legend_artist_line("magenta"), "Unresolved elements"))
+            element_legend_items.append((legend_artist_line("magenta"), "Unresolved elements"))
+
+        if (
+            config.plots.all_particle.population_contribs_best_fit
+            and len(best_fit_model.populations) > 1
+        ):
+            E_grid = np.geomspace(*all_Elim, 300)
+            E_factor = E_grid**scale
+            for pop in best_fit_model.populations:
+                ax_all.plot(
+                    E_grid,
+                    E_factor * pop.compute_all_particle(E_grid),
+                    color=ALL_PARTICLE_COLOR,
+                    linewidth=POP_CONTRIB_LINEWIDTH,
+                    linestyle=pop.linestyle,
+                )
 
         if config.plots.all_particle.max_margin_around_data is not None:
             clamp_log_margin(
@@ -542,10 +582,27 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
         ax.set_xscale("log")
         ax.set_yscale("log")
 
+    legend_items = element_legend_items.copy()
+
+    if (
+        config.plots.elements.population_contribs_best_fit
+        or config.plots.all_particle.population_contribs_best_fit
+    ):
+        for pop in best_fit_model.populations:
+            legend_items.append(
+                (
+                    legend_artist_line(
+                        color="gray", linestyle=pop.linestyle, linewidth=POP_CONTRIB_LINEWIDTH
+                    ),
+                    (pop.population_meta.name if pop.population_meta else "Unnamed") + " pop.",
+                )
+            )
+
+    legend_items += list(experiment_legend_item_by_label.values())
     legend_with_added_items(
         ax_el,
-        model_legend_items + list(experiment_legend_item_by_label.values()),
-        fontsize="medium",
+        legend_items,
+        fontsize="small",
         bbox_to_anchor=(0.00, 1.05, 1.0, 0.0),
         loc="lower left",
         fancybox=True,

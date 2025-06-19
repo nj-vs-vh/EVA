@@ -82,8 +82,17 @@ def energy_shift_suffix(f: float) -> str:
     return f" $(E \\; {shift_sign} {shift_percent:.1f} \\%)$"
 
 
-def legend_artist_line(color: str) -> Line2D:
-    return Line2D([], [], color=color, marker="none")
+def legend_artist_line(
+    color: str, linestyle: str | None = None, linewidth: float | None = None
+) -> Line2D:
+    return Line2D(
+        [],
+        [],
+        color=color,
+        marker="none",
+        linestyle=linestyle,
+        linewidth=linewidth,
+    )
 
 
 EXPORT_DIR = Path(__file__).parent / "../../articles/cr-knees-fit/figs"

@@ -212,25 +212,40 @@ class DataConfig:
     experiments_all_particle: list[Experiment] = dataclasses.field(default_factory=list)
     experiments_lnA: list[Experiment] = dataclasses.field(default_factory=list)
 
-    # detailed spectra config
     elements: list[Element] = dataclasses.field(default_factory=Element.regular)
     elements_R_bounds: tuple[float, float] = (7e2, 1e8)
 
+    def __post_init__(self) -> None:
+        self.experiments_elements_detailed = [
+            (exp_or_pair, self.elements) if isinstance(exp_or_pair, Experiment) else exp_or_pair
+            for exp_or_pair in self.experiments_elements
+        ]
+        self.experiments_elements_detailed = [
+            pair for pair in self.experiments_elements_detailed if len(pair[1]) > 0
+        ]
+
     @property
     def experiments_spectrum(self) -> list[Experiment]:
-        exp_els = [
-            exp_or_exp_elements
-            if isinstance(exp_or_exp_elements, Experiment)
-            else exp_or_exp_elements[0]
-            for exp_or_exp_elements in self.experiments_elements
-        ]
-        return list(set(itertools.chain(exp_els, self.experiments_all_particle)))
+        return list(
+            set(
+                itertools.chain(
+                    [
+                        exp_or_exp_elements[0]
+                        for exp_or_exp_elements in self.experiments_elements_detailed
+                    ],
+                    self.experiments_all_particle,
+                )
+            )
+        )
 
     def excluding(self, other: "DataConfig") -> "DataConfig":
         return DataConfig(
-            experiments_elements=list(
-                set(self.experiments_elements).difference(other.experiments_elements)
-            ),
+            # experiments_elements=list(
+            #     set(self.experiments_elements).difference(other.experiments_elements)
+            # ),
+            experiments_elements=[
+                (exp, elements) for exp, elements in self.experiments_elements_detailed
+            ],
             experiments_all_particle=list(
                 set(self.experiments_all_particle).difference(other.experiments_all_particle)
             ),

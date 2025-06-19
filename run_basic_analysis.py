@@ -1,4 +1,4 @@
-from pathlib import Path
+import argparse
 
 from scipy import stats  # type: ignore
 
@@ -11,24 +11,21 @@ from bayesian_analysis import (
 )
 from cr_knee_fit import experiments
 from cr_knee_fit.cr_model import (
-    CosmicRaysModel,
     CosmicRaysModelConfig,
-    PopulationMetadata,
-    SharedPowerLawSpectrum,
     SpectralBreakConfig,
     SpectralComponentConfig,
 )
 from cr_knee_fit.elements import Element
 from cr_knee_fit.fit_data import DataConfig
-from cr_knee_fit.guesses import initial_guess_break, initial_guess_main_population
+from cr_knee_fit.guesses import initial_guess_main_population
 from cr_knee_fit.model_ import Model
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 from run_local import run_local
 
-OUT_DIR = Path(__file__).parent / "out"
-
-
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--full", action="store_true")
+    args = parser.parse_args()
     analysis_name = "basic"
 
     print(f"Running pre-configured analysis: {analysis_name}")
@@ -100,44 +97,8 @@ if __name__ == "__main__":
             )
         )
 
-        pop2_model = CosmicRaysModel(
-            base_spectra=[
-                SharedPowerLawSpectrum(
-                    lgI_per_element={
-                        Element.H: stats.norm.rvs(loc=-5, scale=0.05),
-                        Element.He: stats.norm.rvs(loc=-6, scale=0.05),
-                        # Element.C: stats.norm.rvs(loc=-7, scale=0.05),
-                        # Element.Si: stats.norm.rvs(loc=-8, scale=0.05),
-                        # Element.Fe: stats.norm.rvs(loc=-8, scale=0.05),
-                    },
-                    alpha=stats.norm.rvs(loc=2.4, scale=0.05),
-                )
-            ],
-            breaks=[
-                initial_guess_break(
-                    SpectralBreakConfig(
-                        fixed_lg_sharpness=0.7,
-                        quantity="R",
-                        lg_break_prior_limits=(6, 7),
-                        is_softening=True,
-                        lg_break_hint=6.5,
-                    ),
-                )
-            ],
-            all_particle_lg_shift=None,
-            free_Z=None,
-            unresolved_elements_spectrum=None,
-            population_meta=PopulationMetadata(
-                name="Knee",
-                linestyle=":",
-            ),
-        )
-
         return Model(
-            populations=[
-                pop1_model,
-                # pop2_model,
-            ],
+            populations=[pop1_model],
             energy_shifts=ExperimentEnergyScaleShifts(
                 lg_shifts={exp: stats.norm.rvs(loc=0, scale=0.01) for exp in shifted_experiments}
             ),
@@ -149,13 +110,16 @@ if __name__ == "__main__":
     config = FitConfig.from_guessing_func(
         name=analysis_name,
         fit_data=fit_data_config,
-        mcmc=McmcConfig(
-            n_steps=30_000,
-            n_walkers=64,
-            processes=8,
-            reuse_saved=True,
+        mcmc=(
+            McmcConfig(
+                n_steps=30_000,
+                n_walkers=64,
+                processes=8,
+                reuse_saved=True,
+            )
+            if args.full
+            else None
         ),
-        # mcmc=None,
         generate_guess=generate_guess,
         plots=PlotsConfig(
             validation_data_config=validation_data_config,
@@ -165,4 +129,4 @@ if __name__ == "__main__":
         ),
     )
 
-    run_local(config, log_to_file=False)
+    run_local(config, log_to_stdout=True)
