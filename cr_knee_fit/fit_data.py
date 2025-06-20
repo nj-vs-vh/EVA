@@ -213,7 +213,7 @@ class DataConfig:
     experiments_lnA: list[Experiment] = dataclasses.field(default_factory=list)
 
     elements: list[Element] = dataclasses.field(default_factory=Element.regular)
-    elements_R_bounds: tuple[float, float] = (7e2, 1e8)
+    elements_R_bounds: tuple[float, float] = (5e2, 1e8)
 
     def __post_init__(self) -> None:
         self.experiments_elements_detailed = [
