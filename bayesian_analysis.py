@@ -441,9 +441,9 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
         for data, is_fitted in ((fit_data, True), (validation_data, False)):
             for exp, spec_data in data.all_particle_spectra.items():
                 f_exp = best_fit_model.energy_shifts.f(exp)
-                data = spec_data.with_shifted_energy_scale(f=f_exp)
-                plotted_all_spectra.append(data)
-                data.plot(
+                spec_data = spec_data.with_shifted_energy_scale(f=f_exp)
+                plotted_all_spectra.append(spec_data)
+                spec_data.plot(
                     scale=scale,
                     ax=ax_all,
                     add_label=False,

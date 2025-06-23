@@ -216,23 +216,21 @@ class DataConfig:
     elements_R_bounds: tuple[float, float] = (5e2, 1e8)
 
     def __post_init__(self) -> None:
-        self.experiments_elements_detailed = [
-            (exp_or_pair, self.elements) if isinstance(exp_or_pair, Experiment) else exp_or_pair
-            for exp_or_pair in self.experiments_elements
-        ]
-        self.experiments_elements_detailed = [
-            pair for pair in self.experiments_elements_detailed if len(pair[1]) > 0
-        ]
+        self.elements_by_exp: dict[Experiment, list[Element]] = {}
+        for exp_or_pair in self.experiments_elements:
+            if isinstance(exp_or_pair, Experiment):
+                self.elements_by_exp[exp_or_pair] = self.elements
+            else:
+                experiment, elements = exp_or_pair
+                self.elements_by_exp[experiment] = elements
+        self.elements_by_exp = {exp: els for exp, els in self.elements_by_exp.items() if els}
 
     @property
     def experiments_spectrum(self) -> list[Experiment]:
         return list(
             set(
                 itertools.chain(
-                    [
-                        exp_or_exp_elements[0]
-                        for exp_or_exp_elements in self.experiments_elements_detailed
-                    ],
+                    (exp_or_exp_elements for exp_or_exp_elements in self.elements_by_exp.keys()),
                     self.experiments_all_particle,
                 )
             )
@@ -240,11 +238,9 @@ class DataConfig:
 
     def excluding(self, other: "DataConfig") -> "DataConfig":
         return DataConfig(
-            # experiments_elements=list(
-            #     set(self.experiments_elements).difference(other.experiments_elements)
-            # ),
             experiments_elements=[
-                (exp, elements) for exp, elements in self.experiments_elements_detailed
+                (exp, [el for el in elements if el not in other.elements_by_exp[exp]])
+                for exp, elements in self.elements_by_exp.items()
             ],
             experiments_all_particle=list(
                 set(self.experiments_all_particle).difference(other.experiments_all_particle)
@@ -319,13 +315,8 @@ class Data:
                 log(f"Failed to load lnA for {exp}: {e}")
 
         element_spectra: dict[Experiment, dict[Element, CRSpectrumData]] = {}
-        for exp_elements_spec in config.experiments_elements:
+        for exp, elements in config.elements_by_exp.items():
             exp_data = dict[Element, CRSpectrumData]()
-            if isinstance(exp_elements_spec, Experiment):
-                exp = exp_elements_spec
-                elements = config.elements
-            else:
-                exp, elements = exp_elements_spec
             for element in elements:
                 log(f"Reading {element.name} data for {exp}...")
                 try:

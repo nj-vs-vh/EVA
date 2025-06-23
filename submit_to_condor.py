@@ -4,17 +4,7 @@ from pathlib import Path
 
 import htcondor  # type: ignore
 
-from bayesian_analysis import FitConfig, McmcConfig, PlotsConfig
-from cr_knee_fit import experiments
-from cr_knee_fit.cr_model import (
-    CosmicRaysModelConfig,
-    SpectralBreakConfig,
-    SpectralComponentConfig,
-)
-from cr_knee_fit.elements import Element
-from cr_knee_fit.fit_data import DataConfig
-from cr_knee_fit.guesses import initial_guess_one_population_model
-from cr_knee_fit.model_ import ModelConfig
+from bayesian_analysis import FitConfig
 
 
 def submit_job(config: FitConfig) -> None:
@@ -55,62 +45,3 @@ def submit_job(config: FitConfig) -> None:
     schedd = htcondor.Schedd(location)  # type: ignore
     schedd.submit(job)
     print("Done!")
-
-
-if __name__ == "__main__":
-    analysis_name = "vanilla+icetop"
-
-    fit_data_config = DataConfig(
-        experiments_elements=experiments.DIRECT + [experiments.grapes],
-        experiments_all_particle=[experiments.ice_top_sibyll],
-        experiments_lnA=[],
-        elements=Element.regular(),
-    )
-
-    validation_data_config = DataConfig(
-        experiments_elements=[],
-        experiments_all_particle=[
-            experiments.lhaaso_sibyll,
-            experiments.kascade_sibyll,
-            experiments.kascade_grande_sibyll,
-            experiments.gamma,
-        ],
-        experiments_lnA=[experiments.lhaaso_sibyll],
-        elements=[],
-    )
-
-    model_config = ModelConfig(
-        cr_model_config=CosmicRaysModelConfig(
-            components=[
-                [Element.H],
-                [Element.He],
-                SpectralComponentConfig(
-                    elements=Element.nuclei(),
-                    scale_contrib_to_allpart=True,
-                ),
-            ],
-            breaks=[
-                SpectralBreakConfig(fixed_lg_sharpness=0.7),
-                SpectralBreakConfig(fixed_lg_sharpness=0.7),
-                SpectralBreakConfig(fixed_lg_sharpness=0.7),
-            ],
-        ),
-        shifted_experiments=fit_data_config.experiments_spectrum,
-    )
-
-    config = FitConfig.from_guessing_func(
-        name=analysis_name,
-        fit_data=fit_data_config,
-        mcmc=McmcConfig(
-            n_steps=500_000,
-            n_walkers=256,
-            processes=8,
-            reuse_saved=True,
-        ),
-        plots=PlotsConfig(
-            validation_data_config=validation_data_config,
-        ),
-        generate_guess=lambda: initial_guess_one_population_model(model_config),
-        n_guesses=50,
-    )
-    submit_job(config)

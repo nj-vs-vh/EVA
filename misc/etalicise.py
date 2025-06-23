@@ -16,9 +16,9 @@ import argparse
 import subprocess
 from pathlib import Path
 
-import bibtexparser
-import bibtexparser.middlewares as m
-from bibtexparser.model import Entry, ExplicitComment
+import bibtexparser  # type: ignore
+import bibtexparser.middlewares as m  # type: ignore
+from bibtexparser.model import Entry, ExplicitComment  # type: ignore
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

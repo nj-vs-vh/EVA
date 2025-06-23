@@ -1,5 +1,3 @@
-import argparse
-
 from scipy import stats  # type: ignore
 
 from bayesian_analysis import (
@@ -26,13 +24,10 @@ from cr_knee_fit.guesses import (
 )
 from cr_knee_fit.model_ import Model
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
-from run_local import run_local
+from run_local import LocalRunOptions, run_local
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--full", action="store_true")
-    parser.add_argument("--export", action="store_true")
-    args = parser.parse_args()
+    args = LocalRunOptions.parse()
 
     analysis_name = "2pop"
 
@@ -190,7 +185,7 @@ if __name__ == "__main__":
                 processes=12,
                 reuse_saved=True,
             )
-            if args.full
+            if args.mcmc
             else None
         ),
         generate_guess=generate_guess,

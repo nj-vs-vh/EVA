@@ -1,6 +1,6 @@
 from scipy import stats  # type: ignore
 
-from bayesian_analysis import FitConfig, PlotsConfig
+from bayesian_analysis import FitConfig, McmcConfig, PlotsConfig
 from cr_knee_fit import experiments
 from cr_knee_fit.cr_model import (
     CosmicRaysModel,
@@ -16,20 +16,23 @@ from cr_knee_fit.fit_data import DataConfig
 from cr_knee_fit.guesses import initial_guess_break, initial_guess_main_population
 from cr_knee_fit.model_ import Model
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
-from run_local import run_local
+from run_local import LocalRunOptions, run_local
 
 if __name__ == "__main__":
+    args = LocalRunOptions.parse()
     analysis_name = "trans-knee-composition-2pop"
 
     print(f"Running pre-configured analysis: {analysis_name}")
 
     fit_data_config = DataConfig(
-        experiments_elements=experiments.DIRECT
-        + [
-            experiments.grapes,
-            experiments.lhaaso_epos,
-            experiments.kascade_re_qgsjet,
-        ],
+        experiments_elements=list(
+            experiments.DIRECT
+            + [
+                experiments.grapes,
+                experiments.lhaaso_epos,
+                experiments.kascade_re_qgsjet,
+            ]
+        ),
         experiments_all_particle=[
             # experiments.lhaaso_epos,
             # experiments.hawc,
@@ -37,25 +40,28 @@ if __name__ == "__main__":
             # experiments.kascade_re_qgsjet,
         ],
         experiments_lnA=[],
-        elements=Element.regular(),
+        # elements=Element.regular(),
+        elements=[
+            Element.H,
+            Element.Fe,
+        ],
     )
 
     validation_data_config = DataConfig(
-        experiments_elements=experiments.ALL,
-        # experiments_all_particle=experiments.ALL,
+        experiments_elements=experiments.ALL,  # type: ignore
         experiments_all_particle=[
             experiments.hawc,
             experiments.lhaaso_epos,
         ],
         experiments_lnA=[],
         elements=Element.regular(),
-    )
+    ).excluding(fit_data_config)
 
     print(validation_data_config)
 
     def generate_guess() -> Model:
         shifted_experiments = (
-            fit_data_config.experiments_elements + fit_data_config.experiments_all_particle
+            fit_data_config.experiments_spectrum + fit_data_config.experiments_spectrum
         )
         pop1_model = initial_guess_main_population(
             pop_config=CosmicRaysModelConfig(
@@ -137,7 +143,9 @@ if __name__ == "__main__":
                 pop2_model,
             ],
             energy_shifts=ExperimentEnergyScaleShifts(
-                lg_shifts={exp: stats.norm.rvs(loc=0, scale=0.01) for exp in shifted_experiments}
+                lg_shifts={
+                    exp: float(stats.norm.rvs(loc=0, scale=0.01)) for exp in shifted_experiments
+                }
             ),
         )
 
@@ -147,13 +155,16 @@ if __name__ == "__main__":
     config = FitConfig.from_guessing_func(
         name=analysis_name,
         fit_data=fit_data_config,
-        # mcmc=McmcConfig(
-        #     n_steps=30_000,
-        #     n_walkers=64,
-        #     processes=8,
-        #     reuse_saved=True,
-        # ),
-        mcmc=None,
+        mcmc=(
+            McmcConfig(
+                n_steps=30_000,
+                n_walkers=64,
+                processes=8,
+                reuse_saved=True,
+            )
+            if args.mcmc
+            else None
+        ),
         generate_guess=generate_guess,
         plots=PlotsConfig(validation_data_config=validation_data_config),
     )
