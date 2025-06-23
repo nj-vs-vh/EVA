@@ -57,7 +57,6 @@ if __name__ == "__main__":
     ).excluding(fit_data_config)
 
     def generate_guess() -> Model:
-        shifted_experiments = fit_data_config.experiments_spectrum
         pop1_model = initial_guess_main_population(
             pop_config=CosmicRaysModelConfig(
                 components=[
@@ -97,7 +96,11 @@ if __name__ == "__main__":
         return Model(
             populations=[pop1_model],
             energy_shifts=ExperimentEnergyScaleShifts(
-                lg_shifts={exp: stats.norm.rvs(loc=0, scale=0.01) for exp in shifted_experiments}
+                lg_shifts={
+                    exp: stats.norm.rvs(loc=0, scale=0.01)
+                    for exp in fit_data_config.experiments_spectrum
+                    if exp != experiments.dampe
+                }
             ),
         )
 
@@ -109,7 +112,7 @@ if __name__ == "__main__":
         fit_data=fit_data_config,
         mcmc=(
             McmcConfig(
-                n_steps=30_000,
+                n_steps=50_000,
                 n_walkers=64,
                 processes=8,
                 reuse_saved=True,

@@ -301,7 +301,19 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
         print(f"Burn in: {burn_in}; Thinning: {thin}")
 
         theta_sample: np.ndarray = sampler.get_chain(flat=True, discard=burn_in, thin=thin)  # type: ignore
-        np.savetxt(sample_path, theta_sample)
+        header_lines = [
+            f"Generated on: {datetime.datetime.now()}"
+            f"MCMC config: {config.mcmc}"
+            f"Estimated autocorrelation length per-dimension: {tau}"
+            f"Burn-in, steps: {burn_in}"
+            f"Thinning, steps: {thin}"
+            f"Sample shape: {theta_sample.shape}"
+        ]
+        np.savetxt(
+            sample_path,
+            theta_sample,
+            header="\n".join("# " + line for line in header_lines),
+        )
 
     print(f"MCMC sample ready, shape: {theta_sample.shape}")
     median_model = Model.unpack(np.median(theta_sample, axis=0), layout_info=config.model)
