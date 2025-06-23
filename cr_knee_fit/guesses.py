@@ -51,6 +51,10 @@ def initial_guess_cutoff(c: SpectralCutoffConfig) -> SpectralCutoff:
     )
 
 
+def initial_guess_pl_index(center: float = 2.6) -> float:
+    return stats.norm.rvs(loc=center, scale=0.05)
+
+
 def initial_guess_main_population(
     pop_config: CosmicRaysModelConfig,
     initial_guess_lgI_override: dict[Element, float] | None = None,
@@ -75,10 +79,7 @@ def initial_guess_main_population(
                         element: stats.norm.rvs(loc=initial_guess_lgI[element], scale=0.05)
                         for element in comp_conf.elements
                     },
-                    alpha=stats.norm.rvs(
-                        loc=2.6,
-                        scale=0.05,
-                    ),
+                    alpha=initial_guess_pl_index(center=2.6),
                     lg_scale_contrib_to_all=(
                         stats.uniform.rvs(loc=0.01, scale=0.3)
                         if comp_conf.scale_contrib_to_allpart

@@ -9,7 +9,7 @@ from bayesian_analysis import FitConfig, run_bayesian_analysis
 OUT_DIR = Path(__file__).parent / "out"
 
 
-class FileStdoutTee:
+class FileStdoutTee(TextIO):
     def __init__(self, file: TextIO, write_to_stdout: bool):
         self.file = file
         self.write_to_stdout = write_to_stdout
@@ -34,7 +34,7 @@ class FileStdoutTee:
         sys.stdout = self._old_stdout
 
 
-def run_local(config: FitConfig, log_to_stdout: bool = False) -> None:
+def run_local(config: FitConfig, log_to_stdout: bool = True) -> None:
     print("Running:")
     print(config)
 
@@ -46,10 +46,9 @@ def run_local(config: FitConfig, log_to_stdout: bool = False) -> None:
             sys.exit(0)
     outdir.mkdir(exist_ok=True, parents=True)
 
-    if log_to_stdout:
-        logfile = outdir / "log.txt"
-        with logfile.open("w") as log, FileStdoutTee(log, write_to_stdout=log_to_stdout):
-            run_bayesian_analysis(config, outdir)
+    logfile = outdir / "log.txt"
+    with logfile.open("w") as log, FileStdoutTee(log, write_to_stdout=log_to_stdout):  # type: ignore
+        run_bayesian_analysis(config, outdir)
 
 
 @dataclass

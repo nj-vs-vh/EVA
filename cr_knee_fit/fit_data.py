@@ -239,7 +239,7 @@ class DataConfig:
     def excluding(self, other: "DataConfig") -> "DataConfig":
         return DataConfig(
             experiments_elements=[
-                (exp, [el for el in elements if el not in other.elements_by_exp[exp]])
+                (exp, [el for el in elements if el not in other.elements_by_exp.get(exp, [])])
                 for exp, elements in self.elements_by_exp.items()
             ],
             experiments_all_particle=list(
