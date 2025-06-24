@@ -24,9 +24,14 @@ def plot_credible_band(
     label: str | None = None,
     cl: float = 0.9,
     alpha: float = 0.3,
+    grid_override: np.ndarray | None = None,
 ) -> None:
     x_min, x_max = bounds
-    x_grid = np.logspace(np.log10(x_min), np.log10(x_max), 100)
+    x_grid = (
+        grid_override
+        if grid_override is not None
+        else np.logspace(np.log10(x_min), np.log10(x_max), 100)
+    )
     scale_factor = x_grid**scale
 
     model_sample = [Model.unpack(theta, layout_info=model_config) for theta in theta_sample]

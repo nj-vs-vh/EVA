@@ -5,46 +5,57 @@ from cr_knee_fit import experiments
 from cr_knee_fit.fit_data import Data
 from cr_knee_fit.model_ import Model, ModelConfig
 
-
-def lg_from_percent(percent: float) -> float:
-    return np.log10(1 + percent / 100)
-
-
-energy_scale_lg_uncertainties = {
+energy_scale_uncertainties = {
     # 10.1103/PhysRevLett.113.121101
     # > This comparison limits the uncertainty of the absolute energy scale to 2% in the range covered by
     #   the beam test results, 10–290 GeV. It increases to 5% at 0.5 GeV and to 3% at 500 GeV.
-    experiments.ams02: lg_from_percent(3),
+    experiments.ams02: 3.0,
     # 10.1103/PhysRevLett.119.181101
     # > It is found that the average ratio of the expected to measured cutoff position in the electron flux
     #   is 1.035 +/- 0.009 (stat). As a result, a correction of the energy scale by 3.5% was implemented in
     #   the analysis.
-    experiments.calet: lg_from_percent(0.9),
+    experiments.calet: 0.9,
     # 10.22323/1.301.0197
     # > we provide an estimation on absolute energy scale of DAMPE 1.25% higher than expected at about 13GeV
     #   energy with uncertainty about ±1.75%(stat)±1.34%(sys)
     # combining 1.75 and 1.34 in lg quadratures, we get 2.2
-    experiments.dampe: lg_from_percent(2.2),
+    experiments.dampe: 2.2,
     # no direct statement found on energy scale uncertainty found, but arXiV:2004.10371 lists energy resolution
     # at a level of 6.4% at 150 GeV, so we take the same value for energy scale uncertainty
-    experiments.cream: lg_from_percent(6.4),
-    experiments.iss_cream: lg_from_percent(6.4),
+    experiments.cream: 6.4,
+    experiments.iss_cream: 6.4,
     # 10.1016/j.astropartphys.2024.103077
     # > Fig. 9 [...] The uncertainty in the energy spectrum induced by a systematic error in the energy scale
     # equal to deltaE = 9% is displayed in the upper-right corner of the figure using arrows.
-    experiments.hawc: lg_from_percent(9),
+    experiments.hawc: 9.0,
     # 10.1016/j.nima.2004.11.025
     # no energy scale data found, but energy resolution is said to be ~10%
-    experiments.grapes: lg_from_percent(10),
+    experiments.grapes: 10.0,
     # 10.1103/PhysRevD.104.062007 and 10.1051/epjconf/202328302002
     # > The uncertainty of 30% is statistics dominant in the measurement of the shift.
     # however, we tentatively set the uncertainty to ~10 to roughly match other inidirect experiments
-    experiments.lhaaso_epos: lg_from_percent(10),
-    experiments.lhaaso_qgsjet: lg_from_percent(10),
-    experiments.lhaaso_sibyll: lg_from_percent(10),
+    experiments.lhaaso_epos: 10.0,
+    experiments.lhaaso_qgsjet: 10.0,
+    experiments.lhaaso_sibyll: 10.0,
 }
 
-default_energy_scale_lg_uncertainty = lg_from_percent(10)
+default_energy_scale_uncertainty = 10
+
+
+def percent2lg(percent: float) -> float:
+    upper = np.log10(1 + percent / 100)
+    lower = -np.log10(1 - percent / 100)
+    return 0.5 * (upper + lower)
+
+
+energy_scale_lg_uncertainties = {
+    exp: percent2lg(energy_scale_uncertainties.get(exp, default_energy_scale_uncertainty))
+    for exp in experiments.ALL
+}
+
+
+def get_energy_scale_lg_uncertainty(exp: experiments.Experiment) -> float:
+    return energy_scale_lg_uncertainties[exp]
 
 
 def logprior(model: Model) -> float:
@@ -83,8 +94,14 @@ def logprior(model: Model) -> float:
                 if not (0.1 < b < 20):
                     return -np.inf
 
-        # components prior
         for component in population.base_spectra:
+            # ad hoc bound for all spectral normalizations to [10^-20; 10^6];
+            # this is roughly +/- 10 orders of magnitude w.r.t. values we find in the fit, so it shouldn't affect
+            # the "normal" flux estimation, but it limits the parameter space in cases where a particular spectrum
+            # is poorly or not at all constrained by data
+            if not all(-20 < lgI < 6 for lgI in component.lgI_per_element.values()):
+                return -np.inf
+
             if (
                 component.lg_scale_contrib_to_all is not None
                 and component.lg_scale_contrib_to_all < 0
@@ -102,7 +119,7 @@ def logprior(model: Model) -> float:
 
     # experimental energy shifts' prior
     for exp, lg_shift in model.energy_shifts.lg_shifts.items():
-        lg_sigma = energy_scale_lg_uncertainties.get(exp, default_energy_scale_lg_uncertainty)
+        lg_sigma = get_energy_scale_lg_uncertainty(exp)
         res += stats.norm.logpdf(lg_shift, loc=0, scale=lg_sigma)
 
     return res  # type: ignore

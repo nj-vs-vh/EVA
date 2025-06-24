@@ -69,14 +69,14 @@ if __name__ == "__main__":
                     SpectralBreakConfig(
                         fixed_lg_sharpness=0.7,
                         quantity="R",
-                        lg_break_prior_limits=(3.8, 4.3),
+                        lg_break_prior_limits=(3.8, 4.5),
                         is_softening=True,
                         lg_break_hint=4.0,
                     ),
                     SpectralBreakConfig(
                         fixed_lg_sharpness=0.7,
                         quantity="R",
-                        lg_break_prior_limits=(4.3, 8.8),
+                        lg_break_prior_limits=(4.0, 6.8),
                         is_softening=False,
                         lg_break_hint=5.0,
                     ),
@@ -112,7 +112,7 @@ if __name__ == "__main__":
         fit_data=fit_data_config,
         mcmc=(
             McmcConfig(
-                n_steps=50_000,
+                n_steps=500_000,
                 n_walkers=64,
                 processes=8,
                 reuse_saved=True,
@@ -123,10 +123,11 @@ if __name__ == "__main__":
         generate_guess=generate_guess,
         plots=PlotsConfig(
             validation_data_config=validation_data_config,
-            export_opts=PlotExportOpts(main="composition-only-model.pdf"),
+            export_opts=PlotExportOpts(main="composition-only-model.pdf" if args.export else None),
             elements=PosteriorPlotConfig(max_margin_around_data=0.2),
             all_particle=PosteriorPlotConfig(max_margin_around_data=1.0),
         ),
     )
+    config.reuse_saved_models = True
 
     run_local(config, log_to_stdout=True)

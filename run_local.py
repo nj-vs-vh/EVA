@@ -34,12 +34,12 @@ class FileStdoutTee(TextIO):
         sys.stdout = self._old_stdout
 
 
-def run_local(config: FitConfig, log_to_stdout: bool = True) -> None:
+def run_local(config: FitConfig, log_to_stdout: bool = True, overwrite: bool = False) -> None:
     print("Running:")
     print(config)
 
     outdir = OUT_DIR / config.name
-    if outdir.exists():
+    if outdir.exists() and not overwrite:
         print(f"Output directory exists: {outdir}")
         answer = input("Continue? This will overwrite some files! [Yn] ")
         if answer.lower() == "n":
@@ -55,14 +55,16 @@ def run_local(config: FitConfig, log_to_stdout: bool = True) -> None:
 class LocalRunOptions:
     mcmc: bool
     export: bool
+    overwrite: bool
 
     @staticmethod
     def parse() -> "LocalRunOptions":
         parser = argparse.ArgumentParser()
         parser.add_argument("--mcmc", action="store_true")
         parser.add_argument("--export", action="store_true")
+        parser.add_argument("--force", "-f", action="store_true")
         args = parser.parse_args()
-        return LocalRunOptions(mcmc=args.mcmc, export=args.export)
+        return LocalRunOptions(mcmc=args.mcmc, export=args.export, overwrite=args.force)
 
 
 if __name__ == "__main__":

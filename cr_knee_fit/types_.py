@@ -1,9 +1,10 @@
 import abc
-from typing import Generic, Type, TypeVar
+import datetime
+from pathlib import Path
+from typing import Generic, Self, Type, TypeVar
 
 import numpy as np
 
-T = TypeVar("T")
 LayoutInfo = TypeVar("LayoutInfo")
 
 
@@ -22,7 +23,7 @@ class Packable(Generic[LayoutInfo], abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    def unpack(cls: Type[T], theta: np.ndarray, layout_info: LayoutInfo) -> T: ...
+    def unpack(cls: Type[Self], theta: np.ndarray, layout_info: LayoutInfo) -> Self: ...
 
     def validate_packing(self) -> None:
         packed = self.pack()
@@ -39,3 +40,20 @@ class Packable(Generic[LayoutInfo], abc.ABC):
 
     def print_params(self):
         print(self.format_params())
+
+    def save(self, path: Path) -> None:
+        np.savetxt(
+            path,
+            self.pack(),
+            header="\n".join(
+                [f"Dumped on: {datetime.datetime.now()}", f"Layout info: {self.layout_info()}"]
+            ),
+        )
+
+    @classmethod
+    def load(cls: Type[Self], path: Path, layout_info: LayoutInfo) -> Self | None:
+        try:
+            theta = np.loadtxt(path)
+            return cls.unpack(theta, layout_info=layout_info)
+        except FileNotFoundError:
+            return None

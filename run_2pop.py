@@ -183,7 +183,7 @@ if __name__ == "__main__":
         fit_data=fit_data_config,
         mcmc=(
             McmcConfig(
-                n_steps=100_000,
+                n_steps=50_000,
                 n_walkers=64,
                 processes=12,
                 reuse_saved=True,
@@ -203,5 +203,6 @@ if __name__ == "__main__":
             ),
         ),
     )
+    config.reuse_saved_models = True
 
     run_local(config, log_to_stdout=True)

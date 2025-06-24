@@ -12,6 +12,7 @@ from warnings import warn
 
 import corner  # type: ignore
 import emcee  # type: ignore
+import matplotlib.ticker as ticker
 import numpy as np
 import pydantic
 from matplotlib import pyplot as plt
@@ -22,7 +23,12 @@ from scipy import optimize  # type: ignore
 
 from cr_knee_fit.elements import Element, unresolved_element_names
 from cr_knee_fit.fit_data import CRSpectrumData, Data, DataConfig, GenericExperimentData
-from cr_knee_fit.inference import loglikelihood, logposterior, set_global_fit_data
+from cr_knee_fit.inference import (
+    get_energy_scale_lg_uncertainty,
+    loglikelihood,
+    logposterior,
+    set_global_fit_data,
+)
 from cr_knee_fit.model_ import Model, ModelConfig
 from cr_knee_fit.plotting import (
     Observable,
@@ -37,7 +43,6 @@ from cr_knee_fit.utils import (
     add_elements_lnA_secondary_axis,
     add_log_margin,
     clamp_log_margin,
-    energy_shift_suffix,
     export_fig,
     legend_artist_line,
     legend_with_added_items,
@@ -63,7 +68,7 @@ class McmcConfig:
 class PosteriorPlotConfig:
     best_fit: bool = True
     contours: bool = False
-    band_cl: float | None = 0.68
+    band_cl: float | None = 0.90
     max_margin_around_data: None | float = 0.5
 
     population_contribs_best_fit: bool = False
@@ -85,6 +90,7 @@ class PlotsConfig:
         PosteriorPlotConfig()
     )
     lnA: PosteriorPlotConfig = PosteriorPlotConfig()
+    energy_shifts: PosteriorPlotConfig = PosteriorPlotConfig()
 
     export_opts: PlotExportOpts = PlotExportOpts()
 
@@ -96,6 +102,8 @@ class FitConfig(pydantic.BaseModel):
     model: ModelConfig
     plots: PlotsConfig
     initial_guesses: Np2DArrayFp64  # n_sample x n_model_dim
+
+    reuse_saved_models: bool = False
 
     def __post_init__(self) -> None:
         model_elements = set(self.model.elements(only_fixed_Z=True))
@@ -193,6 +201,12 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
 
     Path(outdir / "config-dump.json").write_text(config.model_dump_json(indent=2))
 
+    def load_saved(path: Path) -> Model | None:
+        if config.reuse_saved_models:
+            return Model.load(path, layout_info=config.model)
+        else:
+            return None
+
     print_delim()
     print("Loading fit data...")
     fit_data = Data.load(config.fit_data_config)
@@ -230,13 +244,15 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
 
     print_delim()
     print("Running preliminary ML analysis...")
-    mle_model = run_ml_analysis(
+    mle_model_dump = outdir / "preliminary-ml.txt"
+    mle_model = load_saved(mle_model_dump) or run_ml_analysis(
         config=config,
         fit_data=fit_data,
         freeze_shifts=False,
         initial_model=None,
     )
     if mle_model is not None:
+        mle_model.save(mle_model_dump)
         mle_model.plot_spectra(fit_data, scale=scale, validation_data=validation_data).savefig(
             outdir / "preliminary-mle-result.png"
         )
@@ -301,18 +317,22 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
         print(f"Burn in: {burn_in}; Thinning: {thin}")
 
         theta_sample: np.ndarray = sampler.get_chain(flat=True, discard=burn_in, thin=thin)  # type: ignore
-        header_lines = [
-            f"Generated on: {datetime.datetime.now()}"
-            f"MCMC config: {config.mcmc}"
-            f"Estimated autocorrelation length per-dimension: {tau}"
-            f"Burn-in, steps: {burn_in}"
-            f"Thinning, steps: {thin}"
-            f"Sample shape: {theta_sample.shape}"
-        ]
+
+        model_example = Model.unpack(theta_sample[0, :], layout_info=config.model)
+        tau_labels = model_example.labels(latex=False)
         np.savetxt(
             sample_path,
             theta_sample,
-            header="\n".join("# " + line for line in header_lines),
+            header="\n".join(
+                [
+                    f"Generated on: {datetime.datetime.now()}",
+                    f"MCMC config: {config.mcmc}",
+                    f"Estimated autocorrelation lengths: {', '.join(f'{label}: {t}' for label, t in zip(tau_labels, tau))}",
+                    f"Burn-in, steps: {burn_in}",
+                    f"Thinning, steps: {thin}",
+                    f"Sample shape: {theta_sample.shape}",
+                ]
+            ),
         )
 
     print(f"MCMC sample ready, shape: {theta_sample.shape}")
@@ -339,22 +359,52 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
     fig_corner.savefig(outdir / "corner.png")
 
     print_delim()
-    print("Plotting model predictions over the data")
+    print("Plotting best-fitting model from the posterior sample")
 
-    best_fit_model = posterior_best_model  # ML?
+    posterior_best_model.plot_spectra(
+        fit_data, scale=scale, validation_data=validation_data
+    ).savefig(outdir / "best-fitting-posterior-point.png")
+    posterior_best_model.plot_abundances().savefig(outdir / "abundances.png")
+
+    print_delim()
+    print("Running ML analysis from the best-fitting posterior point")
+    posterior_ml_dump = outdir / "posterior-ml.txt"
+    posterior_ml_best = load_saved(posterior_ml_dump) or run_ml_analysis(
+        config=config,
+        fit_data=fit_data,
+        freeze_shifts=False,
+        initial_model=posterior_best_model,
+    )
+    if posterior_ml_best is not None:
+        posterior_ml_best.save(posterior_ml_dump)
+        posterior_ml_best.print_params()
+        posterior_ml_best.plot_spectra(
+            fit_data, scale=scale, validation_data=validation_data
+        ).savefig(outdir / "mle-from-posterior-best.png")
+        posterior_ml_best.plot_lnA(fit_data, validation_data=validation_data).savefig(
+            outdir / "mle-from-posterior-best-lnA.png"
+        )
+
+    print_delim()
+    print("Plotting final model plot")
+
+    best_fit_model = posterior_ml_best or posterior_best_model
 
     fig, axes = plt.subplot_mosaic(
         [
             ["Elements", "Elements"],
             ["All particle", "lnA"],
+            ["Shifts", "Shifts"],
         ],
-        figsize=(8, 8),
+        figsize=(8, 10),
+        height_ratios=[1, 1, 0.3],
     )
     fig = cast(Figure, fig)
     axes = cast(dict[str, Axes], axes)
     ax_el = axes["Elements"]
     ax_all = axes["All particle"]
     ax_lnA = axes["lnA"]
+    ax_shifts = axes["Shifts"]
 
     POP_CONTRIB_LINEWIDTH = 0.75
 
@@ -390,12 +440,14 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
                 bounds=E_bounds,
                 color=color,
                 alpha=0.2,
+                cl=plot_config.band_cl,
             )
         if plot_config.best_fit:
             E_grid = np.geomspace(*E_bounds, 100)
             E_factor = E_grid**scale_
             ax.plot(E_grid, E_factor * observable(best_fit_model, E_grid), color=color)
 
+    # elemental spectra
     element_legend_items: list[LegendItem] = []
     experiment_legend_item_by_label: dict[str, LegendItem] = {}
     plotted_elem_spectra: list[CRSpectrumData] = []
@@ -406,9 +458,8 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
                 spec_data = spec_data.with_shifted_energy_scale(f=f_exp)
                 plotted_elem_spectra.append(spec_data)
                 spec_data.plot(scale=scale, ax=ax_el, add_label=False, is_fitted=is_fitted)
-            label = exp.name + energy_shift_suffix(f_exp)
             experiment_legend_item_by_label.setdefault(
-                label, (exp.legend_artist(is_fitted=is_fitted), label)
+                exp.name, (exp.legend_artist(True), exp.name)
             )
     elements = best_fit_model.layout_info().elements(only_fixed_Z=False)
     comp_data_ylim = merged_lims([sp.scaled_flux(scale) for sp in plotted_elem_spectra])
@@ -448,6 +499,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
         clamp_log_margin(ax_el, comp_data_ylim, config.plots.elements.max_margin_around_data)
     ax_el.set_xlim(*comp_Elim)
 
+    # all-particle spectra
     if fit_data.all_particle_spectra or validation_data.all_particle_spectra:
         plotted_all_spectra: list[CRSpectrumData] = []
         for data, is_fitted in ((fit_data, True), (validation_data, False)):
@@ -461,9 +513,8 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
                     add_label=False,
                     is_fitted=is_fitted,
                 )
-                label = exp.name + energy_shift_suffix(f_exp)
                 experiment_legend_item_by_label.setdefault(
-                    label, (exp.legend_artist(is_fitted=is_fitted), label)
+                    exp.name, (exp.legend_artist(True), exp.name)
                 )
 
         all_data_ylim = merged_lims([sp.scaled_flux(scale) for sp in plotted_all_spectra])
@@ -551,6 +602,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
             )
         ax_all.set_xlim(*all_Elim)
 
+    # <lnA>
     if fit_data.lnA or validation_data.lnA:
         LN_A_COLOR = "tab:green"
         plotted_lnA_data: list[GenericExperimentData] = []
@@ -566,9 +618,8 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
                     color=LN_A_COLOR,
                     is_fitted=is_fitted,
                 )
-                label = exp.name + energy_shift_suffix(f_exp)
                 experiment_legend_item_by_label.setdefault(
-                    label, (exp.legend_artist(is_fitted), label)
+                    exp.name, (exp.legend_artist(True), exp.name)
                 )
 
         lnA_data_ylim = merged_lims([s.y for s in plotted_lnA_data])
@@ -582,7 +633,6 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
             color=LN_A_COLOR,
             scale_override=0,
         )
-        ax_lnA.set_xscale("log")
         ax_lnA.set_xlabel(E_GEV_LABEL)
         ax_lnA.set_ylabel("$ \\langle \\ln A \\rangle $")
         add_elements_lnA_secondary_axis(ax_lnA)
@@ -590,12 +640,75 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
             clamp_log_margin(ax_lnA, lnA_data_ylim, config.plots.lnA.max_margin_around_data)
         ax_lnA.set_xlim(*lnA_Elim)
 
+    # experimental energy scale shifts
+    exp_indices = np.arange(len(config.model.shifted_experiments))
+    SHIFTS_COLOR = "black"
+    for i, exp in enumerate(config.model.shifted_experiments):
+        ax_shifts.errorbar(
+            [i],
+            y=[0],
+            yerr=[
+                [100 * (10 ** get_energy_scale_lg_uncertainty(exp) - 1)],
+                [100 * (1 - 10 ** (-get_energy_scale_lg_uncertainty(exp)))],
+            ],
+            marker=exp.marker,
+            color=SHIFTS_COLOR,
+            markersize=3.0,
+            elinewidth=0.5,
+            capsize=1.5,
+        )
+        observable: Observable = lambda model, grid: (  # noqa: E731
+            100 * (model.energy_shifts.f(exp) - 1)
+        ) * np.ones_like(grid)
+        bounds = (i - 0.5, i + 0.5)
+        if config.plots.energy_shifts.contours:
+            plot_posterior_contours(
+                ax=ax_shifts,
+                scale=0,
+                theta_sample=theta_sample,
+                model_config=config.model,
+                observable=observable,
+                bounds=bounds,
+                tricontourf_kwargs=tricontourf_kwargs_transparent_colors(
+                    color=SHIFTS_COLOR,
+                    alpha_max=0.5,
+                ),
+            )
+        if config.plots.energy_shifts.band_cl is not None:
+            plot_credible_band(
+                ax=ax_shifts,
+                scale=0,
+                theta_sample=theta_sample,
+                model_config=config.model,
+                observable=observable,
+                bounds=bounds,
+                color=SHIFTS_COLOR,
+                alpha=0.2,
+                cl=config.plots.energy_shifts.band_cl,
+                grid_override=np.array(bounds),
+            )
+        if config.plots.energy_shifts.best_fit:
+            ax_shifts.plot(bounds, observable(best_fit_model, np.array(bounds)), color=SHIFTS_COLOR)
+
+    ax_shifts.axhline(0, linestyle="--", color="gray")
+    ax_shifts.set_ylabel("$ \\delta E $ / %")
+    ax_shifts.yaxis.set_major_locator(ticker.MultipleLocator(10.0))
+    ax_shifts.set_xticks(
+        exp_indices,
+        [exp.name for exp in config.model.shifted_experiments],
+        # rotation=30,
+        fontsize="x-small",
+    )
+    ax_shifts.set_xlim(-0.5, exp_indices[-1] + 0.5)
+
+    # legending and general plot formatting
     for ax in (ax_el, ax_all):
         ax.set_xscale("log")
         ax.set_yscale("log")
+        ax.yaxis.set_minor_formatter(ticker.NullFormatter())  # never caption minor ticks!
+    ax_lnA.set_xscale("log")
 
     legend_items = element_legend_items.copy()
-
     if (
         config.plots.elements.population_contribs_best_fit
         or config.plots.all_particle.population_contribs_best_fit
@@ -609,7 +722,6 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
                     (pop.population_meta.name if pop.population_meta else "Unnamed") + " pop.",
                 )
             )
-
     legend_items += list(experiment_legend_item_by_label.values())
     legend_with_added_items(
         ax_el,
@@ -621,36 +733,12 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
         shadow=True,
         ncol=4,
     )
+
     fig.tight_layout()
     fig.savefig(outdir / "model.pdf")
     if config.plots.export_opts.main is not None:
         export_fig(fig, filename=config.plots.export_opts.main)
     fig.savefig(outdir / "model.png")
-
-    print_delim()
-    print("Plotting best-fitting model from the posterior sample")
-
-    posterior_best_model.plot_spectra(
-        fit_data, scale=scale, validation_data=validation_data
-    ).savefig(outdir / "best-fitting-posterior-point.png")
-    posterior_best_model.plot_abundances().savefig(outdir / "abundances.png")
-
-    print_delim()
-    print("Running ML analysis from the best-fitting posterior point")
-    posterior_ml_best = run_ml_analysis(
-        config=config,
-        fit_data=fit_data,
-        freeze_shifts=False,
-        initial_model=posterior_best_model,
-    )
-    if posterior_ml_best is not None:
-        posterior_ml_best.print_params()
-        posterior_ml_best.plot_spectra(
-            fit_data, scale=scale, validation_data=validation_data
-        ).savefig(outdir / "mle-from-posterior-best.png")
-        posterior_ml_best.plot_lnA(fit_data, validation_data=validation_data).savefig(
-            outdir / "mle-from-posterior-best-lnA.png"
-        )
 
 
 if __name__ == "__main__":
