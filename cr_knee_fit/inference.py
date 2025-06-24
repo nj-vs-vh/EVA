@@ -33,13 +33,13 @@ energy_scale_uncertainties = {
     experiments.grapes: 10.0,
     # 10.1103/PhysRevD.104.062007 and 10.1051/epjconf/202328302002
     # > The uncertainty of 30% is statistics dominant in the measurement of the shift.
-    # however, we tentatively set the uncertainty to ~10 to roughly match other inidirect experiments
+    # however, we tentatively set the uncertainty to ~10 to roughly match other indirect experiments
     experiments.lhaaso_epos: 10.0,
     experiments.lhaaso_qgsjet: 10.0,
     experiments.lhaaso_sibyll: 10.0,
 }
 
-default_energy_scale_uncertainty = 10
+default_energy_scale_uncertainty = 10.0
 
 
 def percent2lg(percent: float) -> float:
