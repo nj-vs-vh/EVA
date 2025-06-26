@@ -29,7 +29,7 @@ from run_local import LocalRunOptions, run_local
 if __name__ == "__main__":
     opts = LocalRunOptions.parse()
 
-    analysis_name = "2pop"
+    analysis_name = "2pop-noshift"
 
     print(f"Running pre-configured analysis: {analysis_name}")
 
@@ -173,6 +173,12 @@ if __name__ == "__main__":
                     if exp != experiments.dampe
                 }
             ),
+            energy_scale_lg_uncertainty_override={
+                experiments.hawc: 3.0,
+                experiments.lhaaso_epos: 3.0,
+                experiments.lhaaso_qgsjet: 3.0,
+                experiments.lhaaso_sibyll: 3.0,
+            },
         )
 
     m = generate_guess()

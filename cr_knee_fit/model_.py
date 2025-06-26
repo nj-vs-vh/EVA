@@ -1,6 +1,5 @@
 import dataclasses
 import itertools
-from dataclasses import dataclass, field
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -34,12 +33,16 @@ from cr_knee_fit.utils import (
 )
 
 
-@dataclass
+@dataclasses.dataclass
 class ModelConfig:
     shifted_experiments: list[Experiment]
-    population_configs: list[CosmicRaysModelConfig] = field(default_factory=list)
 
+    population_configs: list[CosmicRaysModelConfig] = dataclasses.field(default_factory=list)
     cr_model_config: CosmicRaysModelConfig | None = None  # backwards compatibility
+
+    energy_scale_lg_uncertainty_override: dict[Experiment, float] = dataclasses.field(
+        default_factory=dict
+    )
 
     def __post_init__(self) -> None:
         if self.cr_model_config is not None:
@@ -68,10 +71,14 @@ class ModelConfig:
         )
 
 
-@dataclass
+@dataclasses.dataclass
 class Model(Packable[ModelConfig]):
     populations: list[CosmicRaysModel]
     energy_shifts: ExperimentEnergyScaleShifts
+
+    energy_scale_lg_uncertainty_override: dict[Experiment, float] = dataclasses.field(
+        default_factory=dict
+    )
 
     def __post_init__(self) -> None:
         assert self.populations, "populations list can't be empty"
@@ -90,6 +97,7 @@ class Model(Packable[ModelConfig]):
         return ModelConfig(
             population_configs=[pop.layout_info() for pop in self.populations],
             shifted_experiments=self.energy_shifts.experiments,
+            energy_scale_lg_uncertainty_override=self.energy_scale_lg_uncertainty_override,
         )
 
     @classmethod
@@ -108,6 +116,7 @@ class Model(Packable[ModelConfig]):
         return Model(
             populations=populations,
             energy_shifts=energy_shifts,
+            energy_scale_lg_uncertainty_override=layout_info.energy_scale_lg_uncertainty_override,
         )
 
     def plot_spectra(

@@ -119,7 +119,9 @@ def logprior(model: Model) -> float:
 
     # experimental energy shifts' prior
     for exp, lg_shift in model.energy_shifts.lg_shifts.items():
-        lg_sigma = get_energy_scale_lg_uncertainty(exp)
+        lg_sigma = model.energy_scale_lg_uncertainty_override.get(
+            exp
+        ) or get_energy_scale_lg_uncertainty(exp)
         res += stats.norm.logpdf(lg_shift, loc=0, scale=lg_sigma)
 
     return res  # type: ignore

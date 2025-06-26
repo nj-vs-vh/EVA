@@ -159,12 +159,20 @@ def print_delim():
     print("\n" + "=" * 15 + "\n" + datetime.datetime.now().isoformat(sep=" ", timespec="seconds"))
 
 
+@dataclasses.dataclass
+class GoodnessOfFit:
+    max_logpost: float
+    loglike_at_map: float
+    ndim: int
+    aic: float
+
+
 def run_ml_analysis(
     config: FitConfig,
     fit_data: Data,
     freeze_shifts: bool,
     initial_model: Model | None = None,
-) -> tuple[Model, float]:
+) -> tuple[Model, GoodnessOfFit]:
     model_config = config.model
     initial_model = initial_model or config.generate_initial_guess(fit_data)
     if freeze_shifts:
@@ -189,15 +197,20 @@ def run_ml_analysis(
         },
     )
     print(res)
+    map_model = Model.unpack(res.x, layout_info=model_config)
 
     max_logpost = -res.fun
-    # we're actually maximizing posterior not likelihood, so this is not strictly AIC
-    # but as mentioned above, this shouldn't matter too much dues to our choice of mostly
-    # trivial priors
-    aic = 2 * initial_model.ndim() - 2 * max_logpost
-    print(f"AIC = {aic:.2f}")
-
-    return Model.unpack(res.x, layout_info=model_config), aic
+    gof = GoodnessOfFit(
+        max_logpost=max_logpost,
+        loglike_at_map=loglikelihood(map_model, fit_data, model_config),
+        ndim=map_model.ndim(),
+        # we're actually maximizing posterior not likelihood, so this is not strictly AIC
+        # but as mentioned above, this shouldn't matter too much dues to our choice of mostly
+        # trivial priors
+        aic=2 * initial_model.ndim() - 2 * max_logpost,
+    )
+    print(f"Goodness of fit: {gof}")
+    return map_model, gof
 
 
 def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
@@ -253,13 +266,13 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
     if loaded := load_saved(mle_model_dump):
         mle_model = loaded
     else:
-        mle_model, aic = run_ml_analysis(
+        mle_model, gof = run_ml_analysis(
             config=config,
             fit_data=fit_data,
             freeze_shifts=False,
             initial_model=None,
         )
-        mle_model.save(mle_model_dump, header=[f"AIC: {aic}"])
+        mle_model.save(mle_model_dump, header=[f"GoF: {gof}"])
 
     mle_model.print_params()
     mle_model.plot_spectra(fit_data, scale=scale, validation_data=validation_data).savefig(
@@ -388,13 +401,13 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
     if loaded := load_saved(posterior_ml_dump):
         posterior_ml_best = loaded
     else:
-        posterior_ml_best, aic = run_ml_analysis(
+        posterior_ml_best, gof = run_ml_analysis(
             config=config,
             fit_data=fit_data,
             freeze_shifts=False,
             initial_model=posterior_best_model,
         )
-        posterior_ml_best.save(posterior_ml_dump, header=[f"AIC: {aic}"])
+        posterior_ml_best.save(posterior_ml_dump, header=[f"GoF: {gof}"])
 
     posterior_ml_best.print_params()
     posterior_ml_best.plot_spectra(fit_data, scale=scale, validation_data=validation_data).savefig(
