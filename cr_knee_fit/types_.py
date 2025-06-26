@@ -41,12 +41,16 @@ class Packable(Generic[LayoutInfo], abc.ABC):
     def print_params(self):
         print(self.format_params())
 
-    def save(self, path: Path) -> None:
+    def save(self, path: Path, header: list[str] | None = None) -> None:
         np.savetxt(
             path,
             self.pack(),
             header="\n".join(
-                [f"Dumped on: {datetime.datetime.now()}", f"Layout info: {self.layout_info()}"]
+                [
+                    f"Dumped on: {datetime.datetime.now()}",
+                    f"Layout info: {self.layout_info()}",
+                    *(header or []),
+                ]
             ),
         )
 

@@ -26,7 +26,7 @@ from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 from run_local import LocalRunOptions, run_local
 
 if __name__ == "__main__":
-    args = LocalRunOptions.parse()
+    opts = LocalRunOptions.parse()
     analysis_name = "trans-knee-composition-2pop"
 
     print(f"Running pre-configured analysis: {analysis_name}")
@@ -44,14 +44,14 @@ if __name__ == "__main__":
             experiments.DIRECT
             + [
                 experiments.grapes,
-                experiments.lhaaso_epos,
+                # experiments.lhaaso_epos,
                 experiments.kascade_re_qgsjet,
             ]
         ),
         experiments_all_particle=[
-            experiments.lhaaso_epos,
-            experiments.hawc,
-            experiments.tale,
+            # experiments.lhaaso_epos,
+            # experiments.hawc,
+            # experiments.tale,
             experiments.kascade_re_qgsjet,
         ],
         experiments_lnA=[],
@@ -199,11 +199,9 @@ if __name__ == "__main__":
                 processes=8,
                 reuse_saved=True,
             )
-            if args.mcmc
-            else None
         ),
         generate_guess=generate_guess,
         plots=PlotsConfig(validation_data_config=validation_data_config),
     )
 
-    run_local(config)
+    run_local(config, opts=opts)

@@ -5,7 +5,7 @@ import datetime
 import multiprocessing
 import os
 import sys
-import traceback
+import time
 from pathlib import Path
 from typing import Callable, cast
 from warnings import warn
@@ -74,7 +74,7 @@ class PosteriorPlotConfig:
     population_contribs_best_fit: bool = False
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass
 class PlotExportOpts:
     main: str | None = None
 
@@ -92,7 +92,7 @@ class PlotsConfig:
     lnA: PosteriorPlotConfig = PosteriorPlotConfig()
     energy_shifts: PosteriorPlotConfig = PosteriorPlotConfig()
 
-    export_opts: PlotExportOpts = PlotExportOpts()
+    export_opts: PlotExportOpts = dataclasses.field(default_factory=PlotExportOpts)
 
 
 class FitConfig(pydantic.BaseModel):
@@ -164,36 +164,40 @@ def run_ml_analysis(
     fit_data: Data,
     freeze_shifts: bool,
     initial_model: Model | None = None,
-) -> Model | None:
-    try:
-        model_config = config.model
-        initial_model = initial_model or config.generate_initial_guess(fit_data)
-        if freeze_shifts:
-            model_config = dataclasses.replace(model_config, shifted_experiments=[])
-            initial_model = dataclasses.replace(
-                initial_model,
-                energy_shifts=ExperimentEnergyScaleShifts(dict()),
-            )
-
-        def to_minimize(v: np.ndarray) -> float:
-            # technically it should be -loglikelihood, but as we're using mostly flat priors
-            # plus gaussian regularization for experimental scale shifts, let us use logposterior instead
-            return -logposterior(v, fit_data, model_config)
-
-        res = optimize.minimize(
-            to_minimize,
-            x0=initial_model.pack(),
-            method="Nelder-Mead",
-            options={
-                "maxiter": 100_000,
-            },
+) -> tuple[Model, float]:
+    model_config = config.model
+    initial_model = initial_model or config.generate_initial_guess(fit_data)
+    if freeze_shifts:
+        model_config = dataclasses.replace(model_config, shifted_experiments=[])
+        initial_model = dataclasses.replace(
+            initial_model,
+            energy_shifts=ExperimentEnergyScaleShifts(dict()),
         )
-        print(res)
-        return Model.unpack(res.x, layout_info=model_config)
-    except Exception as e:
-        print(f"Error running ML analysis, ignoring: {e}")
-        traceback.print_exc()
-        return None
+
+    def to_minimize(v: np.ndarray) -> float:
+        # technically it should be -loglikelihood, but as we're using mostly flat priors
+        # plus gaussian priors (L2 regularization) for experimental scale shifts
+        # so, let us use logposterior instead
+        return -logposterior(v, fit_data, model_config)
+
+    res = optimize.minimize(
+        to_minimize,
+        x0=initial_model.pack(),
+        method="Nelder-Mead",
+        options={
+            "maxiter": 100_000,
+        },
+    )
+    print(res)
+
+    max_logpost = -res.fun
+    # we're actually maximizing posterior not likelihood, so this is not strictly AIC
+    # but as mentioned above, this shouldn't matter too much dues to our choice of mostly
+    # trivial priors
+    aic = 2 * initial_model.ndim() - 2 * max_logpost
+    print(f"AIC = {aic:.2f}")
+
+    return Model.unpack(res.x, layout_info=model_config), aic
 
 
 def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
@@ -245,21 +249,25 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
     print_delim()
     print("Running preliminary ML analysis...")
     mle_model_dump = outdir / "preliminary-ml.txt"
-    mle_model = load_saved(mle_model_dump) or run_ml_analysis(
-        config=config,
-        fit_data=fit_data,
-        freeze_shifts=False,
-        initial_model=None,
+
+    if loaded := load_saved(mle_model_dump):
+        mle_model = loaded
+    else:
+        mle_model, aic = run_ml_analysis(
+            config=config,
+            fit_data=fit_data,
+            freeze_shifts=False,
+            initial_model=None,
+        )
+        mle_model.save(mle_model_dump, header=[f"AIC: {aic}"])
+
+    mle_model.print_params()
+    mle_model.plot_spectra(fit_data, scale=scale, validation_data=validation_data).savefig(
+        outdir / "preliminary-mle-result.png"
     )
-    if mle_model is not None:
-        mle_model.save(mle_model_dump)
-        mle_model.plot_spectra(fit_data, scale=scale, validation_data=validation_data).savefig(
-            outdir / "preliminary-mle-result.png"
-        )
-        mle_model.plot_lnA(fit_data, validation_data=validation_data).savefig(
-            outdir / "preliminary-mle-result-lnA.png"
-        )
-        mle_model.print_params()
+    mle_model.plot_lnA(fit_data, validation_data=validation_data).savefig(
+        outdir / "preliminary-mle-result-lnA.png"
+    )
 
     if config.mcmc is None:
         print("Not running bayesian analysis, mcmc config is None")
@@ -280,6 +288,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
         assert theta_sample.shape[1] == ndim, "Saved theta sample has wrong dimensions"
     else:
         print("Sampling theta...")
+        sampling_start = time.time()
         pool_ctx = (
             multiprocessing.Pool(processes=config.mcmc.processes)
             if config.mcmc.processes > 1
@@ -318,6 +327,12 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
 
         theta_sample: np.ndarray = sampler.get_chain(flat=True, discard=burn_in, thin=thin)  # type: ignore
 
+        sampling_time_sec = time.time() - sampling_start
+        sampling_time_msg = (
+            f"Sampling time: {sampling_time_sec / 60:.0f} min ~ {sampling_time_sec / 3600:.1f} hrs"
+        )
+        print(sampling_time_msg)
+
         model_example = Model.unpack(theta_sample[0, :], layout_info=config.model)
         tau_labels = model_example.labels(latex=False)
         np.savetxt(
@@ -326,6 +341,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
             header="\n".join(
                 [
                     f"Generated on: {datetime.datetime.now()}",
+                    sampling_time_msg,
                     f"MCMC config: {config.mcmc}",
                     f"Estimated autocorrelation lengths: {', '.join(f'{label}: {t}' for label, t in zip(tau_labels, tau))}",
                     f"Burn-in, steps: {burn_in}",
@@ -369,21 +385,24 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
     print_delim()
     print("Running ML analysis from the best-fitting posterior point")
     posterior_ml_dump = outdir / "posterior-ml.txt"
-    posterior_ml_best = load_saved(posterior_ml_dump) or run_ml_analysis(
-        config=config,
-        fit_data=fit_data,
-        freeze_shifts=False,
-        initial_model=posterior_best_model,
-    )
-    if posterior_ml_best is not None:
-        posterior_ml_best.save(posterior_ml_dump)
-        posterior_ml_best.print_params()
-        posterior_ml_best.plot_spectra(
-            fit_data, scale=scale, validation_data=validation_data
-        ).savefig(outdir / "mle-from-posterior-best.png")
-        posterior_ml_best.plot_lnA(fit_data, validation_data=validation_data).savefig(
-            outdir / "mle-from-posterior-best-lnA.png"
+    if loaded := load_saved(posterior_ml_dump):
+        posterior_ml_best = loaded
+    else:
+        posterior_ml_best, aic = run_ml_analysis(
+            config=config,
+            fit_data=fit_data,
+            freeze_shifts=False,
+            initial_model=posterior_best_model,
         )
+        posterior_ml_best.save(posterior_ml_dump, header=[f"AIC: {aic}"])
+
+    posterior_ml_best.print_params()
+    posterior_ml_best.plot_spectra(fit_data, scale=scale, validation_data=validation_data).savefig(
+        outdir / "mle-from-posterior-best.png"
+    )
+    posterior_ml_best.plot_lnA(fit_data, validation_data=validation_data).savefig(
+        outdir / "mle-from-posterior-best-lnA.png"
+    )
 
     print_delim()
     print("Plotting final model plot")

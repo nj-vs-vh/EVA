@@ -27,7 +27,7 @@ from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 from run_local import LocalRunOptions, run_local
 
 if __name__ == "__main__":
-    args = LocalRunOptions.parse()
+    opts = LocalRunOptions.parse()
 
     analysis_name = "2pop"
 
@@ -78,9 +78,9 @@ if __name__ == "__main__":
                     SpectralBreakConfig(
                         fixed_lg_sharpness=0.7,
                         quantity="R",
-                        lg_break_prior_limits=(3.8, 4.3),
+                        lg_break_prior_limits=(3.0, 5.0),
                         is_softening=True,
-                        lg_break_hint=4.0,
+                        lg_break_hint=4.3,
                     ),
                     # SpectralBreakConfig(
                     #     fixed_lg_sharpness=0.7,
@@ -188,13 +188,11 @@ if __name__ == "__main__":
                 processes=12,
                 reuse_saved=True,
             )
-            if args.mcmc
-            else None
         ),
         generate_guess=generate_guess,
         plots=PlotsConfig(
             validation_data_config=validation_data_config,
-            export_opts=PlotExportOpts(main="2pop-model.pdf" if args.export else None),
+            export_opts=PlotExportOpts(main="2pop-model.pdf"),
             elements=PosteriorPlotConfig(
                 max_margin_around_data=0.2, population_contribs_best_fit=True
             ),
@@ -203,6 +201,5 @@ if __name__ == "__main__":
             ),
         ),
     )
-    config.reuse_saved_models = True
 
-    run_local(config, log_to_stdout=True)
+    run_local(config, opts)

@@ -96,10 +96,10 @@ def logprior(model: Model) -> float:
 
         for component in population.base_spectra:
             # ad hoc bound for all spectral normalizations to [10^-20; 10^6];
-            # this is roughly +/- 10 orders of magnitude w.r.t. values we find in the fit, so it shouldn't affect
+            # this is roughly +/- 5 orders of magnitude w.r.t. values we find in the fit, so it shouldn't affect
             # the "normal" flux estimation, but it limits the parameter space in cases where a particular spectrum
             # is poorly or not at all constrained by data
-            if not all(-20 < lgI < 6 for lgI in component.lgI_per_element.values()):
+            if not all(-15 < lgI < 1 for lgI in component.lgI_per_element.values()):
                 return -np.inf
 
             if (
