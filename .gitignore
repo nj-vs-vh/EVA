@@ -23,3 +23,4 @@ sync-cluster.sh
 condor-out/
 temp*
 papers
+env.sh

@@ -58,28 +58,29 @@ def dump_datafile(dataset: DatasetDef, skip_existing: bool, combo_level=0, energ
     logging.debug("ADS codes: %s", ads_codes)
 
     # Filter data for the specified sub-experiment
-    items = [
+    indices = [
         i
         for i, sub in enumerate(tab["sub_exp"])
         if dataset.sub_exp_name is None or sub == dataset.sub_exp_name
     ]
-    if not items:
+    if not indices:
         logging.error("No data found for sub-experiment '%s'.", dataset.sub_exp_name)
         raise ValueError(f"No data found for the specified sub-experiment: {dataset.sub_exp_name}")
-    logging.info("Number of data entries: %d", len(items))
+    logging.info("Number of data entries: %d", len(indices))
 
     # Write data to file
     logging.info(f"Dumping data to {filepath}")
+    ads_ids = sorted(set(tab["ads"][indices]))
     with open(filepath, "w") as f:
         f.write("#source: CRDB\n")
         f.write(f"#Quantity: {dataset.quantity}\n")
         f.write(f"#EnergyType: {dataset.energy_type}\n")
         f.write(f"#Experiment: {dataset.exp_name}\n")
-        f.write(f"#ADS: {tab['ads'][items[0]]}\n")
+        f.write(f"#ADS: {', '.join(ads_ids)}\n")
         f.write("#E_lo - E_up - y - errSta_lo - errSta_up - errSys_lo - errSys_up\n")
 
         for e_bin, value, err_sta, err_sys in zip(
-            tab["e_bin"][items], tab["value"][items], tab["err_sta"][items], tab["err_sys"][items]
+            tab["e_bin"][indices], tab["value"][indices], tab["err_sta"][indices], tab["err_sys"][indices]
         ):
             f.write(
                 f"{e_bin[0]:10.5e} {e_bin[1]:10.5e} {value:10.5e} {err_sta[0]:10.5e} {err_sta[1]:10.5e} {err_sys[0]:10.5e} {err_sys[1]:10.5e}\n"
