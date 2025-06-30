@@ -40,13 +40,13 @@ if __name__ == "__main__":
                 experiments.grapes,
                 experiments.lhaaso_epos,
                 # (experiments.kascade_re_qgsjet, [Element.H, Element.He]),
-                # (experiments.kascade_re_qgsjet, Element.regular()),
+                (experiments.kascade_re_qgsjet, Element.regular()),
             ]
         ),
         experiments_all_particle=[
-            experiments.lhaaso_epos,
-            experiments.hawc,
-            experiments.kascade_re_qgsjet,
+            # experiments.lhaaso_epos,
+            # experiments.hawc,
+            # experiments.kascade_re_qgsjet,
             # experiments.tale,
         ],
         experiments_lnA=[],
@@ -58,8 +58,10 @@ if __name__ == "__main__":
             experiments.kascade_re_qgsjet,
         ],
         experiments_all_particle=[
-            # experiments.hawc,
-            # experiments.lhaaso_epos,
+            experiments.lhaaso_epos,
+            experiments.hawc,
+            experiments.kascade_re_qgsjet,
+            experiments.tale,
         ],
         experiments_lnA=[experiments.lhaaso_epos],
         elements=Element.regular(),
@@ -69,10 +71,7 @@ if __name__ == "__main__":
         background_pop_model = initial_guess_main_population(
             pop_config=CosmicRaysModelConfig(
                 components=[
-                    # SpectralComponentConfig([Element.H]),
-                    # SpectralComponentConfig([Element.He]),
                     SpectralComponentConfig(Element.regular()),
-                    # SpectralComponentConfig([Element.C, Element.O, Element.Mg, Element.Si]),
                 ],
                 breaks=[
                     SpectralBreakConfig(
@@ -183,7 +182,7 @@ if __name__ == "__main__":
         fit_data=fit_data_config,
         mcmc=(
             McmcConfig(
-                n_steps=500_000,
+                n_steps=200_000,
                 n_walkers=64,
                 processes=12,
                 reuse_saved=True,

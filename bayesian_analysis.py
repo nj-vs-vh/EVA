@@ -428,7 +428,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
             ["All particle", "lnA"],
             ["Shifts", "Shifts"],
         ],
-        figsize=(8, 10),
+        figsize=(8, 8),
         height_ratios=[1, 1, 0.3],
     )
     fig = cast(Figure, fig)
