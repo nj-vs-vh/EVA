@@ -38,16 +38,13 @@ if __name__ == "__main__":
             experiments.DIRECT
             + [
                 experiments.grapes,
-                experiments.lhaaso_epos,
-                # (experiments.kascade_re_qgsjet, [Element.H, Element.He]),
-                # (experiments.kascade_re_qgsjet, Element.regular()),
+                experiments.lhaaso_qgsjet,
             ]
         ),
         experiments_all_particle=[
-            experiments.lhaaso_epos,
+            experiments.lhaaso_qgsjet,
             experiments.hawc,
             experiments.kascade_re_qgsjet,
-            # experiments.tale,
         ],
         experiments_lnA=[],
         elements=Element.regular(),
@@ -58,10 +55,9 @@ if __name__ == "__main__":
             experiments.kascade_re_qgsjet,
         ],
         experiments_all_particle=[
-            # experiments.hawc,
-            # experiments.lhaaso_epos,
+            # experiments.tale,
         ],
-        experiments_lnA=[experiments.lhaaso_epos],
+        experiments_lnA=[experiments.lhaaso_qgsjet],
         elements=Element.regular(),
     ).excluding(fit_data_config)
 
@@ -72,7 +68,6 @@ if __name__ == "__main__":
                     SpectralComponentConfig([Element.H]),
                     SpectralComponentConfig([Element.He]),
                     SpectralComponentConfig(Element.nuclei()),
-                    # SpectralComponentConfig([Element.C, Element.O, Element.Mg, Element.Si]),
                 ],
                 breaks=[
                     SpectralBreakConfig(
@@ -82,26 +77,7 @@ if __name__ == "__main__":
                         is_softening=True,
                         lg_break_hint=4.3,
                     ),
-                    # SpectralBreakConfig(
-                    #     fixed_lg_sharpness=0.7,
-                    #     quantity="R",
-                    #     lg_break_prior_limits=(4.3, 8.8),
-                    #     is_softening=False,
-                    #     lg_break_hint=5.0,
-                    # ),
-                    # SpectralBreakConfig(
-                    #     fixed_lg_sharpness=0.7,
-                    #     quantity="R",
-                    #     lg_break_prior_limits=(6.0, 7),
-                    #     is_softening=True,
-                    #     lg_break_hint=6.2,
-                    # ),
                 ],
-                # cutoff=SpectralCutoffConfig(
-                #     fixed_lg_sharpness=None,
-                #     lg_cut_prior_limits=(3.5, 4.5),
-                #     lg_cut_hint=4.0,
-                # ),
                 rescale_all_particle=False,
                 population_meta=PopulationMetadata(name="LE", linestyle="--"),
             )
@@ -113,26 +89,9 @@ if __name__ == "__main__":
                     lgI_per_element={
                         Element.H: stats.norm.rvs(loc=-5, scale=0.05),
                         Element.He: stats.norm.rvs(loc=-6, scale=0.05),
-                        # Element.C: stats.norm.rvs(loc=-7, scale=0.05),
-                        # Element.Si: stats.norm.rvs(loc=-8, scale=0.05),
-                        # Element.Fe: stats.norm.rvs(loc=-8, scale=0.05),
                     },
                     alpha=stats.norm.rvs(loc=2.4, scale=0.05),
                 ),
-                # SharedPowerLawSpectrum(
-                #     lgI_per_element={
-                #         Element.He: stats.norm.rvs(loc=-6, scale=0.05),
-                #     },
-                #     alpha=stats.norm.rvs(loc=2.4, scale=0.05),
-                # ),
-                # SharedPowerLawSpectrum(
-                #     lgI_per_element={
-                #         Element.C: stats.norm.rvs(loc=-7, scale=0.05),
-                #         Element.Si: stats.norm.rvs(loc=-8, scale=0.05),
-                #         Element.Fe: stats.norm.rvs(loc=-8, scale=0.05),
-                #     },
-                #     alpha=stats.norm.rvs(loc=2.4, scale=0.05),
-                # ),
             ],
             breaks=[
                 initial_guess_break(
@@ -145,13 +104,6 @@ if __name__ == "__main__":
                     ),
                 )
             ],
-            # cutoff=initial_guess_cutoff(
-            #     SpectralCutoffConfig(
-            #         fixed_lg_sharpness=None,
-            #         lg_cut_prior_limits=(6.0, 7.0),
-            #         lg_cut_hint=6.5,
-            #     )
-            # ),
             all_particle_lg_shift=None,
             free_Z=None,
             unresolved_elements_spectrum=None,
@@ -183,7 +135,7 @@ if __name__ == "__main__":
         fit_data=fit_data_config,
         mcmc=(
             McmcConfig(
-                n_steps=200_000,
+                n_steps=500_000,
                 n_walkers=64,
                 processes=12,
                 reuse_saved=True,

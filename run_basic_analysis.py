@@ -32,11 +32,10 @@ if __name__ == "__main__":
             experiments.DIRECT
             + [
                 experiments.grapes,
-                experiments.lhaaso_epos,
+                experiments.lhaaso_qgsjet,
             ]
         ),
         experiments_all_particle=[
-            # experiments.lhaaso_epos,
             # experiments.hawc,
             # experiments.tale,
             # experiments.kascade_re_qgsjet,
@@ -50,9 +49,9 @@ if __name__ == "__main__":
         # experiments_all_particle=experiments.ALL,
         experiments_all_particle=[
             # experiments.hawc,
-            experiments.lhaaso_epos,
+            experiments.lhaaso_qgsjet,
         ],
-        experiments_lnA=[experiments.lhaaso_epos],
+        experiments_lnA=[experiments.lhaaso_qgsjet],
         elements=[],
     ).excluding(fit_data_config)
 
@@ -69,7 +68,7 @@ if __name__ == "__main__":
                     SpectralBreakConfig(
                         fixed_lg_sharpness=0.7,
                         quantity="R",
-                        lg_break_prior_limits=(3.8, 4.5),
+                        lg_break_prior_limits=(3.8, 5.0),
                         is_softening=True,
                         lg_break_hint=4.0,
                     ),
