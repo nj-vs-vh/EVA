@@ -39,6 +39,7 @@ from cr_knee_fit.plotting import (
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 from cr_knee_fit.utils import (
     E_GEV_LABEL,
+    LN_A_LABEL,
     LegendItem,
     add_elements_lnA_secondary_axis,
     add_log_margin,
@@ -666,7 +667,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
             scale_override=0,
         )
         ax_lnA.set_xlabel(E_GEV_LABEL)
-        ax_lnA.set_ylabel("$ \\langle \\ln A \\rangle $")
+        ax_lnA.set_ylabel(LN_A_LABEL)
         add_elements_lnA_secondary_axis(ax_lnA)
         if config.plots.lnA.max_margin_around_data is not None:
             clamp_log_margin(ax_lnA, lnA_data_ylim, config.plots.lnA.max_margin_around_data)

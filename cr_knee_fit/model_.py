@@ -25,6 +25,7 @@ from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 from cr_knee_fit.types_ import Packable
 from cr_knee_fit.utils import (
     E_GEV_LABEL,
+    LN_A_LABEL,
     LegendItem,
     add_elements_lnA_secondary_axis,
     add_log_margin,
@@ -267,7 +268,7 @@ class Model(Packable[ModelConfig]):
 
         ax.set_xscale("log")
         ax.set_xlabel(E_GEV_LABEL)
-        ax.set_ylabel("$ \\langle \\ln A \\rangle $")
+        ax.set_ylabel(LN_A_LABEL)
         legend_with_added_items(ax, legend_items, fontsize="x-small")
         add_elements_lnA_secondary_axis(ax)
         return fig

@@ -80,3 +80,6 @@ INDIRECT = [
 ]
 
 ALL = DIRECT + INDIRECT
+
+# experiments used for ICRC25 analysis
+ICRC25 = DIRECT + [hawc, grapes, lhaaso_qgsjet, kascade_re_qgsjet]

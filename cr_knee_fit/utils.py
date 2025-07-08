@@ -35,6 +35,7 @@ def merged_lims(vals: Sequence[np.ndarray]) -> tuple[float, float]:
 
 
 E_GEV_LABEL: str = "$E$ / $\\text{GeV}$"
+LN_A_LABEL = "$ \\langle \\ln A \\rangle $"
 
 
 def label_energy_flux(ax: Axes, scale: float) -> None:
@@ -60,18 +61,19 @@ def legend_with_added_items(ax: Axes, items: Iterable[LegendItem], **kwargs) -> 
     return ax.legend(handles, labels, **kwargs)
 
 
-def add_elements_lnA_secondary_axis(ax: Axes) -> None:
+def add_elements_lnA_secondary_axis(ax: Axes) -> Axes:
     lnA_min, lnA_max = ax.get_ylim()
     tick_elements = [el for el in Element.regular() if lnA_min < el.lnA < lnA_max]
-    ax_elements = ax.twinx()
-    ax_elements.set_yticks(
+    ax_element_ticks = ax.twinx()
+    ax_element_ticks.set_yticks(
         ticks=[e.lnA for e in tick_elements],
         labels=[e.name for e in tick_elements],
         minor=False,
     )
-    ax_elements.grid(
+    ax_element_ticks.grid(
         visible=True, which="major", axis="y", color="gray", linestyle="--", linewidth=0.75
     )
+    return ax_element_ticks
 
 
 def energy_shift_suffix(f: float) -> str:

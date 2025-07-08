@@ -8,11 +8,19 @@ import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
+from cr_knee_fit import experiments
 from cr_knee_fit.constants import NON_FITTED_ALPHA
 from cr_knee_fit.elements import Element
 from cr_knee_fit.experiments import Experiment
-from cr_knee_fit.utils import energy_shift_suffix, label_energy_flux, legend_with_added_items
+from cr_knee_fit.utils import (
+    LN_A_LABEL,
+    energy_shift_suffix,
+    label_energy_flux,
+    legend_with_added_items,
+)
 from model.utils import load_data
+
+DEFAULT_MARKER_SIZE = 3.0
 
 
 @dataclass
@@ -58,6 +66,7 @@ class GenericExperimentData:
         add_label: bool = True,
         scale: float = 0,
         is_fitted: bool = True,
+        marker_size: float = DEFAULT_MARKER_SIZE,
     ) -> Axes:
         if ax is None:
             _, ax = plt.subplots()
@@ -70,7 +79,7 @@ class GenericExperimentData:
             x_factor * self.y,
             yerr=[x_factor * self.y_errlo, x_factor * self.y_errhi],
             color=color,
-            markersize=3.0,
+            markersize=marker_size,
             elinewidth=0.5,
             capsize=1.5,
             label=label if add_label else None,
@@ -159,10 +168,13 @@ class CRSpectrumData:
     def plot_label(self) -> str:
         if self.element is None:
             element_label = "all"
+            if self.experiment == experiments.dampe:
+                element_label += " (preliminary, private comm.)"
         elif isinstance(self.element, tuple):
             element_label = "+".join(p.name for p in self.element)
         else:
             element_label = self.element.name
+
         return f"{self.experiment.name} {element_label}" + energy_shift_suffix(
             self.energy_scale_shift
         )
@@ -174,6 +186,7 @@ class CRSpectrumData:
         color: Any | None = None,
         add_label: bool = True,
         is_fitted: bool = True,
+        marker_size: float = DEFAULT_MARKER_SIZE,
     ) -> Axes:
         if ax is None:
             _, ax = plt.subplots()
@@ -191,7 +204,7 @@ class CRSpectrumData:
                 )
             ),
             label=self.plot_label() if add_label else None,
-            markersize=3.0,
+            markersize=marker_size,
             elinewidth=0.5,
             capsize=1.5,
             linestyle="none",
@@ -246,7 +259,7 @@ class DataConfig:
                 set(self.experiments_all_particle).difference(other.experiments_all_particle)
             ),
             experiments_lnA=list(set(self.experiments_lnA).difference(other.experiments_lnA)),
-            elements=self.elements,
+            elements=self.elements.copy(),
             elements_R_bounds=self.elements_R_bounds,
         )
 
@@ -309,7 +322,7 @@ class Data:
                     exp,
                     suffix="lnA_energy",
                     x_bounds=(0, np.inf),
-                    label="$ \\langle \\ln A \\rangle $",
+                    label=LN_A_LABEL,
                 )
             except Exception as e:
                 log(f"Failed to load lnA for {exp}: {e}")
@@ -332,13 +345,18 @@ class Data:
             config=config,
         )
 
-    def plot(self, scale: float, describe: bool = False) -> Figure:
+    def plot(
+        self,
+        scale: float,
+        describe: bool = False,
+        is_fitted: bool = True,
+    ) -> Figure:
         print_ = print if describe else lambda _: None
         if self.lnA:
-            fig, axes = plt.subplots(ncols=2, figsize=(20, 8))
+            fig, axes = plt.subplots(ncols=2, figsize=(16, 6))
             axes = cast(Sequence[Axes], axes)
         else:
-            fig, ax = plt.subplots(figsize=(10, 8))
+            fig, ax = plt.subplots(figsize=(8, 6))
             axes = [ax]
 
         print_("Data by element:")
@@ -346,30 +364,30 @@ class Data:
             print_(exp.name)
             for p, s in ps.items():
                 print_(f"  {p.name}: {s.E.size} points from {s.E.min():.1e} to {s.E.max():.1e} GeV")
-                s.plot(scale=scale, ax=axes[0], add_label=False)
+                s.plot(scale=scale, ax=axes[0], add_label=False, is_fitted=is_fitted)
         print_("All particle data:")
         for exp, s in self.all_particle_spectra.items():
             print_(f"    {exp.name}: {s.E.size} points from {s.E.min():.1e} to {s.E.max():.1e} GeV")
-            s.plot(scale=scale, ax=axes[0], add_label=False)
+            s.plot(scale=scale, ax=axes[0], add_label=False, is_fitted=is_fitted)
         print_("lnA data:")
         for exp, lnA_data in self.lnA.items():
             print_(
                 f"    {exp.name}: {lnA_data.x.size} points from {lnA_data.x.min():.1e} to {lnA_data.x.max():.1e} GeV"
             )
-            lnA_data.plot(ax=axes[1])
+            lnA_data.plot(ax=axes[1], is_fitted=is_fitted)
 
         [ax.set_xscale("log") for ax in axes]
         axes[0].set_yscale("log")
         legend_with_added_items(
             axes[0],
             [
-                (exp.legend_artist(), exp.name)
+                (exp.legend_artist(is_fitted=is_fitted), exp.name)
                 for exp in sorted(self.experiments(spectra_only=True))
             ],
             fontsize="x-small",
         )
         if len(axes) > 1:
             label_energy_flux(axes[1], scale=0)
-            axes[1].set_ylabel("$ \\langle \\ln A \\rangle $")
+            axes[1].set_ylabel(LN_A_LABEL)
             axes[1].legend(fontsize="xx-small")
         return fig
