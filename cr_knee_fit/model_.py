@@ -1,8 +1,10 @@
 import dataclasses
 import itertools
+from typing import cast
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
 from cr_knee_fit.cr_model import (
@@ -125,8 +127,13 @@ class Model(Packable[ModelConfig]):
         fit_data: Data,
         scale: float,
         validation_data: Data | None = None,
+        axes: Axes | None = None,
     ) -> Figure:
-        fig, ax = plt.subplots(figsize=(10, 8))
+        if axes is None:
+            fig, ax = plt.subplots(figsize=(10, 8))
+        else:
+            ax = axes
+            fig = cast(Figure, ax.figure)
 
         legend_items_by_exp: dict[Experiment, LegendItem] = {}
         plot_allpart = False

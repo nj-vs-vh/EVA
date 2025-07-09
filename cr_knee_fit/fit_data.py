@@ -301,6 +301,15 @@ class Data:
         return max([s.E.max() for s in self.all_spectra()])
 
     @classmethod
+    def empty(cls) -> "Data":
+        return Data(
+            element_spectra={},
+            all_particle_spectra={},
+            lnA={},
+            config=DataConfig(),
+        )
+
+    @classmethod
     def load(cls, config: DataConfig, verbose: bool = False) -> "Data":
         def log(s: str) -> None:
             if verbose:
@@ -345,13 +354,52 @@ class Data:
             config=config,
         )
 
+    def plot_spectra(
+        self, scale: float, describe: bool, is_fitted: bool, ax: Axes, legend: bool = True
+    ):
+        print_ = print if describe else lambda _: None
+        print_("Data by element:")
+        for exp, ps in self.element_spectra.items():
+            print_(exp.name)
+            for p, s in ps.items():
+                print_(f"  {p.name}: {s.E.size} points from {s.E.min():.1e} to {s.E.max():.1e} GeV")
+                s.plot(scale=scale, ax=ax, add_label=False, is_fitted=is_fitted)
+        print_("All particle data:")
+        for exp, s in self.all_particle_spectra.items():
+            print_(f"    {exp.name}: {s.E.size} points from {s.E.min():.1e} to {s.E.max():.1e} GeV")
+            s.plot(scale=scale, ax=ax, add_label=False, is_fitted=is_fitted)
+
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        if legend:
+            legend_with_added_items(
+                ax,
+                [
+                    (exp.legend_artist(is_fitted=is_fitted), exp.name)
+                    for exp in sorted(self.experiments(spectra_only=True))
+                ],
+                fontsize="x-small",
+            )
+
+    def plot_lnA(self, describe: bool, is_fitted: bool, ax: Axes):
+        print_ = print if describe else lambda _: None
+        print_("lnA data:")
+        for exp, lnA_data in self.lnA.items():
+            print_(
+                f"    {exp.name}: {lnA_data.x.size} points from {lnA_data.x.min():.1e} to {lnA_data.x.max():.1e} GeV"
+            )
+            lnA_data.plot(ax=ax, is_fitted=is_fitted)
+        ax.set_xscale("log")
+        label_energy_flux(ax, scale=0)
+        ax.set_ylabel(LN_A_LABEL)
+        ax.legend(fontsize="xx-small")
+
     def plot(
         self,
         scale: float,
         describe: bool = False,
         is_fitted: bool = True,
     ) -> Figure:
-        print_ = print if describe else lambda _: None
         if self.lnA:
             fig, axes = plt.subplots(ncols=2, figsize=(16, 6))
             axes = cast(Sequence[Axes], axes)
@@ -359,35 +407,8 @@ class Data:
             fig, ax = plt.subplots(figsize=(8, 6))
             axes = [ax]
 
-        print_("Data by element:")
-        for exp, ps in self.element_spectra.items():
-            print_(exp.name)
-            for p, s in ps.items():
-                print_(f"  {p.name}: {s.E.size} points from {s.E.min():.1e} to {s.E.max():.1e} GeV")
-                s.plot(scale=scale, ax=axes[0], add_label=False, is_fitted=is_fitted)
-        print_("All particle data:")
-        for exp, s in self.all_particle_spectra.items():
-            print_(f"    {exp.name}: {s.E.size} points from {s.E.min():.1e} to {s.E.max():.1e} GeV")
-            s.plot(scale=scale, ax=axes[0], add_label=False, is_fitted=is_fitted)
-        print_("lnA data:")
-        for exp, lnA_data in self.lnA.items():
-            print_(
-                f"    {exp.name}: {lnA_data.x.size} points from {lnA_data.x.min():.1e} to {lnA_data.x.max():.1e} GeV"
-            )
-            lnA_data.plot(ax=axes[1], is_fitted=is_fitted)
-
-        [ax.set_xscale("log") for ax in axes]
-        axes[0].set_yscale("log")
-        legend_with_added_items(
-            axes[0],
-            [
-                (exp.legend_artist(is_fitted=is_fitted), exp.name)
-                for exp in sorted(self.experiments(spectra_only=True))
-            ],
-            fontsize="x-small",
-        )
+        self.plot_spectra(scale=scale, describe=describe, is_fitted=is_fitted, ax=axes[0])
         if len(axes) > 1:
-            label_energy_flux(axes[1], scale=0)
-            axes[1].set_ylabel(LN_A_LABEL)
-            axes[1].legend(fontsize="xx-small")
+            self.plot_lnA(describe=describe, is_fitted=is_fitted, ax=axes[1])
+
         return fig

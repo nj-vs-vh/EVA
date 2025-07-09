@@ -1,13 +1,33 @@
+import dataclasses
 import itertools
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 import matplotlib
 import matplotlib.colors
+import matplotlib.ticker as ticker
 import matplotlib.tri
 import numpy as np
+from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 
+from cr_knee_fit.elements import Element, unresolved_element_names
+from cr_knee_fit.fit_data import CRSpectrumData, Data, DataConfig, GenericExperimentData
+from cr_knee_fit.inference import (
+    get_energy_scale_lg_uncertainty,
+)
 from cr_knee_fit.model_ import Model, ModelConfig
+from cr_knee_fit.utils import (
+    E_GEV_LABEL,
+    LN_A_LABEL,
+    LegendItem,
+    add_elements_lnA_secondary_axis,
+    add_log_margin,
+    clamp_log_margin,
+    legend_artist_line,
+    legend_with_added_items,
+    merged_lims,
+)
 
 Observable = Callable[[Model, np.ndarray], np.ndarray]
 
@@ -164,3 +184,403 @@ def plot_ghostly_lines(
             alpha=max(1 / n_samples, 0.01),
             label=label if i == 0 else None,
         )
+
+
+@dataclasses.dataclass(frozen=True)
+class PosteriorPlotConfig:
+    best_fit: bool = True
+    contours: bool = False
+    band_cl: float | None = 0.90
+    max_margin_around_data: None | float = 0.5
+
+    tricontourf_kwargs_override: dict = dataclasses.field(default_factory=dict)
+
+    population_contribs_best_fit: bool = False
+
+
+@dataclasses.dataclass
+class PlotExportOpts:
+    main: str | None = None
+
+
+@dataclasses.dataclass
+class PlotsConfig:
+    validation_data_config: DataConfig | None = None
+    elements: PosteriorPlotConfig = PosteriorPlotConfig()
+    all_particle: PosteriorPlotConfig = PosteriorPlotConfig()
+    all_particle_elements_contribution: PosteriorPlotConfig | None = PosteriorPlotConfig()
+    all_particle_scaled_elements_contribution: PosteriorPlotConfig | None = PosteriorPlotConfig()
+    all_particle_unresolved_elements_contribution: PosteriorPlotConfig | None = (
+        PosteriorPlotConfig()
+    )
+    lnA: PosteriorPlotConfig = PosteriorPlotConfig()
+    energy_shifts: PosteriorPlotConfig = PosteriorPlotConfig()
+
+    export_opts: PlotExportOpts = dataclasses.field(default_factory=PlotExportOpts)
+
+
+def plot_everything(
+    plots_config: PlotsConfig,
+    theta_sample: np.ndarray,
+    theta_bestfit: np.ndarray,
+    model_config: ModelConfig,
+    spectra_scale: float,
+    fit_data: Data,
+    validation_data: Data,
+    axes: dict[str, Axes] | None = None,
+    legend_ncol: int = 4,
+) -> Figure:
+    best_fit_model = Model.unpack(theta_bestfit, layout_info=model_config)
+
+    if axes is None:
+        fig, axes = plt.subplot_mosaic(
+            [
+                ["Elements", "Elements"],
+                ["All particle", "lnA"],
+                ["Shifts", "Shifts"],
+            ],
+            figsize=(8, 7),
+            height_ratios=[1, 1, 0.3],
+        )
+    else:
+        fig = cast(Figure, next(iter(axes.values())).figure)
+
+    ax_el = axes["Elements"]
+    ax_all = axes["All particle"]
+    ax_lnA = axes["lnA"]
+    ax_shifts = axes["Shifts"]
+
+    POP_CONTRIB_LINEWIDTH = 0.75
+
+    def plot_model_predictions(
+        ax: Axes,
+        observable: Observable,
+        E_bounds: tuple[float, float],
+        plot_config: PosteriorPlotConfig,
+        color: str,
+        scale_override: float | None = None,
+    ) -> None:
+        scale_ = scale_override if scale_override is not None else spectra_scale
+        if plot_config.contours:
+            tricontourf_kwargs = tricontourf_kwargs_transparent_colors(
+                color=color,
+                alpha_max=0.5,
+            )
+            tricontourf_kwargs.update(plot_config.tricontourf_kwargs_override)
+            plot_posterior_contours(
+                ax,
+                scale=scale_,
+                theta_sample=theta_sample,
+                model_config=model_config,
+                observable=observable,
+                bounds=E_bounds,
+                tricontourf_kwargs=tricontourf_kwargs,
+            )
+        if plot_config.band_cl is not None:
+            plot_credible_band(
+                ax,
+                scale=scale_,
+                theta_sample=theta_sample,
+                model_config=model_config,
+                observable=observable,
+                bounds=E_bounds,
+                color=color,
+                alpha=0.2,
+                cl=plot_config.band_cl,
+            )
+        if plot_config.best_fit:
+            E_grid = np.geomspace(*E_bounds, 100)
+            E_factor = E_grid**scale_
+            ax.plot(E_grid, E_factor * observable(best_fit_model, E_grid), color=color)
+
+    # elemental spectra
+    element_legend_items: list[LegendItem] = []
+    experiment_legend_item_by_label: dict[str, LegendItem] = {}
+    plotted_elem_spectra: list[CRSpectrumData] = []
+    for data, is_fitted in ((fit_data, True), (validation_data, False)):
+        for exp, data_by_particle in data.element_spectra.items():
+            f_exp = best_fit_model.energy_shifts.f(exp)
+            for _, spec_data in data_by_particle.items():
+                spec_data = spec_data.with_shifted_energy_scale(f=f_exp)
+                plotted_elem_spectra.append(spec_data)
+                spec_data.plot(scale=spectra_scale, ax=ax_el, add_label=False, is_fitted=is_fitted)
+            experiment_legend_item_by_label.setdefault(
+                exp.name, (exp.legend_artist(True), exp.name)
+            )
+    elements = best_fit_model.layout_info().elements(only_fixed_Z=False)
+    comp_data_ylim = merged_lims([sp.scaled_flux(spectra_scale) for sp in plotted_elem_spectra])
+    comp_data_Elim = merged_lims([sp.E for sp in plotted_elem_spectra])
+    comp_Elim = add_log_margin(*comp_data_Elim)
+    for element in elements:
+        plot_model_predictions(
+            ax=ax_el,
+            observable=lambda model, E: model.compute_spectrum(E, element=element),
+            E_bounds=comp_Elim,
+            plot_config=plots_config.elements,
+            color=element.color,
+        )
+        element_legend_items.append((legend_artist_line(element.color), element.name))
+
+    if plots_config.elements.population_contribs_best_fit and len(best_fit_model.populations) > 1:
+        multipop_elements = [
+            element
+            for element in Element.regular()
+            if len([pop for pop in best_fit_model.populations if element in pop.all_elements]) > 1
+        ]
+        E_grid = np.geomspace(*comp_Elim, 300)
+        E_factor = E_grid**spectra_scale
+        for pop in best_fit_model.populations:
+            for element in pop.resolved_elements:
+                if element not in multipop_elements:
+                    continue
+                ax_el.plot(
+                    E_grid,
+                    E_factor * pop.compute(E_grid, element=element),
+                    color=element.color,
+                    linewidth=POP_CONTRIB_LINEWIDTH,
+                    linestyle=pop.linestyle,
+                )
+
+    if plots_config.elements.max_margin_around_data is not None:
+        clamp_log_margin(ax_el, comp_data_ylim, plots_config.elements.max_margin_around_data)
+    ax_el.set_xlim(*comp_Elim)
+
+    # all-particle spectra
+    if fit_data.all_particle_spectra or validation_data.all_particle_spectra:
+        plotted_all_spectra: list[CRSpectrumData] = []
+        for data, is_fitted in ((fit_data, True), (validation_data, False)):
+            for exp, spec_data in data.all_particle_spectra.items():
+                f_exp = best_fit_model.energy_shifts.f(exp)
+                spec_data = spec_data.with_shifted_energy_scale(f=f_exp)
+                plotted_all_spectra.append(spec_data)
+                spec_data.plot(
+                    scale=spectra_scale,
+                    ax=ax_all,
+                    add_label=False,
+                    is_fitted=is_fitted,
+                )
+                experiment_legend_item_by_label.setdefault(
+                    exp.name, (exp.legend_artist(True), exp.name)
+                )
+
+        all_data_ylim = merged_lims([sp.scaled_flux(spectra_scale) for sp in plotted_all_spectra])
+        all_data_Elim = merged_lims([sp.E for sp in plotted_all_spectra])
+        all_Elim = add_log_margin(*all_data_Elim)
+        ALL_PARTICLE_COLOR = "black"
+        plot_model_predictions(
+            ax=ax_all,
+            observable=lambda model, E: model.compute_spectrum(E, element=None),
+            E_bounds=all_Elim,
+            plot_config=plots_config.all_particle,
+            color=ALL_PARTICLE_COLOR,
+        )
+        element_legend_items.append((legend_artist_line(ALL_PARTICLE_COLOR), "All particle"))
+
+        if plots_config.all_particle_elements_contribution is not None:
+            for element in elements:
+                plot_model_predictions(
+                    ax=ax_all,
+                    observable=lambda model, E: model.compute_spectrum(E, element=element),
+                    E_bounds=all_Elim,
+                    plot_config=plots_config.all_particle_elements_contribution,
+                    color=element.color,
+                )
+
+        if plots_config.all_particle_scaled_elements_contribution and any(
+            pop_conf.rescale_all_particle
+            or any(comp.scale_contrib_to_allpart for comp in pop_conf.component_configs)
+            for pop_conf in model_config.population_configs
+        ):
+            plot_model_predictions(
+                ax=ax_all,
+                observable=lambda model, E: sum(
+                    (pop.compute_extra_all_particle_contribution(E) for pop in model.populations),
+                    np.zeros_like(E),
+                ),
+                E_bounds=all_Elim,
+                plot_config=plots_config.all_particle_scaled_elements_contribution,
+                color="gray",
+            )
+            element_legend_items.append((legend_artist_line("gray"), "Extra contribution"))
+
+        if plots_config.all_particle_unresolved_elements_contribution and any(
+            pop_conf.add_unresolved_elements for pop_conf in model_config.population_configs
+        ):
+            plot_model_predictions(
+                ax=ax_all,
+                observable=lambda model, E: sum(
+                    (
+                        sum(
+                            (
+                                pop.compute(E, element=element)
+                                for element in unresolved_element_names
+                            ),
+                            np.zeros_like(E),
+                        )
+                        for pop in model.populations
+                    ),
+                    np.zeros_like(E),
+                ),
+                E_bounds=all_Elim,
+                plot_config=plots_config.all_particle_unresolved_elements_contribution,
+                color="magenta",
+            )
+            element_legend_items.append((legend_artist_line("magenta"), "Unresolved elements"))
+
+        if (
+            plots_config.all_particle.population_contribs_best_fit
+            and len(best_fit_model.populations) > 1
+        ):
+            E_grid = np.geomspace(*all_Elim, 300)
+            E_factor = E_grid**spectra_scale
+            for pop in best_fit_model.populations:
+                ax_all.plot(
+                    E_grid,
+                    E_factor * pop.compute_all_particle(E_grid),
+                    color=ALL_PARTICLE_COLOR,
+                    linewidth=POP_CONTRIB_LINEWIDTH,
+                    linestyle=pop.linestyle,
+                )
+
+        if plots_config.all_particle.max_margin_around_data is not None:
+            clamp_log_margin(
+                ax_all, all_data_ylim, plots_config.all_particle.max_margin_around_data
+            )
+        ax_all.set_xlim(*all_Elim)
+
+    # <lnA>
+    if fit_data.lnA or validation_data.lnA:
+        LN_A_COLOR = "tab:green"
+        plotted_lnA_data: list[GenericExperimentData] = []
+        for data, is_fitted in ((fit_data, True), (validation_data, False)):
+            for exp, lnA_data in data.lnA.items():
+                f_exp = best_fit_model.energy_shifts.f(exp)
+                lnA_data = dataclasses.replace(lnA_data, x=lnA_data.x * f_exp)
+                plotted_lnA_data.append(lnA_data)
+                lnA_data.plot(
+                    scale=0,
+                    ax=ax_lnA,
+                    add_label=False,
+                    color=LN_A_COLOR,
+                    is_fitted=is_fitted,
+                )
+                experiment_legend_item_by_label.setdefault(
+                    exp.name, (exp.legend_artist(True), exp.name)
+                )
+
+        lnA_data_ylim = merged_lims([s.y for s in plotted_lnA_data])
+        lnA_data_Elim = merged_lims([s.x for s in plotted_lnA_data])
+        lnA_Elim = add_log_margin(*lnA_data_Elim)
+        plot_model_predictions(
+            ax=ax_lnA,
+            observable=lambda model, E: model.compute_lnA(E),
+            E_bounds=lnA_Elim,
+            plot_config=plots_config.lnA,
+            color=LN_A_COLOR,
+            scale_override=0,
+        )
+        ax_lnA.set_xlabel(E_GEV_LABEL)
+        ax_lnA.set_ylabel(LN_A_LABEL)
+        add_elements_lnA_secondary_axis(ax_lnA)
+        if plots_config.lnA.max_margin_around_data is not None:
+            clamp_log_margin(ax_lnA, lnA_data_ylim, plots_config.lnA.max_margin_around_data)
+        ax_lnA.set_xlim(*lnA_Elim)
+
+    # experimental energy scale shifts
+    exp_indices = np.arange(len(model_config.shifted_experiments))
+    SHIFTS_COLOR = "black"
+    for i, exp in enumerate(model_config.shifted_experiments):
+        ax_shifts.errorbar(
+            [i],
+            y=[0],
+            yerr=[
+                [100 * (10 ** get_energy_scale_lg_uncertainty(exp) - 1)],
+                [100 * (1 - 10 ** (-get_energy_scale_lg_uncertainty(exp)))],
+            ],
+            marker=exp.marker,
+            color=SHIFTS_COLOR,
+            markersize=3.0,
+            elinewidth=0.5,
+            capsize=1.5,
+        )
+        observable: Observable = lambda model, grid: (  # noqa: E731
+            100 * (model.energy_shifts.f(exp) - 1)
+        ) * np.ones_like(grid)
+        bounds = (i - 0.5, i + 0.5)
+        if plots_config.energy_shifts.contours:
+            tricontourf_kwargs = tricontourf_kwargs_transparent_colors(
+                color=SHIFTS_COLOR,
+                alpha_max=0.5,
+            )
+            tricontourf_kwargs.update(plots_config.energy_shifts.tricontourf_kwargs_override)
+            plot_posterior_contours(
+                ax=ax_shifts,
+                scale=0,
+                theta_sample=theta_sample,
+                model_config=model_config,
+                observable=observable,
+                bounds=bounds,
+                tricontourf_kwargs=tricontourf_kwargs,
+            )
+        if plots_config.energy_shifts.band_cl is not None:
+            plot_credible_band(
+                ax=ax_shifts,
+                scale=0,
+                theta_sample=theta_sample,
+                model_config=model_config,
+                observable=observable,
+                bounds=bounds,
+                color=SHIFTS_COLOR,
+                alpha=0.2,
+                cl=plots_config.energy_shifts.band_cl,
+                grid_override=np.array(bounds),
+            )
+        if plots_config.energy_shifts.best_fit:
+            ax_shifts.plot(bounds, observable(best_fit_model, np.array(bounds)), color=SHIFTS_COLOR)
+
+    ax_shifts.axhline(0, linestyle="--", color="gray")
+    ax_shifts.set_ylabel("$ \\delta E $ / %")
+    ax_shifts.yaxis.set_major_locator(ticker.MultipleLocator(10.0))
+    ax_shifts.set_xticks(
+        exp_indices,
+        [exp.name for exp in model_config.shifted_experiments],
+        # rotation=30,
+        fontsize="x-small",
+    )
+    ax_shifts.set_xlim(-0.5, exp_indices[-1] + 0.5)
+
+    # legending and general plot formatting
+    for ax in (ax_el, ax_all):
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.yaxis.set_minor_formatter(ticker.NullFormatter())  # never caption minor ticks!
+    ax_lnA.set_xscale("log")
+
+    legend_items = element_legend_items.copy()
+    if (
+        plots_config.elements.population_contribs_best_fit
+        or plots_config.all_particle.population_contribs_best_fit
+    ):
+        for pop in best_fit_model.populations:
+            legend_items.append(
+                (
+                    legend_artist_line(
+                        color="gray", linestyle=pop.linestyle, linewidth=POP_CONTRIB_LINEWIDTH
+                    ),
+                    (pop.population_meta.name if pop.population_meta else "Unnamed") + " pop.",
+                )
+            )
+    legend_items += list(experiment_legend_item_by_label.values())
+    legend_with_added_items(
+        ax_el,
+        legend_items,
+        fontsize="small",
+        bbox_to_anchor=(0.00, 1.05, 1.0, 0.0),
+        loc="lower left",
+        fancybox=True,
+        shadow=True,
+        ncol=legend_ncol,
+    )
+
+    fig.tight_layout()
+    return fig
