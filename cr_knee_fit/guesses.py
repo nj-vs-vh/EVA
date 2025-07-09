@@ -91,6 +91,9 @@ def initial_guess_main_population(
         ],
         breaks=[initial_guess_break(bc) for bc in pop_config.breaks],
         cutoff=initial_guess_cutoff(pop_config.cutoff) if pop_config.cutoff is not None else None,
+        cutoff_lower=initial_guess_cutoff(pop_config.cutoff_lower)
+        if pop_config.cutoff_lower is not None
+        else None,
         all_particle_lg_shift=(
             np.log10(stats.uniform.rvs(loc=1.1, scale=0.9))
             if pop_config.rescale_all_particle

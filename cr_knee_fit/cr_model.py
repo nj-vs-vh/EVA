@@ -304,18 +304,20 @@ class SpectralCutoff(Packable[SpectralCutoffConfig]):
             config=layout_info,
         )
 
-    def compute(self, R: np.ndarray, Z: int, A: float) -> np.ndarray:
+    def compute(self, R: np.ndarray, Z: int, A: float, is_lower: bool) -> np.ndarray:
         quantity = R_to_quantity(R, Z, A, self.config.quantity)
         cut = 10**self.lg_cut
-        b = 10**self.lg_sharpness
+        b = (-1 if is_lower else 1) * 10**self.lg_sharpness
         return np.exp(-((quantity / cut) ** b))
 
-    def description(self) -> str:
+    def description(self, is_lower: bool) -> str:
         parts: list[str] = []
+
+        name = f"{self.config.quantity}^\\text{{{'min' if is_lower else 'max'}}}"
+        value = num2tex(10**self.lg_cut, precision=2, exp_format="cdot")
         unit = quantity_unit(self.config.quantity)
-        parts.append(
-            f"$ {self.config.quantity}^\\text{{cut}} = {num2tex(10**self.lg_cut, precision=2, exp_format='cdot')}~\\text{{{unit}}} $"
-        )
+        parts.append(f"$ {name} = {value}~\\text{{{unit}}} $")
+
         if self.config.fixed_lg_sharpness is not None:
             parts.append(f"$ b = {10**self.lg_sharpness:.2f} $")
         return ", ".join(parts)
@@ -335,6 +337,7 @@ class CosmicRaysModelConfig:
     components: Sequence[list[Element] | SpectralComponentConfig]
     breaks: Sequence[SpectralBreakConfig]
     cutoff: SpectralCutoffConfig | None = None
+    cutoff_lower: SpectralCutoffConfig | None = None
 
     rescale_all_particle: bool = False
     add_unresolved_elements: bool = False
@@ -375,6 +378,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
     base_spectra: list[SharedPowerLawSpectrum]
     breaks: list[SpectralBreak]
     cutoff: SpectralCutoff | None = None
+    cutoff_lower: SpectralCutoff | None = None
 
     all_particle_lg_shift: float | None = None  # sum of elements* 10^shift = all particle spectrum
     free_Z: float | None = None
@@ -412,7 +416,8 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             itertools.chain(
                 (spectrum.description() for spectrum in self.base_spectra),
                 (break_.description() for break_ in self.breaks),
-                ([self.cutoff.description()] if self.cutoff else []),
+                ([self.cutoff.description(is_lower=False)] if self.cutoff else []),
+                ([self.cutoff_lower.description(is_lower=True)] if self.cutoff_lower else []),
             )
         )
 
@@ -441,7 +446,9 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         for break_ in self.breaks:
             flux *= break_.compute(R, Z=Z, A=A)
         if self.cutoff is not None:
-            flux *= self.cutoff.compute(R, Z=Z, A=A)
+            flux *= self.cutoff.compute(R, Z=Z, A=A, is_lower=False)
+        if self.cutoff_lower is not None:
+            flux *= self.cutoff_lower.compute(R, Z=Z, A=A, is_lower=True)
         return flux
 
     def element_Z(self, element: Element | str) -> float:
@@ -611,6 +618,8 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
                 )
         if self.cutoff is not None:
             labels.extend(self.cutoff.labels(latex))
+        if self.cutoff_lower is not None:
+            labels.extend(self.cutoff_lower.labels(latex))  # FIXME: specify lower cutoff labels
         if self.unresolved_elements_spectrum is not None:
             labels.extend(self.unresolved_elements_spectrum.labels(latex))
         if self.all_particle_lg_shift is not None:
@@ -629,6 +638,8 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         ]
         if self.cutoff is not None:
             subvectors.append(self.cutoff.pack())
+        if self.cutoff_lower is not None:
+            subvectors.append(self.cutoff_lower.pack())
         if self.unresolved_elements_spectrum is not None:
             subvectors.append(self.unresolved_elements_spectrum.pack())
         if self.all_particle_lg_shift is not None:
@@ -642,6 +653,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             components=[spectrum.layout_info() for spectrum in self.base_spectra],
             breaks=[b.layout_info() for b in self.breaks],
             cutoff=self.cutoff.layout_info() if self.cutoff is not None else None,
+            cutoff_lower=self.cutoff_lower.layout_info() if self.cutoff_lower is not None else None,
             rescale_all_particle=self.all_particle_lg_shift is not None,
             add_unresolved_elements=self.unresolved_elements_spectrum is not None,
             population_meta=self.population_meta,
@@ -672,6 +684,10 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         if layout_info.cutoff is not None:
             cutoff = SpectralCutoff.unpack(theta[offset:], layout_info.cutoff)
             offset += cutoff.ndim()
+        cutoff_lower: SpectralCutoff | None = None
+        if layout_info.cutoff_lower is not None:
+            cutoff_lower = SpectralCutoff.unpack(theta[offset:], layout_info.cutoff_lower)
+            offset += cutoff_lower.ndim()
 
         unresolved_elements_spectrum: UnresolvedElementsSpectrum | None = None
         if layout_info.add_unresolved_elements:
@@ -694,6 +710,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             base_spectra=components,
             breaks=breaks,
             cutoff=cutoff,
+            cutoff_lower=cutoff_lower,
             unresolved_elements_spectrum=unresolved_elements_spectrum,
             all_particle_lg_shift=all_particle_lg_shift,
             free_Z=free_Z,
@@ -760,6 +777,14 @@ if __name__ == "__main__":
         ],
         cutoff=SpectralCutoff(
             lg_cut=9.0,
+            lg_sharpness=5,
+            config=SpectralCutoffConfig(
+                fixed_lg_sharpness=None,
+                lg_cut_prior_limits=(7, 10),
+            ),
+        ),
+        cutoff_lower=SpectralCutoff(
+            lg_cut=3.0,
             lg_sharpness=5,
             config=SpectralCutoffConfig(
                 fixed_lg_sharpness=None,
