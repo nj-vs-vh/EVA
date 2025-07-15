@@ -125,7 +125,7 @@ def transform_DAMPE():
         dump(data, output_file)
 
 
-def transform_CREAM():
+def transform_CREAM() -> None:
     """Transform and dump CREAM data."""
     datasets: list[tuple[str, str, float, float | None]] = [
         ("CREAM_H_kEnergy.txt", "CREAM_H_energy.txt", 1, None),
@@ -287,7 +287,6 @@ def transform_LHAASO_protons() -> None:
         assert m is not None
         table.append([float(v) for v in m.groups()])
 
-    # print(*table, sep="\n")
     # LHAASO energies are in lg(E / PeV), so we shift by 6 orders to get GeV
     E = [10 ** ((lgE_min + lgE_max) / 2 + 6) for (lgE_min, lgE_max, *_) in table]
 
