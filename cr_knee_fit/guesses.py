@@ -67,7 +67,6 @@ def initial_guess_main_population(
         Element.Mg: -6.85,
         Element.Si: -6.9,
         Element.Fe: -6.9,
-        Element.FreeZ: -8,
     }
     if initial_guess_lgI_override:
         initial_guess_lgI.update(initial_guess_lgI_override)
@@ -76,7 +75,7 @@ def initial_guess_main_population(
             (
                 SharedPowerLawSpectrum(
                     lgI_per_element={
-                        element: stats.norm.rvs(loc=initial_guess_lgI[element], scale=0.05)
+                        element: stats.norm.rvs(loc=initial_guess_lgI.get(element, -8), scale=0.05)
                         for element in comp_conf.elements
                     },
                     alpha=initial_guess_pl_index(center=2.6),

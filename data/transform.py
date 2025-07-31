@@ -14,7 +14,7 @@ def geom_mean(min_values, max_values):
     return np.sqrt(min_values * max_values)
 
 
-def readfile(filepath):
+def read_extracted(filepath: str | Path) -> tuple[np.ndarray, ...]:
     """Read data from a given file and return extracted columns."""
     try:
         logging.info("Reading data from %s", filepath)
@@ -63,7 +63,7 @@ def dump(data: np.ndarray | Sequence[np.ndarray], filename: str) -> None:
 
 
 def transform_crdb_generic(filename: str) -> None:
-    x_min, x_max, value, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = readfile(f"crdb/{filename}")
+    x_min, x_max, value, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = read_extracted(f"crdb/{filename}")
     dump([geom_mean(x_min, x_max), value, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up], filename)
 
 
@@ -82,7 +82,7 @@ def transform_AMS02():
     ]
 
     for rigidity_file, energy_file, Z in datasets:
-        R_min, R_max, I_R, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = readfile(
+        R_min, R_max, I_R, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = read_extracted(
             f"crdb/{rigidity_file}"
         )
         data = transform_R2E(R_min, R_max, I_R, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up, Z=Z)
@@ -102,7 +102,9 @@ def transform_CALET():
     ]
 
     for energy_file, output_file, A in datasets:
-        E_min, E_max, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = readfile(f"crdb/{energy_file}")
+        E_min, E_max, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = read_extracted(
+            f"crdb/{energy_file}"
+        )
         if A == 1:
             data = [geom_mean(E_min, E_max), I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up]
         else:
@@ -120,7 +122,9 @@ def transform_DAMPE():
     ]
 
     for energy_file, output_file in datasets:
-        E_min, E_max, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = readfile(f"crdb/{energy_file}")
+        E_min, E_max, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = read_extracted(
+            f"crdb/{energy_file}"
+        )
         data = [geom_mean(E_min, E_max), I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up]
         dump(data, output_file)
 
@@ -139,7 +143,7 @@ def transform_CREAM() -> None:
     ]
 
     for file, output_file, A, max_Etot in datasets:
-        E_min, E_max, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = readfile(f"crdb/{file}")
+        E_min, E_max, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = read_extracted(f"crdb/{file}")
 
         if max_Etot is not None:
             max_Epernucl = max_Etot / A
@@ -159,8 +163,7 @@ def transform_CREAM() -> None:
         dump(data, output_file)
 
 
-def transform_allParticles():
-    """Transform and dump ALL PARTICLES data."""
+def transform_misc():
     datasets = [
         "NUCLEON_all_energy.txt",
         "GAMMA_SIBYLL_all_energy.txt",
@@ -180,7 +183,7 @@ def transform_allParticles():
     ]
 
     for file in datasets:
-        E_min, E_max, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = readfile(f"crdb/{file}")
+        E_min, E_max, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = read_extracted(f"crdb/{file}")
         data = [geom_mean(E_min, E_max), I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up]
         dump(data, file)
 
@@ -456,6 +459,21 @@ def transform_HAWC_2025() -> None:
     dump((E, flux, stat, stat, syst_low, syst_up), "HAWC_QGSJET-II-04_all_energy.txt")
 
 
+def transform_KISS() -> None:
+    kiss_dir = Path("KISS/kiss_tables")
+    assert kiss_dir.exists(), "KISS dir not found, please clone it first"
+    for input, output, A in (
+        ("CALET_Cr_kineticEnergyPerNucleon.txt", "CALET_Cr_energy.txt", 52),
+        ("CALET_Ti_kineticEnergyPerNucleon.txt", "CALET_Ti_energy.txt", 48),
+        ("CALET_Fe_kineticEnergyPerNucleon.txt", "CALET_Fe_energy.txt", 56),
+    ):
+        E_center, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = np.loadtxt(
+            kiss_dir / input, unpack=True
+        )
+        data = transform_T2E(E_center, E_center, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up, A=A)
+        dump(data, output)
+
+
 if __name__ == "__main__":
     logging.info("Starting AMS02 transformation")
     transform_AMS02()
@@ -470,7 +488,7 @@ if __name__ == "__main__":
     transform_CREAM()
 
     logging.info("Starting ALLPARTICLES transformation")
-    transform_allParticles()
+    transform_misc()
 
     logging.info("Starting DAMPE ALL transformation")
     transform_Cagnoli2024()
@@ -492,8 +510,8 @@ if __name__ == "__main__":
 
     transform_crdb_generic("NUCLEON_p_He_ratio_rigidity.txt")
     transform_LHAASO_protons()
-
     transform_KASCADE_reanalysis()
     transform_HAWC_2025()
+    transform_KISS()
 
     logging.info("All transformations completed")

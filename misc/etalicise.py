@@ -46,10 +46,15 @@ if __name__ == "__main__":
     )
 
     class EtaliciseMiddleware(m.BlockMiddleware):
+        MAX_DISTINCT_AUTHORS = 3
+
         def transform_entry(self, entry: Entry, *args, **kwargs):
-            if isinstance(entry["author"], list) and len(entry["author"]) > 10:
+            if (
+                isinstance(entry["author"], list)
+                and len(entry["author"]) > self.MAX_DISTINCT_AUTHORS
+            ):
                 print(f"Shortening bib entry: {entry}")
-                entry["author"] = entry["author"][:10] + ["others"]
+                entry["author"] = entry["author"][: self.MAX_DISTINCT_AUTHORS] + ["others"]
             return entry
 
     class VerbatimTitleMiddleware(m.BlockMiddleware):

@@ -11,6 +11,7 @@ corner==2.2.3
 num2tex==0.8
 pydantic==2.10.5
 pydantic_numpy==8.0.0
+cmasher==1.9.2
 # htcondor>=23
 
 mypy==1.14.1

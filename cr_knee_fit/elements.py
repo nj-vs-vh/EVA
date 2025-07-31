@@ -14,6 +14,8 @@ class Element(enum.IntEnum):
     O = 8
     Mg = 12
     Si = 14
+    # Ti = 22
+    # Cr = 24
     Fe = 26
 
     FreeZ = -1
@@ -51,8 +53,9 @@ class Element(enum.IntEnum):
         if self is Element.FreeZ:
             return "gray"
         else:
-            idx = sorted(Element.regular()).index(self)
-            return _ELEMENT_CMAP(idx / (len(Element.regular()) - 1))
+            # idx = sorted(Element.regular()).index(self)
+            # return _ELEMENT_CMAP(idx / (len(Element.regular()) - 1))
+            return _ELEMENT_CMAP(self.lnA / self.Fe.lnA)
 
 
 element_names = [

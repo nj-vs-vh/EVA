@@ -9,27 +9,30 @@ from bayesian_analysis import (
 from cr_knee_fit import experiments
 from cr_knee_fit.cr_model import (
     CosmicRaysModelConfig,
-    SpectralBreakConfig,
+    PopulationMetadata,
     SpectralComponentConfig,
+    SpectralCutoffConfig,
 )
 from cr_knee_fit.elements import Element
-from cr_knee_fit.fit_data import DataConfig
+from cr_knee_fit.fit_data import Data, DataConfig
 from cr_knee_fit.guesses import (
     initial_guess_main_population,
 )
 from cr_knee_fit.model_ import Model
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
-from run_local import LocalRunOptions, run_local
+from local import LocalRunOptions, run_local
 
 if __name__ == "__main__":
     opts = LocalRunOptions.parse()
 
-    analysis_name = "lhaaso-dampe-energy-scale"
+    analysis_name = "cutoffs-demo"
 
     print(f"Running pre-configured analysis: {analysis_name}")
 
     fit_data_config = DataConfig(
-        experiments_elements=[experiments.dampe, experiments.grapes, experiments.lhaaso_qgsjet],
+        experiments_elements=list(
+            experiments.DIRECT + [experiments.grapes, experiments.lhaaso_qgsjet]
+        ),
         experiments_all_particle=[],
         experiments_lnA=[],
         elements=[Element.H],
@@ -43,40 +46,42 @@ if __name__ == "__main__":
     ).excluding(fit_data_config)
 
     def generate_guess() -> Model:
-        model = initial_guess_main_population(
-            pop_config=CosmicRaysModelConfig(
-                components=[
-                    SpectralComponentConfig([Element.H]),
-                ],
-                breaks=[
-                    SpectralBreakConfig(
-                        fixed_lg_sharpness=0.7,
-                        quantity="R",
-                        lg_break_prior_limits=(3.0, 5.0),
-                        is_softening=True,
-                        lg_break_hint=4.3,
-                    ),
-                    SpectralBreakConfig(
-                        fixed_lg_sharpness=0.7,
-                        quantity="R",
-                        lg_break_prior_limits=(4.0, 7.0),
-                        is_softening=False,
-                        lg_break_hint=5.0,
-                    ),
-                    SpectralBreakConfig(
-                        fixed_lg_sharpness=0.7,
-                        quantity="R",
-                        lg_break_prior_limits=(5.0, 8.0),
-                        is_softening=True,
-                        lg_break_hint=6.2,
-                    ),
-                ],
-                rescale_all_particle=False,
-            )
-        )
-
         return Model(
-            populations=[model],
+            populations=[
+                initial_guess_main_population(
+                    CosmicRaysModelConfig(
+                        components=[
+                            SpectralComponentConfig([Element.H]),
+                        ],
+                        breaks=[],
+                        rescale_all_particle=False,
+                        cutoff=SpectralCutoffConfig(
+                            lg_cut_prior_limits=(3, 5),
+                            lg_cut_hint=4.0,
+                        ),
+                        population_meta=PopulationMetadata(name="Pop. 1", linestyle="--"),
+                    )
+                ),
+                initial_guess_main_population(
+                    CosmicRaysModelConfig(
+                        components=[
+                            SpectralComponentConfig([Element.H]),
+                        ],
+                        breaks=[],
+                        rescale_all_particle=False,
+                        cutoff=SpectralCutoffConfig(
+                            lg_cut_prior_limits=(5, 7),
+                            lg_cut_hint=6.0,
+                        ),
+                        cutoff_lower=SpectralCutoffConfig(
+                            lg_cut_prior_limits=(3, 6),
+                            lg_cut_hint=4.0,
+                        ),
+                        population_meta=PopulationMetadata(name="Pop. 2", linestyle="-."),
+                    ),
+                    initial_guess_lgI_override={Element.H: -4.5},
+                ),
+            ],
             energy_shifts=ExperimentEnergyScaleShifts(
                 lg_shifts={
                     exp: stats.norm.rvs(loc=0, scale=0.01)
@@ -84,11 +89,12 @@ if __name__ == "__main__":
                     if exp != experiments.dampe
                 }
             ),
-            # energy_scale_lg_uncertainty_override={experiments.lhaaso_qgsjet: percent2lg(1.0)}
         )
 
     m = generate_guess()
     m.validate_packing()
+
+    m.plot_spectra(Data.load(fit_data_config), scale=2.6).savefig("test.png")
 
     config = FitConfig.from_guessing_func(
         name=analysis_name,

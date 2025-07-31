@@ -17,7 +17,7 @@ from cr_knee_fit.fit_data import DataConfig
 from cr_knee_fit.guesses import initial_guess_main_population
 from cr_knee_fit.model_ import Model
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
-from run_local import LocalRunOptions, run_local
+from local import LocalRunOptions, run_local
 
 if __name__ == "__main__":
     opts = LocalRunOptions.parse()

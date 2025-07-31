@@ -3,6 +3,7 @@ from scipy import stats  # type: ignore
 from bayesian_analysis import (
     FitConfig,
     McmcConfig,
+    PlotExportOpts,
     PlotsConfig,
     PosteriorPlotConfig,
 )
@@ -23,12 +24,14 @@ from cr_knee_fit.guesses import (
 )
 from cr_knee_fit.model_ import Model
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
-from local import LocalRunOptions, guess_run_name, run_local
-
+from local import LocalRunOptions, run_local
 
 if __name__ == "__main__":
     opts = LocalRunOptions.parse()
-    analysis_name = guess_run_name(__file__)
+
+    analysis_name = "2pop-nograpes"
+
+    print(f"Running pre-configured analysis: {analysis_name}")
 
     fit_data_config = DataConfig(
         experiments_elements=list(
@@ -42,9 +45,7 @@ if __name__ == "__main__":
             experiments.hawc,
             experiments.kascade_re_qgsjet,
         ],
-        experiments_lnA=[
-            # experiments.lhaaso_qgsjet,
-        ],
+        experiments_lnA=[],
         elements=Element.regular(),
     )
 
@@ -55,10 +56,7 @@ if __name__ == "__main__":
         experiments_all_particle=[
             # experiments.tale,
         ],
-        experiments_lnA=[
-            experiments.lhaaso_qgsjet,
-            # experiments.kascade_re_qgsjet,
-        ],
+        experiments_lnA=[experiments.lhaaso_qgsjet],
         elements=Element.regular(),
     ).excluding(fit_data_config)
 
@@ -66,10 +64,9 @@ if __name__ == "__main__":
         pop1_model = initial_guess_main_population(
             pop_config=CosmicRaysModelConfig(
                 components=[
-                    # SpectralComponentConfig([Element.H]),
-                    # SpectralComponentConfig([Element.He]),
-                    # SpectralComponentConfig(Element.nuclei()),
-                    SpectralComponentConfig(Element.regular()),
+                    SpectralComponentConfig([Element.H]),
+                    SpectralComponentConfig([Element.He]),
+                    SpectralComponentConfig(Element.nuclei()),
                 ],
                 breaks=[
                     SpectralBreakConfig(
@@ -81,7 +78,7 @@ if __name__ == "__main__":
                     ),
                 ],
                 rescale_all_particle=False,
-                population_meta=PopulationMetadata(name="Base", linestyle="--"),
+                population_meta=PopulationMetadata(name="LE", linestyle="--"),
             )
         )
 
@@ -91,7 +88,6 @@ if __name__ == "__main__":
                     lgI_per_element={
                         Element.H: stats.norm.rvs(loc=-5, scale=0.05),
                         Element.He: stats.norm.rvs(loc=-6, scale=0.05),
-                        Element.Fe: stats.norm.rvs(loc=-7, scale=0.05),
                     },
                     alpha=stats.norm.rvs(loc=2.4, scale=0.05),
                 ),
@@ -101,7 +97,7 @@ if __name__ == "__main__":
                     SpectralBreakConfig(
                         fixed_lg_sharpness=0.7,
                         quantity="R",
-                        lg_break_prior_limits=(6, 8),
+                        lg_break_prior_limits=(6, 7),
                         is_softening=True,
                         lg_break_hint=6.5,
                     ),
@@ -110,7 +106,10 @@ if __name__ == "__main__":
             all_particle_lg_shift=None,
             free_Z=None,
             unresolved_elements_spectrum=None,
-            population_meta=PopulationMetadata(name="Knee", linestyle=":"),
+            population_meta=PopulationMetadata(
+                name="Knee",
+                linestyle=":",
+            ),
         )
 
         return Model(
@@ -144,13 +143,12 @@ if __name__ == "__main__":
         generate_guess=generate_guess,
         plots=PlotsConfig(
             validation_data_config=validation_data_config,
+            export_opts=PlotExportOpts(main="2pop-model.pdf"),
             elements=PosteriorPlotConfig(
-                max_margin_around_data=0.2,
-                population_contribs_best_fit=True,
+                max_margin_around_data=0.2, population_contribs_best_fit=True
             ),
             all_particle=PosteriorPlotConfig(
-                max_margin_around_data=1.0,
-                population_contribs_best_fit=True,
+                max_margin_around_data=1.0, population_contribs_best_fit=True
             ),
         ),
     )

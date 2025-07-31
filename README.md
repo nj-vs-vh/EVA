@@ -16,6 +16,7 @@ pip install -r requirements.txt
 
 ```bash
 cd data
+git clone git@github.com:carmeloevoli/KISS-CosmicRayDataBase.git KISS
 python extract.py
 python transform.py
 ```

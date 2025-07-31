@@ -80,7 +80,10 @@ def dump_datafile(dataset: DatasetDef, skip_existing: bool, combo_level=0, energ
         f.write("#E_lo - E_up - y - errSta_lo - errSta_up - errSys_lo - errSys_up\n")
 
         for e_bin, value, err_sta, err_sys in zip(
-            tab["e_bin"][indices], tab["value"][indices], tab["err_sta"][indices], tab["err_sys"][indices]
+            tab["e_bin"][indices],
+            tab["value"][indices],
+            tab["err_sta"][indices],
+            tab["err_sys"][indices],
         ):
             f.write(
                 f"{e_bin[0]:10.5e} {e_bin[1]:10.5e} {value:10.5e} {err_sta[0]:10.5e} {err_sta[1]:10.5e} {err_sys[0]:10.5e} {err_sys[1]:10.5e}\n"
@@ -135,9 +138,10 @@ if __name__ == "__main__":
             "Si", "EKN", "CREAM", "CREAM-II (2005/12-2006/01)", "CREAM_Si_kEnergyPerNucleon.txt"
         ),
         DatasetDef("Fe", "R", "AMS02", "AMS02 (2011/05-2019/10)", "AMS-02_Fe_rigidity.txt"),
-        DatasetDef(
-            "Fe", "EKN", "CALET", "CALET (2016/01-2020/05)", "CALET_Fe_kEnergyPerNucleon.txt"
-        ),
+        # NOTE: replaced by data from KISS, see transform.py
+        # DatasetDef(
+        #     "Fe", "EKN", "CALET", "CALET (2016/01-2020/05)", "CALET_Fe_kEnergyPerNucleon.txt"
+        # ),
         DatasetDef(
             "Fe", "EKN", "CREAM", "CREAM-II (2005/12-2006/01)", "CREAM_Fe_kEnergyPerNucleon.txt"
         ),
@@ -226,6 +230,20 @@ if __name__ == "__main__":
             "IceCube",
             "IceCube+IceTop (2010/06-2013/05) SIBYLL2.1",
             "ICECUBE_SIBYLL_21_all_energy.txt",
+        ),
+        DatasetDef(
+            "H",
+            "ETOT",
+            "IceCube",
+            "IceCube+IceTop (2010/06-2013/05) SIBYLL2.1",
+            "ICECUBE_SIBYLL_21_H_energy.txt",
+        ),
+        DatasetDef(
+            "He",
+            "ETOT",
+            "IceCube",
+            "IceCube+IceTop (2010/06-2013/05) SIBYLL2.1",
+            "ICECUBE_SIBYLL_21_He_energy.txt",
         ),
         DatasetDef(
             "AllParticles",

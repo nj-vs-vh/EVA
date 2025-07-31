@@ -9,6 +9,16 @@ from bayesian_analysis import FitConfig, run_bayesian_analysis
 OUT_DIR = Path(__file__).parent / "out"
 
 
+PHASE = 4
+
+
+def guess_run_name(filename: str) -> str:
+    file_stem = Path(filename).stem
+    res = f"phase-{PHASE}/{file_stem.removeprefix('run_')}"
+    print(f"Guessed run name: {res} (from {filename})")
+    return res
+
+
 class FileStdoutTee(TextIO):
     def __init__(self, file: TextIO, write_to_stdout: bool):
         self.file = file
