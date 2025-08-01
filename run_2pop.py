@@ -25,7 +25,6 @@ from cr_knee_fit.model_ import Model
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 from local import LocalRunOptions, guess_run_name, run_local
 
-
 if __name__ == "__main__":
     opts = LocalRunOptions.parse()
     analysis_name = guess_run_name(__file__)

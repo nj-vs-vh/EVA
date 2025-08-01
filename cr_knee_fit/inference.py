@@ -127,7 +127,7 @@ def logprior(model: Model) -> float:
     return res  # type: ignore
 
 
-def to_model(
+def ensure_model(
     model_or_theta: Model | np.ndarray,
     config: ModelConfig,
 ) -> Model:
@@ -139,7 +139,10 @@ def to_model(
 
 
 def chi_squared_loglikelihood(
-    prediction: np.ndarray, y: np.ndarray, errlo: np.ndarray, errhi: np.ndarray
+    prediction: np.ndarray,
+    y: np.ndarray,
+    err_stat: np.ndarray,
+    err_syst: np.ndarray,
 ) -> float:
     residual = prediction - y
     loglike_per_bin = -0.5 * (
@@ -153,7 +156,7 @@ def loglikelihood(
     fit_data: Data,
     config: ModelConfig,
 ) -> float:
-    model = to_model(model_or_theta, config)
+    model = ensure_model(model_or_theta, config)
     res = 0.0
     for exp, data_by_element in fit_data.element_spectra.items():
         for element, el_data in data_by_element.items():
@@ -200,7 +203,7 @@ def set_global_fit_data(fit_data: Data):
 def logposterior(
     model_or_theta: Model | np.ndarray, fit_data: Data | None, config: ModelConfig
 ) -> float:
-    model = to_model(model_or_theta, config)
+    model = ensure_model(model_or_theta, config)
     logpi = logprior(model)
     if not np.isfinite(logpi):
         return logpi

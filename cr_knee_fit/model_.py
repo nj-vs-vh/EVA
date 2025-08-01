@@ -148,7 +148,7 @@ class Model(Packable[ModelConfig]):
                     element_data.plot(
                         scale=scale,
                         ax=ax,
-                        add_label=False,
+                        add_legend_label=False,
                         is_fitted=is_fitted,
                     )
                     all_energies.extend(element_data.E)
@@ -163,7 +163,7 @@ class Model(Packable[ModelConfig]):
                 f_exp = self.energy_shifts.f(exp)
                 all_energies.extend(allpart_data.E)
                 allpart_data = allpart_data.with_shifted_energy_scale(f_exp)
-                allpart_data.plot(scale=scale, ax=ax, add_label=False, is_fitted=is_fitted)
+                allpart_data.plot(scale=scale, ax=ax, add_legend_label=False, is_fitted=is_fitted)
                 legend_items_by_exp.setdefault(
                     exp,
                     (exp.legend_artist(is_fitted=is_fitted), exp.name + energy_shift_suffix(f_exp)),
@@ -252,7 +252,7 @@ class Model(Packable[ModelConfig]):
                 lnA_data.plot(
                     scale=0,
                     ax=ax,
-                    add_label=False,
+                    add_legend_label=False,
                     color="black",
                     is_fitted=is_fitted,
                 )

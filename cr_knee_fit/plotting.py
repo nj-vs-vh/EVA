@@ -303,7 +303,9 @@ def plot_everything(
             for _, spec_data in data_by_particle.items():
                 spec_data = spec_data.with_shifted_energy_scale(f=f_exp)
                 plotted_elem_spectra.append(spec_data)
-                spec_data.plot(scale=spectra_scale, ax=ax_el, add_label=False, is_fitted=is_fitted)
+                spec_data.plot(
+                    scale=spectra_scale, ax=ax_el, add_legend_label=False, is_fitted=is_fitted
+                )
             experiment_legend_item_by_label.setdefault(
                 exp.name, (exp.legend_artist(True), exp.name)
             )
@@ -356,7 +358,7 @@ def plot_everything(
                 spec_data.plot(
                     scale=spectra_scale,
                     ax=ax_all,
-                    add_label=False,
+                    add_legend_label=False,
                     is_fitted=is_fitted,
                 )
                 experiment_legend_item_by_label.setdefault(
@@ -460,7 +462,7 @@ def plot_everything(
                 lnA_data.plot(
                     scale=0,
                     ax=ax_lnA,
-                    add_label=False,
+                    add_legend=False,
                     color=LN_A_COLOR,
                     is_fitted=is_fitted,
                 )

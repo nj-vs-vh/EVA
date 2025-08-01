@@ -18,22 +18,52 @@ from cr_knee_fit.utils import (
     label_energy_flux,
     legend_with_added_items,
 )
-from model.utils import load_data
+from model.utils import DATA_DIR
 
 DEFAULT_MARKER_SIZE = 3.0
 
 
+def load_data(
+    filename: str,
+    x_bounds: tuple[float, float],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    path = str(DATA_DIR / filename)
+    cols = (0, 1, 2, 3, 4, 5)
+    data = np.loadtxt(path, usecols=cols)
+    x = data[:, 0]
+    mask = (x > x_bounds[0]) & (x < x_bounds[1])
+    return (
+        x[mask],
+        data[mask, 1],  # y
+        data[mask, 2:4],  # err stat
+        data[mask, 4:6],  # err syst
+    )
+
+
 @dataclass
 class GenericExperimentData:
-    x: np.ndarray  # typically GV or GeV
+    x: np.ndarray  # 1D
 
     y: np.ndarray
-    y_errlo: np.ndarray
-    y_errhi: np.ndarray
+
+    err_stat: np.ndarray
+    err_syst: np.ndarray
 
     experiment: Experiment
 
-    label: str | None = None
+    custom_label: str | None = None
+
+    def __post_init__(self) -> None:
+        assert self.x.ndim == 1, "X must be 1-dimensional"
+        assert self.y.ndim == 1, "Y must be 1-dimensional"
+        npoints = self.x.size
+        assert self.y.size == npoints, f"Bad Y size: {self.y.size} =/= {npoints}"
+        assert self.err_stat.shape == (npoints, 2), (
+            f"Bad stat error size: {self.err_stat.shape} =/= {(npoints, 2)}"
+        )
+        assert self.err_syst.shape == (npoints, 2), (
+            f"Bad syst error size: {self.err_syst.shape} =/= {(npoints, 2)}"
+        )
 
     @classmethod
     def load(
@@ -41,107 +71,115 @@ class GenericExperimentData:
         exp: Experiment,
         suffix: str,
         x_bounds: tuple[float, float],
-        label: str | None = None,
+        custom_label: str | None = None,
     ) -> "GenericExperimentData":
-        data = load_data(
-            filename=f"{exp.filename_prefix}_{suffix}.txt",
-            slope=0,  # multiplying data by E^0 = leaving as-is
-            norm=1,  # no renormalizing
-            min_energy=x_bounds[0],
-            max_energy=x_bounds[1],
+        x, y, stat, syst = load_data(
+            filename=f"{exp.filename_prefix}_{suffix}.txt", x_bounds=x_bounds
         )
         return GenericExperimentData(
-            x=data[0],
-            y=data[1],
-            y_errlo=data[2],
-            y_errhi=data[3],
-            experiment=exp,
-            label=label,
+            x=x, y=y, err_stat=stat, err_syst=syst, experiment=exp, custom_label=custom_label
         )
 
     def plot(
         self,
         ax: Axes | None = None,
         color: Any | None = None,
-        add_label: bool = True,
         scale: float = 0,
         is_fitted: bool = True,
         marker_size: float = DEFAULT_MARKER_SIZE,
+        label_override: str | None = None,
+        add_legend_label: bool = True,
     ) -> Axes:
         if ax is None:
             _, ax = plt.subplots()
         x_factor = self.x**scale
-        label = self.experiment.name
-        if self.label is not None:
-            label += " " + self.label
+
+        if label_override is not None:
+            label = label_override
+        else:
+            label = self.experiment.name
+            if self.custom_label is not None:
+                label += " " + self.custom_label
+        x_factor_2D = np.expand_dims(x_factor, axis=-1)
+
+        alpha = 1.0 if is_fitted else NON_FITTED_ALPHA
+        lines = ax.errorbar(
+            self.x,
+            x_factor * self.y,
+            yerr=(x_factor_2D * self.err_stat).T,
+            color=color,
+            markersize=marker_size,
+            elinewidth=0.75,
+            # capsize=1.5,
+            label=label if add_legend_label else None,
+            linestyle="none",
+            marker=self.experiment.marker,
+            alpha=alpha,
+        )
         ax.errorbar(
             self.x,
             x_factor * self.y,
-            yerr=[x_factor * self.y_errlo, x_factor * self.y_errhi],
-            color=color,
-            markersize=marker_size,
-            elinewidth=0.5,
-            capsize=1.5,
-            label=label if add_label else None,
+            yerr=(x_factor_2D * self.err_syst).T,
+            color=lines[0].get_color(),
+            alpha=alpha * 0.33,
+            elinewidth=marker_size,  # making systematic error bar as wide as the marker
             linestyle="none",
-            marker=self.experiment.marker,
-            alpha=1.0 if is_fitted else NON_FITTED_ALPHA,
+            marker="none",
         )
-        if add_label:
-            ax.legend()
         return ax
 
 
 @dataclass
 class CRSpectrumData:
-    E: np.ndarray  # GeV
+    d: GenericExperimentData
 
-    F: np.ndarray  # (GeV m^2 s sr)^-1
-    F_errlo: np.ndarray
-    F_errhi: np.ndarray
-
-    experiment: Experiment
     element: Element | None | tuple[Element, ...]
 
     energy_scale_shift: float = 1.0
+
+    @property
+    def E(self) -> np.ndarray:
+        return self.d.x
+
+    @property
+    def F(self) -> np.ndarray:
+        return self.d.y
+
+    @property
+    def F_err_stat(self) -> np.ndarray:
+        return self.d.err_stat
+
+    @property
+    def F_err_syst(self) -> np.ndarray:
+        return self.d.err_syst
 
     def scaled_flux(self, scale: float) -> np.ndarray:
         return self.F * (self.E**scale)
 
     def __post_init__(self) -> None:
-        assert self.E.ndim == 1, "All arrays must be 1D"
-        for arr in (self.F, self.F_errhi, self.F_errlo):
-            assert arr.shape == self.E.shape, (
-                f"Mismatching array sizes: E has {self.E.shape} != {arr.shape}"
-            )
         assert self.E.size > 0, "Empty spectrum data"
 
     def with_shifted_energy_scale(self, f: float) -> "CRSpectrumData":
         return CRSpectrumData(
-            E=self.E * f,
-            F=self.F / f,
-            F_errlo=self.F_errlo / f,
-            F_errhi=self.F_errhi / f,
-            experiment=self.experiment,
+            d=GenericExperimentData(
+                x=self.d.x * f,
+                y=self.d.y / f,
+                err_stat=self.d.err_stat / f,
+                err_syst=self.d.err_syst / f,
+                experiment=self.d.experiment,
+            ),
             element=self.element,
             energy_scale_shift=self.energy_scale_shift * f,
         )
 
     @classmethod
     def load(cls, exp: Experiment, p: Element, R_bounds: tuple[float, float]) -> "CRSpectrumData":
-        data = load_data(
-            filename=f"{exp.filename_prefix}_{p.name}_energy.txt",
-            slope=0,  # multiplying data by E^0 = leaving as-is
-            norm=1,  # no renormalizing
-            min_energy=R_bounds[0] * p.Z,
-            max_energy=R_bounds[1] * p.Z,
-        )
         return CRSpectrumData(
-            E=data[0],
-            F=data[1],
-            F_errlo=data[2],
-            F_errhi=data[3],
-            experiment=exp,
+            d=GenericExperimentData.load(
+                exp=exp,
+                suffix=f"{p.name}_energy",
+                x_bounds=(R_bounds[0] * p.Z, R_bounds[1] * p.Z),
+            ),
             element=p,
         )
 
@@ -149,33 +187,26 @@ class CRSpectrumData:
     def load_all_particle(
         cls, exp: Experiment, max_energy: float | None = None
     ) -> "CRSpectrumData":
-        data = load_data(
-            filename=f"{exp.filename_prefix}_all_energy.txt",
-            slope=0,  # multiplying data by E^0 = leaving as-is
-            norm=1,  # no renormalizing
-            min_energy=1e3,  # 1 TeV
-            max_energy=max_energy or 1e12,
-        )
         return CRSpectrumData(
-            E=data[0],
-            F=data[1],
-            F_errlo=data[2],
-            F_errhi=data[3],
-            experiment=exp,
+            d=GenericExperimentData.load(
+                exp=exp,
+                suffix="all_energy",
+                x_bounds=(1e3, max_energy or np.inf),
+            ),
             element=None,
         )
 
     def plot_label(self) -> str:
         if self.element is None:
             element_label = "all"
-            if self.experiment == experiments.dampe:
-                element_label += " (preliminary, private comm.)"
+            if self.d.experiment == experiments.dampe:
+                element_label += " (in prep.)"
         elif isinstance(self.element, tuple):
             element_label = "+".join(p.name for p in self.element)
         else:
             element_label = self.element.name
 
-        return f"{self.experiment.name} {element_label}" + energy_shift_suffix(
+        return f"{self.d.experiment.name} {element_label}" + energy_shift_suffix(
             self.energy_scale_shift
         )
 
@@ -184,37 +215,26 @@ class CRSpectrumData:
         scale: float,
         ax: Axes | None = None,
         color: Any | None = None,
-        add_label: bool = True,
+        add_legend_label: bool = True,
         is_fitted: bool = True,
         marker_size: float = DEFAULT_MARKER_SIZE,
     ) -> Axes:
-        if ax is None:
-            _, ax = plt.subplots()
-        E_factor = self.E**scale
-        ax.errorbar(
-            self.E,
-            E_factor * self.F,
-            yerr=[E_factor * self.F_errlo, E_factor * self.F_errhi],
-            color=(
-                color
-                or (
-                    self.element.color
-                    if isinstance(self.element, Element)
-                    else ("black" if self.element is None else None)
-                )
+        axes = self.d.plot(
+            ax=ax,
+            color=color
+            or (
+                self.element.color
+                if isinstance(self.element, Element)
+                else ("black" if self.element is None else None)
             ),
-            label=self.plot_label() if add_label else None,
-            markersize=marker_size,
-            elinewidth=0.5,
-            capsize=1.5,
-            linestyle="none",
-            marker=self.experiment.marker,
-            alpha=1.0 if is_fitted else NON_FITTED_ALPHA,
+            scale=scale,
+            is_fitted=is_fitted,
+            marker_size=marker_size,
+            label_override=self.plot_label(),
+            add_legend_label=add_legend_label,
         )
-        label_energy_flux(ax, scale)
-        if add_label:
-            ax.legend()
-        return ax
+        label_energy_flux(axes, scale)
+        return axes
 
 
 @dataclass
@@ -331,7 +351,7 @@ class Data:
                     exp,
                     suffix="lnA_energy",
                     x_bounds=(0, np.inf),
-                    label=LN_A_LABEL,
+                    custom_label=LN_A_LABEL,
                 )
             except Exception as e:
                 log(f"Failed to load lnA for {exp}: {e}")
@@ -363,11 +383,11 @@ class Data:
             print_(exp.name)
             for p, s in ps.items():
                 print_(f"  {p.name}: {s.E.size} points from {s.E.min():.1e} to {s.E.max():.1e} GeV")
-                s.plot(scale=scale, ax=ax, add_label=False, is_fitted=is_fitted)
+                s.plot(scale=scale, ax=ax, add_legend_label=False, is_fitted=is_fitted)
         print_("All particle data:")
         for exp, s in self.all_particle_spectra.items():
             print_(f"    {exp.name}: {s.E.size} points from {s.E.min():.1e} to {s.E.max():.1e} GeV")
-            s.plot(scale=scale, ax=ax, add_label=False, is_fitted=is_fitted)
+            s.plot(scale=scale, ax=ax, add_legend_label=False, is_fitted=is_fitted)
 
         ax.set_xscale("log")
         ax.set_yscale("log")

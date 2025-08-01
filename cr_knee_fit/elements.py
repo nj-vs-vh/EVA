@@ -55,7 +55,7 @@ class Element(enum.IntEnum):
         else:
             # idx = sorted(Element.regular()).index(self)
             # return _ELEMENT_CMAP(idx / (len(Element.regular()) - 1))
-            return _ELEMENT_CMAP(self.lnA / self.Fe.lnA)
+            return _ELEMENT_CMAP(self.lnA / self.Fe.lnA)  # type: ignore
 
 
 element_names = [
