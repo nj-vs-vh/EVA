@@ -20,7 +20,7 @@ from cr_knee_fit.utils import (
 )
 from model.utils import DATA_DIR
 
-DEFAULT_MARKER_SIZE = 3.0
+DEFAULT_MARKER_SIZE = 4.0
 
 
 def load_data(
@@ -140,10 +140,12 @@ class CRSpectrumData:
 
     @property
     def E(self) -> np.ndarray:
+        """Energy in GeV"""
         return self.d.x
 
     @property
     def F(self) -> np.ndarray:
+        """Flux in GeV^-1 m^-2 s^-1 sr^-1"""
         return self.d.y
 
     @property
@@ -204,7 +206,7 @@ class CRSpectrumData:
             element_label = "+".join(p.name for p in self.element)
         else:
             element_label = self.element.name
-        
+
         if (self.element, self.d.experiment) in {
             (None, experiments.dampe),
             (Element.C, experiments.dampe),
@@ -345,15 +347,14 @@ class Data:
 
         allparticle = {}
         for exp in config.experiments_all_particle:
-            log(f"Reading all particle data for {exp}...")
             try:
                 allparticle[exp] = CRSpectrumData.load_all_particle(exp)
+                log(f"Loaded all particle data for {exp}...")
             except Exception as e:
                 log(f"Failed to load all particle spectrum data for {exp}: {e}")
 
         lnA = {}
         for exp in config.experiments_lnA:
-            log(f"Reading lnA data for {exp}...")
             try:
                 lnA[exp] = GenericExperimentData.load(
                     exp,
@@ -361,6 +362,7 @@ class Data:
                     x_bounds=(0, np.inf),
                     custom_label=LN_A_LABEL,
                 )
+                log(f"Loaded lnA data for {exp}...")
             except Exception as e:
                 log(f"Failed to load lnA for {exp}: {e}")
 
@@ -368,9 +370,9 @@ class Data:
         for exp, elements in config.elements_by_exp.items():
             exp_data = dict[Element, CRSpectrumData]()
             for element in elements:
-                log(f"Reading {element.name} data for {exp}...")
                 try:
                     exp_data[element] = CRSpectrumData.load(exp, element, config.elements_R_bounds)
+                    log(f"Loaded {element.name} data for {exp}...")
                 except Exception as e:
                     log(f"Failed to load {element.name} spectrum from {exp}: {e}")
             element_spectra[exp] = exp_data

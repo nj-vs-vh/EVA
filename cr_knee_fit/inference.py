@@ -146,6 +146,7 @@ def chi_squared_loglikelihood(
 ) -> float:
     residual = prediction - y
     loglike_per_bin = -0.5 * (
+        # FIXME
         np.where(residual > 0, (residual / errhi) ** 2, (residual / errlo) ** 2)
     )
     return float(np.sum(loglike_per_bin))

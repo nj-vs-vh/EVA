@@ -29,20 +29,18 @@ def read_extracted(filepath: str | Path) -> tuple[np.ndarray, ...]:
         raise
 
 
-def transform_R2E(R_min, R_max, I_R, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up, Z=1.0):
+def transform_R2E(R_min, R_max, I_R, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up, Z):
     """Convert rigidity data to energy data."""
     R_mean = geom_mean(R_min, R_max)
     E_mean = R_mean * Z
-    I_E = I_R / Z
-    return [E_mean, I_E, e_sta_lo / Z, e_sta_up / Z, e_sys_lo / Z, e_sys_up / Z]
+    return [E_mean, I_R / Z, e_sta_lo / Z, e_sta_up / Z, e_sys_lo / Z, e_sys_up / Z]
 
 
-def transform_T2E(T_min, T_max, I_T, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up, A=1.0):
+def transform_T2E(T_min, T_max, I_T, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up, A):
     """Convert kinetic energy per nucleon data to energy data."""
     T_mean = geom_mean(T_min, T_max)
     E_mean = T_mean * A
-    I_E = I_T / A
-    return [E_mean, I_E, e_sta_lo / A, e_sta_up / A, e_sys_lo / A, e_sys_up / A]
+    return [E_mean, I_T / A, e_sta_lo / A, e_sta_up / A, e_sys_lo / A, e_sys_up / A]
 
 
 def dump(data: np.ndarray | Sequence[np.ndarray], filename: str, overwrite: bool = False) -> None:
@@ -55,7 +53,6 @@ def dump(data: np.ndarray | Sequence[np.ndarray], filename: str, overwrite: bool
             )
         else:
             raise FileExistsError(filepath)
-    logging.info(f"Dumping data to {filepath}")
 
     try:
         E_mean, I_E, I_sta_lo, I_sta_up, I_sys_lo, I_sys_up = data
@@ -104,7 +101,6 @@ def transform_CALET():
         ("CALET_He_kEnergy.txt", "CALET_He_energy.txt", 1),
         ("CALET_C_kEnergyPerNucleon.txt", "CALET_C_energy.txt", 12),
         ("CALET_O_kEnergyPerNucleon.txt", "CALET_O_energy.txt", 16),
-        ("CALET_Fe_kEnergyPerNucleon.txt", "CALET_Fe_energy.txt", 56),
     ]
 
     for energy_file, output_file, A in datasets:
@@ -467,7 +463,7 @@ def transform_HAWC_2025() -> None:
 
 def transform_KISS() -> None:
     kiss_dir = Path("KISS/kiss_tables")
-    assert kiss_dir.exists(), "KISS dir not found, please clone it first"
+    assert kiss_dir.exists(), f"KISS dir not found, please clone it first: {kiss_dir}"
     for input, output, A in (
         ("CALET_Cr_kineticEnergyPerNucleon.txt", "CALET_Cr_energy.txt", 52),
         ("CALET_Ti_kineticEnergyPerNucleon.txt", "CALET_Ti_energy.txt", 48),
@@ -481,36 +477,42 @@ def transform_KISS() -> None:
 
 
 def transform_DAMPE_C_O_ICRC2025() -> None:
-    carbon_raw = Path("lake/dampe-icrc2025/carbon.txt")
-    table = np.loadtxt(carbon_raw, delimiter=",", dtype="float")
+    for input, output, A in (
+        ("lake/dampe-icrc2025/carbon.txt", "DAMPE_C_energy.txt", 12),
+        ("lake/dampe-icrc2025/oxygen.txt", "DAMPE_O_energy.txt", 16),
+    ):
+        raw_file = Path(input)
+        table = np.loadtxt(raw_file, delimiter=",", dtype="float")
+        n_pts = 25
+        n_stat_errs = 7
+        lengths = (n_pts, n_pts, n_pts, n_stat_errs, n_stat_errs)
+        offset = 0
+        series = []
+        for length in lengths:
+            series.append((table[offset : offset + length, :]))
+            offset += length
+        assert offset == table.shape[0]
 
-    n_pts = 25
-    n_stat_errs = 7
-    lengths = (n_pts, n_pts, n_pts, n_stat_errs, n_stat_errs)
-    offset = 0
-    series = []
-    for length in lengths:
-        series.append((table[offset : offset + length, :]))
-        offset += length
-    assert offset == table.shape[0]
+        E, flux = series[0].T
+        syst_up = series[1][:, 1] - flux
+        syst_lo = flux - series[2][:, 1]
+        # stat errors are not accessible for low-energy / high-statistics points because they're below markers, so we arbitrarily set those to systematic / 2
+        stat_up = syst_up / 2
+        stat_lo = syst_lo / 2
+        stat_up[-n_stat_errs:] = series[3][:, 1] - flux[-n_stat_errs:]
+        stat_lo[-n_stat_errs:] = flux[-n_stat_errs:] - series[4][:, 1]
 
-    E, flux = series[0].T
-    syst_up = series[1][:, 1] - flux
-    syst_lo = series[2][:, 1] - flux
-    # stat errors are not accessible for low-energy / high-statistics points because they're below markers, so we arbitrarily set those to systematic / 2
-    stat_up = syst_up / 2
-    stat_lo = syst_lo / 2
-    stat_up[-n_stat_errs:] = series[3][:, 1]
-    stat_lo[-n_stat_errs:] = series[4][:, 1]
+        # undoing the energy scaling of the plot points (E^2.6 x Flux -> Flux)
+        # plus, converting energy per nucleon to full energy
+        mult = E**2.6
+        E *= A
+        flux /= mult * A
+        syst_up /= mult * A
+        syst_lo /= mult * A
+        stat_up /= mult * A
+        stat_lo /= mult * A
 
-    mult = E**2.6  # the plot is in E^2.6 x Flux
-    flux /= mult
-    syst_up /= mult
-    syst_lo /= mult
-    stat_up /= mult
-    stat_lo /= mult
-
-    dump((E, flux, stat_lo, stat_up, syst_lo, syst_up), "DAMPE_C_energy.txt")
+        dump((E, flux, stat_lo, stat_up, syst_lo, syst_up), output)
 
 
 if __name__ == "__main__":
