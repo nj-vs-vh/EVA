@@ -1,12 +1,13 @@
 import logging
 import re
+import shutil
 from pathlib import Path
 from typing import Sequence
 
 import numpy as np
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+OUTPUT_DIR = Path("output")
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def geom_mean(min_values, max_values):
@@ -44,13 +45,18 @@ def transform_T2E(T_min, T_max, I_T, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up, A=1
     return [E_mean, I_E, e_sta_lo / A, e_sta_up / A, e_sys_lo / A, e_sys_up / A]
 
 
-def dump(data: np.ndarray | Sequence[np.ndarray], filename: str) -> None:
+def dump(data: np.ndarray | Sequence[np.ndarray], filename: str, overwrite: bool = False) -> None:
     """Write transformed data to a file in the output directory."""
-    output_dir = Path("output")
-    output_dir.mkdir(parents=True, exist_ok=True)
-    filepath = output_dir / filename
+    filepath = OUTPUT_DIR / filename
+    if filepath.exists():
+        if overwrite:
+            logging.warning(
+                f"File already exists, but will be overwritten due to overwrite=True: {filepath}"
+            )
+        else:
+            raise FileExistsError(filepath)
+    logging.info(f"Dumping data to {filepath}")
 
-    logging.info("Dumping data to %s", filepath)
     try:
         E_mean, I_E, I_sta_lo, I_sta_up, I_sys_lo, I_sys_up = data
         with filepath.open("w") as f:
@@ -474,44 +480,65 @@ def transform_KISS() -> None:
         dump(data, output)
 
 
+def transform_DAMPE_C_O_ICRC2025() -> None:
+    carbon_raw = Path("lake/dampe-icrc2025/carbon.txt")
+    table = np.loadtxt(carbon_raw, delimiter=",", dtype="float")
+
+    n_pts = 25
+    n_stat_errs = 7
+    lengths = (n_pts, n_pts, n_pts, n_stat_errs, n_stat_errs)
+    offset = 0
+    series = []
+    for length in lengths:
+        series.append((table[offset : offset + length, :]))
+        offset += length
+    assert offset == table.shape[0]
+
+    E, flux = series[0].T
+    syst_up = series[1][:, 1] - flux
+    syst_lo = series[2][:, 1] - flux
+    # stat errors are not accessible for low-energy / high-statistics points because they're below markers, so we arbitrarily set those to systematic / 2
+    stat_up = syst_up / 2
+    stat_lo = syst_lo / 2
+    stat_up[-n_stat_errs:] = series[3][:, 1]
+    stat_lo[-n_stat_errs:] = series[4][:, 1]
+
+    mult = E**2.6  # the plot is in E^2.6 x Flux
+    flux /= mult
+    syst_up /= mult
+    syst_lo /= mult
+    stat_up /= mult
+    stat_lo /= mult
+
+    dump((E, flux, stat_lo, stat_up, syst_lo, syst_up), "DAMPE_C_energy.txt")
+
+
 if __name__ == "__main__":
-    logging.info("Starting AMS02 transformation")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+    logging.info("Backing up old output files")
+    backup_dir = OUTPUT_DIR / ".backup"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    for file in OUTPUT_DIR.iterdir():
+        if not file.is_file():
+            continue
+        shutil.move(file, backup_dir / file.name)
+
     transform_AMS02()
-
-    logging.info("Starting CALET transformation")
     transform_CALET()
-
-    logging.info("Starting DAMPE transformation")
     transform_DAMPE()
-
-    logging.info("Starting CREAM transformation")
     transform_CREAM()
-
-    logging.info("Starting ALLPARTICLES transformation")
     transform_misc()
-
-    logging.info("Starting DAMPE ALL transformation")
     transform_Cagnoli2024()
-
-    logging.info("Starting CREAM-light transformation")
     transform_CREAM_light()
-
-    logging.info("Starting TIBET transformation")
     transform_TIBET_all()
-
-    logging.info("Starting DAMPE-light transformation")
     transform_DAMPE_light()
-
-    logging.info("Starting LHAASO transformation")
     transform_LHAASO()
-
-    logging.info("Starting GRAPES transformation")
     transform_GRAPES()
-
     transform_crdb_generic("NUCLEON_p_He_ratio_rigidity.txt")
     transform_LHAASO_protons()
     transform_KASCADE_reanalysis()
     transform_HAWC_2025()
     transform_KISS()
+    transform_DAMPE_C_O_ICRC2025()
 
-    logging.info("All transformations completed")
+    logging.info("OK")

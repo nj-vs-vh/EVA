@@ -129,12 +129,13 @@ class GenericExperimentData:
         return ax
 
 
+SpectrumDataElementSpec = Element | None | tuple[Element, ...]
+
+
 @dataclass
 class CRSpectrumData:
     d: GenericExperimentData
-
-    element: Element | None | tuple[Element, ...]
-
+    element: SpectrumDataElementSpec
     energy_scale_shift: float = 1.0
 
     @property
@@ -199,14 +200,21 @@ class CRSpectrumData:
     def plot_label(self) -> str:
         if self.element is None:
             element_label = "all"
-            if self.d.experiment == experiments.dampe:
-                element_label += " (in prep.)"
         elif isinstance(self.element, tuple):
             element_label = "+".join(p.name for p in self.element)
         else:
             element_label = self.element.name
+        
+        if (self.element, self.d.experiment) in {
+            (None, experiments.dampe),
+            (Element.C, experiments.dampe),
+            (Element.O, experiments.dampe),
+        }:
+            prelim_suffix = " (prelim.)"
+        else:
+            prelim_suffix = ""
 
-        return f"{self.d.experiment.name} {element_label}" + energy_shift_suffix(
+        return f"{self.d.experiment.name} {element_label}{prelim_suffix}" + energy_shift_suffix(
             self.energy_scale_shift
         )
 
