@@ -2,7 +2,7 @@ import argparse
 import os
 from pathlib import Path
 
-import requests
+import requests  # type: ignore
 
 token = os.environ["ADS_TOKEN"]
 auth = {"Authorization": f"Bearer {token}"}

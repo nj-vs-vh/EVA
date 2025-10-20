@@ -429,13 +429,18 @@ class Data:
         scale: float,
         describe: bool = False,
         is_fitted: bool = True,
+        figure: Figure | None = None,
     ) -> Figure:
-        if self.lnA:
-            fig, axes = plt.subplots(ncols=2, figsize=(16, 6))
-            axes = cast(Sequence[Axes], axes)
+        if figure is None:
+            if self.lnA:
+                fig, axes = plt.subplots(ncols=2, figsize=(16, 6))
+                axes = cast(Sequence[Axes], axes)
+            else:
+                fig, ax = plt.subplots(figsize=(8, 6))
+                axes = [ax]
         else:
-            fig, ax = plt.subplots(figsize=(8, 6))
-            axes = [ax]
+            fig = figure
+            axes = fig.axes
 
         self.plot_spectra(scale=scale, describe=describe, is_fitted=is_fitted, ax=axes[0])
         if len(axes) > 1:

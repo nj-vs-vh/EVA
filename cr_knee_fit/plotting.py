@@ -462,7 +462,7 @@ def plot_everything(
                 lnA_data.plot(
                     scale=0,
                     ax=ax_lnA,
-                    add_legend=False,
+                    add_legend_label=False,
                     color=LN_A_COLOR,
                     is_fitted=is_fitted,
                 )

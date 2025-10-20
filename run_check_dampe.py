@@ -8,17 +8,13 @@ from bayesian_analysis import (
 )
 from cr_knee_fit import experiments
 from cr_knee_fit.cr_model import (
-    CosmicRaysModel,
     CosmicRaysModelConfig,
-    PopulationMetadata,
-    SharedPowerLawSpectrum,
     SpectralBreakConfig,
     SpectralComponentConfig,
 )
 from cr_knee_fit.elements import Element
 from cr_knee_fit.fit_data import DataConfig
 from cr_knee_fit.guesses import (
-    initial_guess_break,
     initial_guess_main_population,
 )
 from cr_knee_fit.model_ import Model
@@ -31,45 +27,26 @@ if __name__ == "__main__":
 
     fit_data_config = DataConfig(
         experiments_elements=list(
-            experiments.DIRECT
-            + [
-                experiments.grapes,
-                experiments.lhaaso_qgsjet,
+            [
+                experiments.dampe,
             ]
         ),
-        experiments_all_particle=[
-            experiments.lhaaso_qgsjet,
-            experiments.hawc,
-            experiments.kascade_re_qgsjet,
-        ],
+        experiments_all_particle=[],
         experiments_lnA=[
             # experiments.lhaaso_qgsjet,
         ],
-        elements=Element.regular(),
+        elements=[Element.H, Element.C, Element.O, Element.He],
     )
 
-    validation_data_config = DataConfig(
-        experiments_elements=[
-            experiments.kascade_re_qgsjet,
-        ],
-        experiments_all_particle=[
-            # experiments.tale,
-        ],
-        experiments_lnA=[
-            experiments.lhaaso_qgsjet,
-            # experiments.kascade_re_qgsjet,
-        ],
-        elements=Element.regular(),
-    ).excluding(fit_data_config)
+    validation_data_config = DataConfig()
 
     def generate_guess() -> Model:
         pop1_model = initial_guess_main_population(
             pop_config=CosmicRaysModelConfig(
                 components=[
-                    # SpectralComponentConfig([Element.H]),
-                    # SpectralComponentConfig([Element.He]),
-                    # SpectralComponentConfig(Element.nuclei()),
-                    SpectralComponentConfig(Element.regular()),
+                    SpectralComponentConfig([Element.H]),
+                    SpectralComponentConfig([Element.He]),
+                    SpectralComponentConfig([Element.C, Element.O]),
                 ],
                 breaks=[
                     SpectralBreakConfig(
@@ -81,42 +58,42 @@ if __name__ == "__main__":
                     ),
                 ],
                 rescale_all_particle=False,
-                population_meta=PopulationMetadata(name="Base", linestyle="--"),
+                # population_meta=PopulationMetadata(name="Base", linestyle="--"),
             )
         )
 
-        pop2_model = CosmicRaysModel(
-            base_spectra=[
-                SharedPowerLawSpectrum(
-                    lgI_per_element={
-                        Element.H: stats.norm.rvs(loc=-5, scale=0.05),
-                        Element.He: stats.norm.rvs(loc=-6, scale=0.05),
-                        Element.Fe: stats.norm.rvs(loc=-7, scale=0.05),
-                    },
-                    alpha=stats.norm.rvs(loc=2.4, scale=0.05),
-                ),
-            ],
-            breaks=[
-                initial_guess_break(
-                    SpectralBreakConfig(
-                        fixed_lg_sharpness=0.7,
-                        quantity="R",
-                        lg_break_prior_limits=(6, 8),
-                        is_softening=True,
-                        lg_break_hint=6.5,
-                    ),
-                )
-            ],
-            all_particle_lg_shift=None,
-            free_Z=None,
-            unresolved_elements_spectrum=None,
-            population_meta=PopulationMetadata(name="Knee", linestyle=":"),
-        )
+        # pop2_model = CosmicRaysModel(
+        #     base_spectra=[
+        #         SharedPowerLawSpectrum(
+        #             lgI_per_element={
+        #                 Element.H: stats.norm.rvs(loc=-5, scale=0.05),
+        #                 Element.He: stats.norm.rvs(loc=-6, scale=0.05),
+        #                 Element.Fe: stats.norm.rvs(loc=-7, scale=0.05),
+        #             },
+        #             alpha=stats.norm.rvs(loc=2.4, scale=0.05),
+        #         ),
+        #     ],
+        #     breaks=[
+        #         initial_guess_break(
+        #             SpectralBreakConfig(
+        #                 fixed_lg_sharpness=0.7,
+        #                 quantity="R",
+        #                 lg_break_prior_limits=(6, 8),
+        #                 is_softening=True,
+        #                 lg_break_hint=6.5,
+        #             ),
+        #         )
+        #     ],
+        #     all_particle_lg_shift=None,
+        #     free_Z=None,
+        #     unresolved_elements_spectrum=None,
+        #     population_meta=PopulationMetadata(name="Knee", linestyle=":"),
+        # )
 
         return Model(
             populations=[
                 pop1_model,
-                pop2_model,
+                # pop2_model,
             ],
             energy_shifts=ExperimentEnergyScaleShifts(
                 lg_shifts={

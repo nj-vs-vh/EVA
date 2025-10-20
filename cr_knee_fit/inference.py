@@ -145,9 +145,14 @@ def chi_squared_loglikelihood(
     err_syst: np.ndarray,
 ) -> float:
     residual = prediction - y
+    residual_sq = residual**2
+    err_squared_total = err_stat**2 + err_syst**2  # FIXME: assumes uncorrelated systematics
     loglike_per_bin = -0.5 * (
-        # FIXME
-        np.where(residual > 0, (residual / errhi) ** 2, (residual / errlo) ** 2)
+        np.where(
+            residual > 0,
+            residual_sq / err_squared_total[:, 1],
+            residual_sq / err_squared_total[:, 0],
+        )
     )
     return float(np.sum(loglike_per_bin))
 
@@ -165,16 +170,16 @@ def loglikelihood(
             res += chi_squared_loglikelihood(
                 prediction=model.compute_spectrum(el_data.E, element=element),
                 y=el_data.F,
-                errhi=el_data.F_errhi,
-                errlo=el_data.F_errlo,
+                err_stat=el_data.F_err_stat,
+                err_syst=el_data.F_err_syst,
             )
     for exp, all_data in fit_data.all_particle_spectra.items():
         all_data = all_data.with_shifted_energy_scale(f=model.energy_shifts.f(exp))
         res += chi_squared_loglikelihood(
             prediction=model.compute_spectrum(all_data.E, element=None),
             y=all_data.F,
-            errhi=all_data.F_errhi,
-            errlo=all_data.F_errlo,
+            err_stat=all_data.F_err_stat,
+            err_syst=all_data.F_err_syst,
         )
     for exp, lnA_data in fit_data.lnA.items():
         f = model.energy_shifts.f(exp)
@@ -184,8 +189,8 @@ def loglikelihood(
         res += chi_squared_loglikelihood(
             prediction=model.compute_lnA(E_true),
             y=lnA_data.y,
-            errhi=lnA_data.y_errhi,
-            errlo=lnA_data.y_errlo,
+            err_stat=lnA_data.err_stat,
+            err_syst=lnA_data.err_syst,
         )
 
     return res
