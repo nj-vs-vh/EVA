@@ -14,11 +14,13 @@ from cr_knee_fit.cr_model import (
     SharedPowerLawSpectrum,
     SpectralBreakConfig,
     SpectralComponentConfig,
+    SpectralCutoffConfig,
 )
 from cr_knee_fit.elements import Element
 from cr_knee_fit.fit_data import DataConfig
 from cr_knee_fit.guesses import (
     initial_guess_break,
+    initial_guess_cutoff,
     initial_guess_main_population,
 )
 from cr_knee_fit.model_ import Model
@@ -33,19 +35,20 @@ if __name__ == "__main__":
         experiments_elements=list(
             experiments.DIRECT
             + [
-                experiments.grapes,
+                # experiments.grapes,
                 experiments.lhaaso_qgsjet,
             ]
         ),
         experiments_all_particle=[
-            experiments.lhaaso_qgsjet,
-            experiments.hawc,
-            experiments.kascade_re_qgsjet,
+            # experiments.lhaaso_qgsjet,
+            # experiments.hawc,
+            # experiments.kascade_re_qgsjet,
         ],
         experiments_lnA=[
             # experiments.lhaaso_qgsjet,
         ],
-        elements=Element.regular(),
+        # elements=Element.regular(),
+        elements=[Element.H, Element.He],
     )
 
     validation_data_config = DataConfig(
@@ -56,28 +59,28 @@ if __name__ == "__main__":
             # experiments.tale,
         ],
         experiments_lnA=[
-            experiments.lhaaso_qgsjet,
+            # experiments.lhaaso_qgsjet,
             # experiments.kascade_re_qgsjet,
         ],
-        elements=Element.regular(),
+        # elements=Element.regular(),
+        elements=[Element.H, Element.He],
     ).excluding(fit_data_config)
 
     def generate_guess() -> Model:
         pop1_model = initial_guess_main_population(
             pop_config=CosmicRaysModelConfig(
                 components=[
-                    # SpectralComponentConfig([Element.H]),
+                    SpectralComponentConfig([Element.H, Element.He]),
                     # SpectralComponentConfig([Element.He]),
                     # SpectralComponentConfig(Element.nuclei()),
-                    SpectralComponentConfig(Element.regular()),
+                    # SpectralComponentConfig(Element.regular()),
                 ],
                 breaks=[
                     SpectralBreakConfig(
-                        fixed_lg_sharpness=0.7,
-                        quantity="R",
-                        lg_break_prior_limits=(3.0, 5.0),
+                        fixed_lg_sharpness=None,
+                        lg_break_prior_limits=(5.5, 7.0),
                         is_softening=True,
-                        lg_break_hint=4.3,
+                        lg_break_hint=6.3,
                     ),
                 ],
                 rescale_all_particle=False,
@@ -89,28 +92,33 @@ if __name__ == "__main__":
             base_spectra=[
                 SharedPowerLawSpectrum(
                     lgI_per_element={
-                        Element.H: stats.norm.rvs(loc=-5, scale=0.05),
+                        Element.H: stats.norm.rvs(loc=-4, scale=0.05),
                         Element.He: stats.norm.rvs(loc=-6, scale=0.05),
-                        Element.Fe: stats.norm.rvs(loc=-7, scale=0.05),
+                        # Element.Fe: stats.norm.rvs(loc=-7, scale=0.05),
                     },
-                    alpha=stats.norm.rvs(loc=2.4, scale=0.05),
+                    alpha=stats.norm.rvs(loc=1.8, scale=0.05),
                 ),
             ],
             breaks=[
                 initial_guess_break(
                     SpectralBreakConfig(
-                        fixed_lg_sharpness=0.7,
-                        quantity="R",
-                        lg_break_prior_limits=(6, 8),
+                        fixed_lg_sharpness=None,
+                        lg_break_prior_limits=(3, 5),
                         is_softening=True,
-                        lg_break_hint=6.5,
+                        lg_break_hint=4.5,
                     ),
                 )
             ],
+            # cutoff=initial_guess_cutoff(
+            #     SpectralCutoffConfig(
+            #         fixed_lg_sharpness=None,
+            #         lg_cut_prior_limits=(3, 5),
+            #     )
+            # ),
             all_particle_lg_shift=None,
             free_Z=None,
             unresolved_elements_spectrum=None,
-            population_meta=PopulationMetadata(name="Knee", linestyle=":"),
+            population_meta=PopulationMetadata(name="Bump", linestyle=":"),
         )
 
         return Model(

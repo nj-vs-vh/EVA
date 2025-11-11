@@ -99,7 +99,7 @@ def run_local(config: FitConfig, opts: LocalRunOptions) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("run-dir")
+    parser.add_argument("run_dir")
     opts = LocalRunOptions.parse(parser)
 
     run_dir = Path(opts.args_raw.run_dir).absolute()
