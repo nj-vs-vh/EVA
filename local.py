@@ -9,7 +9,7 @@ from bayesian_analysis import FitConfig, run_bayesian_analysis
 OUT_DIR = Path(__file__).parent / "out"
 
 
-PHASE = 4
+PHASE = 5
 
 
 def guess_run_name(filename: str) -> str:
