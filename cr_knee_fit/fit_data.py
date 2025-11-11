@@ -209,8 +209,6 @@ class CRSpectrumData:
 
         if (self.element, self.d.experiment) in {
             (None, experiments.dampe),
-            (Element.C, experiments.dampe),
-            (Element.O, experiments.dampe),
         }:
             prelim_suffix = " (prelim.)"
         else:

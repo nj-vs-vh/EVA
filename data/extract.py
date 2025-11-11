@@ -105,7 +105,9 @@ if __name__ == "__main__":
     datasets = [
         DatasetDef("H", "R", "AMS02", "AMS02 (2011/05-2018/05)", "AMS-02_H_rigidity.txt"),
         DatasetDef("H", "EKN", "CALET", "CALET (2015/10-2021/12)", "CALET_H_kEnergy.txt"),
-        DatasetDef("H", "EK", "DAMPE", "DAMPE (2016/01-2018/06)", "DAMPE_H_kEnergy.txt"),
+        # superceded by arXiv:2511.05409, see transform.py
+        # DatasetDef("H", "EK", "DAMPE", "DAMPE (2016/01-2018/06)", "DAMPE_H_kEnergy.txt"),
+        # DatasetDef("He", "EK", "DAMPE", "DAMPE (2016/01-2020/06)", "DAMPE_He_kEnergy.txt"),
         DatasetDef("H", "EKN", "CREAM", "CREAM-I+III (2004+2007)", "CREAM_H_kEnergy.txt"),
         DatasetDef("H", "EKN", "CREAM", "ISS-CREAM (2017/08-2019/02)", "ISS-CREAM_H_kEnergy.txt"),
         DatasetDef(
@@ -114,7 +116,6 @@ if __name__ == "__main__":
         DatasetDef("H", "R", "PAMELA", "PAMELA (2006/07-2008/12)", "PAMELA_H_rigidity.txt"),
         DatasetDef("He", "R", "AMS02", "AMS02 (2011/05-2018/05)", "AMS-02_He_rigidity.txt"),
         DatasetDef("He", "EK", "CALET", "CALET (2015/10-2022/04)", "CALET_He_kEnergy.txt"),
-        DatasetDef("He", "EK", "DAMPE", "DAMPE (2016/01-2020/06)", "DAMPE_He_kEnergy.txt"),
         DatasetDef(
             "He", "EKN", "CREAM", "CREAM-I+III (2004+2007)", "CREAM_He_kEnergyPerNucleon.txt"
         ),

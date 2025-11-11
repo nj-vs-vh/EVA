@@ -4,7 +4,7 @@ from typing import Any
 import matplotlib.pyplot as plt
 import numpy as np
 
-_ELEMENT_CMAP = plt.colormaps["rainbow_r"]
+_FALLBACK_CMAP = plt.colormaps["rainbow_r"]
 
 
 class Element(enum.IntEnum):
@@ -50,12 +50,21 @@ class Element(enum.IntEnum):
 
     @property
     def color(self) -> Any:
-        if self is Element.FreeZ:
-            return "gray"
+        if color := {
+            Element.H: "#ff0000",
+            Element.He: "#B7C429",
+            Element.C: "#2edaaf",
+            Element.O: "#3a889d",
+            Element.Mg: "#398be9",
+            Element.Si: "#31259f",
+            Element.Fe: "#7f00ff",
+            Element.FreeZ: "gray",
+        }.get(self):
+            return color
         else:
             # idx = sorted(Element.regular()).index(self)
             # return _ELEMENT_CMAP(idx / (len(Element.regular()) - 1))
-            return _ELEMENT_CMAP(self.lnA / self.Fe.lnA)  # type: ignore
+            return _FALLBACK_CMAP(self.lnA / self.Fe.lnA)  # type: ignore
 
 
 element_names = [

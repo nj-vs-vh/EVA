@@ -515,6 +515,34 @@ def transform_DAMPE_C_O_ICRC2025() -> None:
         dump((E, flux, stat_lo, stat_up, syst_lo, syst_up), output)
 
 
+def transform_DAMPE_arXiv_2511_05409() -> None:
+    dir = Path("lake/dampe-arXiv:2511.05409")
+    assert dir.exists(), "DAMPE 2025 dir not found"
+    for element in ("H", "He", "C", "O", "Fe"):
+        input, output = f"DAMPE_2025_{element}_kineticEnergy.txt", f"DAMPE_{element}_energy.txt"
+        data = np.loadtxt(dir / input, unpack=True)
+        dump(data, output)
+
+
+def transform_LHAASO_arXiv_2511_05013() -> None:
+    dir = Path("lake/LHAASO-arXiv:2511.05013")
+    assert dir.exists(), "LHAASO 2025 dir not found"
+    for model in (
+        "EPOS-LHC",
+        "QGSJET-II-04",
+        "SIBYLL-2.3d",
+    ):
+        for element in ("H", "He"):
+            input = f"LHAASO_{model}_{element}_totalEnergy.txt"
+            if model == "SIBYLL-2.3d":
+                model_out = "SIBYLL-23"
+            else:
+                model_out = model
+            output = f"LHAASO_{model_out}_{element}_energy.txt"
+            data = np.loadtxt(dir / input, unpack=True)
+            dump(data, output)
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     logging.info("Backing up old output files")
@@ -527,7 +555,6 @@ if __name__ == "__main__":
 
     transform_AMS02()
     transform_CALET()
-    transform_DAMPE()
     transform_CREAM()
     transform_misc()
     transform_Cagnoli2024()
@@ -537,10 +564,13 @@ if __name__ == "__main__":
     transform_LHAASO()
     transform_GRAPES()
     transform_crdb_generic("NUCLEON_p_He_ratio_rigidity.txt")
-    transform_LHAASO_protons()
     transform_KASCADE_reanalysis()
     transform_HAWC_2025()
     transform_KISS()
-    transform_DAMPE_C_O_ICRC2025()
+    # transform_DAMPE()
+    # transform_LHAASO_protons()
+    # transform_DAMPE_C_O_ICRC2025()
+    transform_DAMPE_arXiv_2511_05409()
+    transform_LHAASO_arXiv_2511_05013()
 
     logging.info("OK")
