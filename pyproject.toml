@@ -2,7 +2,7 @@
 line-length = 100
 indent-width = 4
 target-version = "py312"
-extend-exclude = [".devenv", "venv", "model"]
+extend-exclude = ["venv", "model"]
 
 [tool.ruff.lint]
 extend-select = ["I"]  # check and fix imports

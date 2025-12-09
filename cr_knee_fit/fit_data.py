@@ -339,17 +339,21 @@ class Data:
 
     @classmethod
     def load(cls, config: DataConfig, verbose: bool = False) -> "Data":
-        def log(s: str) -> None:
-            if verbose:
-                print(s)
+        def log_loaded(exp: Experiment, param: str, error: Exception | None = None) -> None:
+            if not verbose:
+                return
+            if error is None:
+                print(f"✅ {exp.name} {param}")
+            else:
+                print(f"❌ {exp.name} {param}: {error}")
 
         allparticle = {}
         for exp in config.experiments_all_particle:
             try:
                 allparticle[exp] = CRSpectrumData.load_all_particle(exp)
-                log(f"Loaded all particle data for {exp}...")
+                log_loaded(exp, "all particle")
             except Exception as e:
-                log(f"Failed to load all particle spectrum data for {exp}: {e}")
+                log_loaded(exp, "all particle", e)
 
         lnA = {}
         for exp in config.experiments_lnA:
@@ -360,9 +364,9 @@ class Data:
                     x_bounds=(0, np.inf),
                     custom_label=LN_A_LABEL,
                 )
-                log(f"Loaded lnA data for {exp}...")
+                log_loaded(exp, "lnA")
             except Exception as e:
-                log(f"Failed to load lnA for {exp}: {e}")
+                log_loaded(exp, "lnA", e)
 
         element_spectra: dict[Experiment, dict[Element, CRSpectrumData]] = {}
         for exp, elements in config.elements_by_exp.items():
@@ -370,9 +374,9 @@ class Data:
             for element in elements:
                 try:
                     exp_data[element] = CRSpectrumData.load(exp, element, config.elements_R_bounds)
-                    log(f"Loaded {element.name} data for {exp}...")
+                    log_loaded(exp, element.name)
                 except Exception as e:
-                    log(f"Failed to load {element.name} spectrum from {exp}: {e}")
+                    log_loaded(exp, element.name, e)
             element_spectra[exp] = exp_data
 
         return Data(

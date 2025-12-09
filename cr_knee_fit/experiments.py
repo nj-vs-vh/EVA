@@ -27,7 +27,7 @@ class Experiment:
 
     def __hash__(self):
         return hash(self.name)
-
+    
     def legend_artist(self, is_fitted: bool = True):
         return lines.Line2D(
             [],  # type: ignore
