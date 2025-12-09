@@ -16,7 +16,7 @@ from cr_knee_fit.fit_data import CRSpectrumData, Data, DataConfig, GenericExperi
 from cr_knee_fit.inference import (
     get_energy_scale_lg_uncertainty,
 )
-from cr_knee_fit.model_ import Model, ModelConfig
+from cr_knee_fit.model import Model, ModelConfig
 from cr_knee_fit.utils import (
     E_GEV_LABEL,
     LN_A_LABEL,

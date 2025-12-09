@@ -12,7 +12,7 @@ from cr_knee_fit.cr_model import (
     UnresolvedElementsSpectrum,
 )
 from cr_knee_fit.elements import Element
-from cr_knee_fit.model_ import Model, ModelConfig
+from cr_knee_fit.model import Model, ModelConfig
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 
 # break_pos_guesses = [4.2, 5.3, 6.5]

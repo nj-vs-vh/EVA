@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
+from model.utils import DATA_DIR
 
 from cr_knee_fit import experiments
 from cr_knee_fit.constants import NON_FITTED_ALPHA
@@ -18,7 +19,6 @@ from cr_knee_fit.utils import (
     label_energy_flux,
     legend_with_added_items,
 )
-from model.utils import DATA_DIR
 
 DEFAULT_MARKER_SIZE = 4.0
 

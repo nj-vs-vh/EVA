@@ -2,7 +2,7 @@
 line-length = 100
 indent-width = 4
 target-version = "py312"
-extend-exclude = ["venv", "model"]
+extend-exclude = ["venv", "misc/model"]
 
 [tool.ruff.lint]
 extend-select = ["I"]  # check and fix imports
@@ -11,6 +11,6 @@ ignore = ["E741"]
 
 [tool.mypy]
 exclude = [
-    "^model",
+    "^misc/model",
     "^data",
 ]

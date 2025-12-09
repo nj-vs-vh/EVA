@@ -3,7 +3,7 @@ from scipy import stats  # type: ignore
 
 from cr_knee_fit import experiments
 from cr_knee_fit.fit_data import Data
-from cr_knee_fit.model_ import Model, ModelConfig
+from cr_knee_fit.model import Model, ModelConfig
 
 energy_scale_uncertainties = {
     # 10.1103/PhysRevLett.113.121101
