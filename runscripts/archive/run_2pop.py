@@ -21,13 +21,13 @@ from cr_knee_fit.guesses import (
     initial_guess_break,
     initial_guess_main_population,
 )
-from cr_knee_fit.local import LocalRunOptions, guess_run_name, run_local
+from cr_knee_fit.local import LocalRunOptions, guess_analysis_name, run_local
 from cr_knee_fit.model import Model
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 
 if __name__ == "__main__":
     opts = LocalRunOptions.parse()
-    analysis_name = guess_run_name(__file__)
+    analysis_name = guess_analysis_name(__file__)
 
     fit_data_config = DataConfig(
         experiments_elements=list(

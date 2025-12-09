@@ -5,14 +5,15 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from cr_knee_fit.analysis import FitConfig, run_bayesian_analysis
+from cr_knee_fit.utils import ROOT_DIR
 
-OUT_DIR = Path(__file__).parent / "out"
+OUT_DIR = ROOT_DIR / "out"
 
 
 PHASE = 5
 
 
-def guess_run_name(filename: str) -> str:
+def guess_analysis_name(filename: str) -> str:
     file_stem = Path(filename).stem
     res = f"phase-{PHASE}/{file_stem.removeprefix('run_')}"
     print(f"Guessed run name: {res} (from {filename})")

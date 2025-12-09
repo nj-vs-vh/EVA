@@ -11,6 +11,54 @@ from matplotlib.lines import Line2D
 
 from cr_knee_fit.elements import Element
 
+ROOT_DIR = (Path(__file__).parent / "..").resolve()
+DATA_DIR = ROOT_DIR / "data/output"
+
+
+def _calculate_errors(
+    err_sta_lo: np.ndarray, err_sta_up: np.ndarray, err_sys_lo: np.ndarray, err_sys_up: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Calculate combined statistical and systematic errors."""
+    err_tot_lo = np.sqrt(err_sta_lo**2 + err_sys_lo**2)
+    err_tot_up = np.sqrt(err_sta_up**2 + err_sys_up**2)
+    return err_tot_lo, err_tot_up
+
+
+def _normalize_data(
+    x: np.ndarray,
+    y: np.ndarray,
+    err_tot_lo: np.ndarray,
+    err_tot_up: np.ndarray,
+    slope: float,
+    norm: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Normalize data values by given slope and normalization factor."""
+    x_norm = x / norm
+    scaling = norm * np.power(x_norm, slope)
+    y_norm = scaling * y
+    y_err_lo_norm = scaling * err_tot_lo
+    y_err_up_norm = scaling * err_tot_up
+    return x_norm, y_norm, y_err_lo_norm, y_err_up_norm
+
+
+def load_data(
+    filename: str, slope: float, norm: float, min_energy: float, max_energy: float = 1e20
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    path = str(DATA_DIR / filename)
+    cols = (0, 1, 2, 3, 4, 5)
+    x, y, err_sta_lo, err_sta_up, err_sys_lo, err_sys_up = np.loadtxt(
+        path, usecols=cols, unpack=True
+    )
+
+    err_tot_lo, err_tot_up = _calculate_errors(err_sta_lo, err_sta_up, err_sys_lo, err_sys_up)
+
+    x_norm, y_norm, y_err_lo_norm, y_err_up_norm = _normalize_data(
+        x, y, err_tot_lo, err_tot_up, slope, norm
+    )
+
+    mask = (x_norm > min_energy) & (x_norm < max_energy)
+    return x_norm[mask], y_norm[mask], y_err_lo_norm[mask], y_err_up_norm[mask]
+
 
 def add_log_margin(min: float, max: float, log_margin: float = 0.05) -> tuple[float, float]:
     if min < 0 or max < 0:

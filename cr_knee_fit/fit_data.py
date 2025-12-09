@@ -7,13 +7,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
-from model.utils import DATA_DIR
 
 from cr_knee_fit import experiments
 from cr_knee_fit.constants import NON_FITTED_ALPHA
 from cr_knee_fit.elements import Element
 from cr_knee_fit.experiments import Experiment
 from cr_knee_fit.utils import (
+    DATA_DIR,
     LN_A_LABEL,
     energy_shift_suffix,
     label_energy_flux,
