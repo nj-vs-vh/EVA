@@ -46,7 +46,7 @@ class GenericExperimentData:
 
     y: np.ndarray
 
-    err_stat: np.ndarray
+    err_stat: np.ndarray  # 2D, size: (npoints, 2); columns are (lower, upper)
     err_syst: np.ndarray
 
     experiment: Experiment
@@ -56,14 +56,37 @@ class GenericExperimentData:
     def __post_init__(self) -> None:
         assert self.x.ndim == 1, "X must be 1-dimensional"
         assert self.y.ndim == 1, "Y must be 1-dimensional"
-        npoints = self.x.size
-        assert self.y.size == npoints, f"Bad Y size: {self.y.size} =/= {npoints}"
-        assert self.err_stat.shape == (npoints, 2), (
-            f"Bad stat error size: {self.err_stat.shape} =/= {(npoints, 2)}"
+        assert self.x.size == self.size()
+        assert self.y.size == self.size(), f"Bad Y size: {self.y.size} =/= {self.size()}"
+        assert self.err_stat.shape == (self.size(), 2), (
+            f"Bad stat error size: {self.err_stat.shape} =/= {(self.size(), 2)}"
         )
-        assert self.err_syst.shape == (npoints, 2), (
-            f"Bad syst error size: {self.err_syst.shape} =/= {(npoints, 2)}"
+        assert self.err_syst.shape == (self.size(), 2), (
+            f"Bad syst error size: {self.err_syst.shape} =/= {(self.size(), 2)}"
         )
+
+    def size(self) -> int:
+        return self.x.size
+
+    def err_cov(self, corr_length: float, log_space_correlation: bool = True):
+        """
+        Covariance matrix of data errors. By default uses an ad hoc assumptions that statistical
+        uncertainties are uncorrelated and systematic ones have correlations ~exp(-delta / corr_len).
+        Delta is calculated in log10 space by default. Effectively, corr len >> x range leads
+        to the global correlation of all systematics, and corr len << x step leads to uncorrelated
+        systematics. Note that asymmetric errors are symmetrized to calculate the covariance matrix.
+        """
+        # seems like it's reasonable to average upper and lower errors NOT in quadratures..?
+        stat_symmetrized = np.sum(self.err_stat, axis=1) / 2
+        stat_cov = np.diag(stat_symmetrized**2)
+
+        x = np.log10(self.x) if log_space_correlation else self.x
+        delta = np.abs(np.subtract.outer(x, x))
+        syst_corr = np.exp(-delta / corr_length)
+        syst_symmetrized = (np.sum(self.err_syst, axis=1) / 2).reshape((-1, 1))
+        syst_cov = (syst_symmetrized @ syst_symmetrized.T) * syst_corr
+
+        return stat_cov + syst_cov
 
     @classmethod
     def load(
@@ -80,6 +103,9 @@ class GenericExperimentData:
             x=x, y=y, err_stat=stat, err_syst=syst, experiment=exp, custom_label=custom_label
         )
 
+    def scale_factor(self, scale: float) -> np.ndarray:
+        return self.x**scale
+
     def plot(
         self,
         ax: Axes | None = None,
@@ -92,7 +118,7 @@ class GenericExperimentData:
     ) -> Axes:
         if ax is None:
             _, ax = plt.subplots()
-        x_factor = self.x**scale
+        x_factor = self.scale_factor(scale=scale)
 
         if label_override is not None:
             label = label_override
@@ -176,14 +202,16 @@ class CRSpectrumData:
         )
 
     @classmethod
-    def load(cls, exp: Experiment, p: Element, R_bounds: tuple[float, float]) -> "CRSpectrumData":
+    def load(
+        cls, exp: Experiment, element: Element, R_bounds: tuple[float, float]
+    ) -> "CRSpectrumData":
         return CRSpectrumData(
             d=GenericExperimentData.load(
                 exp=exp,
-                suffix=f"{p.name}_energy",
-                x_bounds=(R_bounds[0] * p.Z, R_bounds[1] * p.Z),
+                suffix=f"{element.name}_energy",
+                x_bounds=(R_bounds[0] * element.Z, R_bounds[1] * element.Z),
             ),
-            element=p,
+            element=element,
         )
 
     @classmethod

@@ -27,3 +27,4 @@ env.sh
 export/
 data/KISS
 .vscode
+.*_cache
