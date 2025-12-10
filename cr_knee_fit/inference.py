@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 from scipy import stats  # type: ignore
 
@@ -138,23 +140,36 @@ def ensure_model(
     )
 
 
+CHI2_METHOD = os.environ.get("CRKNEE_CHI2_METHOD", "correlated")
+
+
 def chi_squared_loglikelihood(
     prediction: np.ndarray,
     y: np.ndarray,
     err_stat: np.ndarray,
     err_syst: np.ndarray,
+    err_cov_inv: np.ndarray,
 ) -> float:
     residual = prediction - y
-    residual_sq = residual**2
-    err_squared_total = err_stat**2 + err_syst**2  # FIXME: assumes uncorrelated systematics
-    loglike_per_bin = -0.5 * (
-        np.where(
-            residual > 0,
-            residual_sq / err_squared_total[:, 1],
-            residual_sq / err_squared_total[:, 0],
-        )
-    )
-    return float(np.sum(loglike_per_bin))
+    match CHI2_METHOD:
+        case "dimidated":
+            # Chi2 based on dimidated Gaussian, i.e. using upper and lower errors on corresponding sides. Statistical and systematic
+            # uncertainties are assumed to be uncorrelated between bins and are added in quadratures. Further sophistication is
+            # possible e.g. by using asymmetric error summation from Barlow, R. Asymmetric Systematic Errors. arXiv:physics/0306138
+            residual_sq = residual**2
+            err_squared_total = err_stat**2 + err_syst**2
+            loglike_per_bin = -0.5 * (
+                np.where(
+                    residual > 0,
+                    residual_sq / err_squared_total[:, 1],
+                    residual_sq / err_squared_total[:, 0],
+                )
+            )
+            return float(np.sum(loglike_per_bin))
+        case "correlated":
+            # Chi2 accounting for error correlation, see err_cov method. Note that errors are symmetrized in this case.
+            residual_vec = residual.reshape((-1, 1))
+            return float(-0.5 * (residual_vec.T @ err_cov_inv @ residual_vec))
 
 
 def loglikelihood(
@@ -172,6 +187,7 @@ def loglikelihood(
                 y=el_data.F,
                 err_stat=el_data.F_err_stat,
                 err_syst=el_data.F_err_syst,
+                err_cov_inv=el_data.err_cov_inv,
             )
     for exp, all_data in fit_data.all_particle_spectra.items():
         all_data = all_data.with_shifted_energy_scale(f=model.energy_shifts.f(exp))
@@ -180,17 +196,20 @@ def loglikelihood(
             y=all_data.F,
             err_stat=all_data.F_err_stat,
             err_syst=all_data.F_err_syst,
+            err_cov_inv=el_data.err_cov_inv,
         )
     for exp, lnA_data in fit_data.lnA.items():
         f = model.energy_shifts.f(exp)
         E_exp = lnA_data.x
-        # for lnA, energy scale shift does not affect values as they include dE in num. and denom.
+        # for lnA, the energy scale shift does not affect values as it includes dE in both numerator and denominator
         E_true = E_exp * f
         res += chi_squared_loglikelihood(
             prediction=model.compute_lnA(E_true),
             y=lnA_data.y,
             err_stat=lnA_data.err_stat,
             err_syst=lnA_data.err_syst,
+            # TODO: avoid recomputing every time
+            err_cov_inv=np.linalg.inv(lnA_data.err_cov(corr_length=1.0)),
         )
 
     return res

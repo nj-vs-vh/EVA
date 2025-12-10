@@ -1,4 +1,5 @@
 import dataclasses
+import functools
 import itertools
 from dataclasses import dataclass
 from typing import Any, Iterable, Sequence, cast
@@ -40,7 +41,7 @@ def load_data(
     )
 
 
-@dataclass
+@dataclass(frozen=True)
 class GenericExperimentData:
     x: np.ndarray  # 1D
 
@@ -76,7 +77,7 @@ class GenericExperimentData:
         to the global correlation of all systematics, and corr len << x step leads to uncorrelated
         systematics. Note that asymmetric errors are symmetrized to calculate the covariance matrix.
         """
-        # seems like it's reasonable to average upper and lower errors NOT in quadratures..?
+        # it's reasonable to average upper and lower errors as is, not in quadratures!
         stat_symmetrized = np.sum(self.err_stat, axis=1) / 2
         stat_cov = np.diag(stat_symmetrized**2)
 
@@ -158,11 +159,15 @@ class GenericExperimentData:
 SpectrumDataElementSpec = Element | None | tuple[Element, ...]
 
 
-@dataclass
+@dataclass(frozen=True)
 class CRSpectrumData:
     d: GenericExperimentData
     element: SpectrumDataElementSpec
     energy_scale_shift: float = 1.0
+
+    # to avoid recomputing on energy scale shifts
+    precomputed_err_cov: np.ndarray | None = None
+    precomputed_err_cov_inv: np.ndarray | None = None
 
     @property
     def E(self) -> np.ndarray:
@@ -182,6 +187,22 @@ class CRSpectrumData:
     def F_err_syst(self) -> np.ndarray:
         return self.d.err_syst
 
+    @functools.cached_property
+    def err_cov(self) -> np.ndarray:
+        if self.precomputed_err_cov is not None:
+            return self.precomputed_err_cov
+
+        return self.d.err_cov(
+            corr_length=1.0,  # 1 decade, rougly following DAMPE's paper use of 4 nuisance parameter shifts per 4 decades of spectrum
+            log_space_correlation=True,
+        )
+
+    @functools.cached_property
+    def err_cov_inv(self) -> np.ndarray:
+        if self.precomputed_err_cov_inv is not None:
+            return self.precomputed_err_cov_inv
+        return np.linalg.inv(self.err_cov)
+
     def scaled_flux(self, scale: float) -> np.ndarray:
         return self.F * (self.E**scale)
 
@@ -199,6 +220,8 @@ class CRSpectrumData:
             ),
             element=self.element,
             energy_scale_shift=self.energy_scale_shift * f,
+            precomputed_err_cov=self.err_cov / (f**2),
+            precomputed_err_cov_inv=self.err_cov_inv * (f**2),
         )
 
     @classmethod
