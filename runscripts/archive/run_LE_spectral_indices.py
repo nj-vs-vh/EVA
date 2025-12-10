@@ -33,7 +33,7 @@ if __name__ == "__main__":
             experiments_elements=list(experiments.DIRECT + [experiments.grapes]),
             experiments_all_particle=[],
             experiments_lnA=[],
-            elements=Element.regular(),
+            default_elements=Element.regular(),
         )
 
         validation_data_config = DataConfig(
@@ -45,7 +45,7 @@ if __name__ == "__main__":
                 experiments.lhaaso_epos,
             ],
             experiments_lnA=[experiments.lhaaso_epos],
-            elements=Element.regular(),
+            default_elements=Element.regular(),
         ).excluding(fit_data_config)
 
         separate_index_elements = [Element.H, Element.He, Element.Fe][: n_indices - 1]

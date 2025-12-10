@@ -61,7 +61,7 @@ class FitConfig(pydantic.BaseModel):
 
     def __post_init__(self) -> None:
         model_elements = set(self.model.elements(only_fixed_Z=True))
-        data_elements = set(self.fit_data_config.elements)
+        data_elements = set(self.fit_data_config.default_elements)
         unconstrained_elements = model_elements - data_elements
         if unconstrained_elements:
             warn(

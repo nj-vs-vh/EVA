@@ -298,20 +298,20 @@ class CRSpectrumData:
 
 @dataclass
 class DataConfig:
-    experiments_elements: list[Experiment | tuple[Experiment, list[Element]]] = dataclasses.field(
-        default_factory=list
+    experiments_elements: Sequence[Experiment | tuple[Experiment, list[Element]]] = (
+        dataclasses.field(default_factory=list)
     )
     experiments_all_particle: list[Experiment] = dataclasses.field(default_factory=list)
     experiments_lnA: list[Experiment] = dataclasses.field(default_factory=list)
 
-    elements: list[Element] = dataclasses.field(default_factory=Element.regular)
+    default_elements: list[Element] = dataclasses.field(default_factory=Element.regular)
     elements_R_bounds: tuple[float, float] = (5e2, 1e8)
 
     def __post_init__(self) -> None:
         self.elements_by_exp: dict[Experiment, list[Element]] = {}
         for exp_or_pair in self.experiments_elements:
             if isinstance(exp_or_pair, Experiment):
-                self.elements_by_exp[exp_or_pair] = self.elements
+                self.elements_by_exp[exp_or_pair] = self.default_elements
             else:
                 experiment, elements = exp_or_pair
                 self.elements_by_exp[experiment] = elements
@@ -338,7 +338,7 @@ class DataConfig:
                 set(self.experiments_all_particle).difference(other.experiments_all_particle)
             ),
             experiments_lnA=list(set(self.experiments_lnA).difference(other.experiments_lnA)),
-            elements=self.elements.copy(),
+            default_elements=self.default_elements.copy(),
             elements_R_bounds=self.elements_R_bounds,
         )
 

@@ -170,6 +170,8 @@ def chi_squared_loglikelihood(
             # Chi2 accounting for error correlation, see err_cov method. Note that errors are symmetrized in this case.
             residual_vec = residual.reshape((-1, 1))
             return float(-0.5 * (residual_vec.T @ err_cov_inv @ residual_vec))
+        case unexpected:
+            raise RuntimeError(f"Unexpected chi2 method selected via env var: {unexpected}")
 
 
 def loglikelihood(

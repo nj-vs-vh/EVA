@@ -35,7 +35,7 @@ if __name__ == "__main__":
         experiments_lnA=[
             # experiments.lhaaso_qgsjet,
         ],
-        elements=[Element.H, Element.C, Element.O, Element.He],
+        default_elements=[Element.H, Element.C, Element.O, Element.He],
     )
 
     validation_data_config = DataConfig()

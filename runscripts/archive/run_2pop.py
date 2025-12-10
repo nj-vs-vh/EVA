@@ -46,7 +46,7 @@ if __name__ == "__main__":
             # experiments.lhaaso_qgsjet,
         ],
         # elements=Element.regular(),
-        elements=[Element.H, Element.He],
+        default_elements=[Element.H, Element.He],
     )
 
     validation_data_config = DataConfig(
@@ -61,7 +61,7 @@ if __name__ == "__main__":
             # experiments.kascade_re_qgsjet,
         ],
         # elements=Element.regular(),
-        elements=[Element.H, Element.He],
+        default_elements=[Element.H, Element.He],
     ).excluding(fit_data_config)
 
     def generate_guess() -> Model:

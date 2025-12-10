@@ -52,7 +52,7 @@ if __name__ == "__main__":
         experiments_lnA=[
             experiments.lhaaso_qgsjet,
         ],
-        elements=Element.regular(),
+        default_elements=Element.regular(),
     )
 
     validation_data_config = DataConfig(
@@ -66,7 +66,7 @@ if __name__ == "__main__":
             experiments.tale,
         ],
         experiments_lnA=[experiments.lhaaso_qgsjet],
-        elements=Element.regular(),
+        default_elements=Element.regular(),
     ).excluding(fit_data_config)
 
     def generate_guess() -> Model:

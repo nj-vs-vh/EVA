@@ -55,7 +55,7 @@ if __name__ == "__main__":
             experiments.kascade_re_qgsjet,
         ],
         experiments_lnA=[],
-        elements=list(itertools.chain.from_iterable(components)),
+        default_elements=list(itertools.chain.from_iterable(components)),
     )
 
     validation_data_config = DataConfig(
@@ -70,7 +70,7 @@ if __name__ == "__main__":
             experiments.lhaaso_epos,
             experiments.kascade_re_qgsjet,
         ],
-        elements=Element.regular(),
+        default_elements=Element.regular(),
     ).excluding(fit_data_config)
 
     def generate_guess() -> Model:

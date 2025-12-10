@@ -32,14 +32,14 @@ if __name__ == "__main__":
         experiments_elements=[experiments.dampe, experiments.grapes, experiments.lhaaso_qgsjet],
         experiments_all_particle=[],
         experiments_lnA=[],
-        elements=[Element.H],
+        default_elements=[Element.H],
     )
 
     validation_data_config = DataConfig(
         experiments_elements=[],
         experiments_all_particle=[],
         experiments_lnA=[],
-        elements=Element.regular(),
+        default_elements=Element.regular(),
     ).excluding(fit_data_config)
 
     def generate_guess() -> Model:

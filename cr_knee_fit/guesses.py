@@ -12,13 +12,14 @@ from cr_knee_fit.cr_model import (
     UnresolvedElementsSpectrum,
 )
 from cr_knee_fit.elements import Element
+from cr_knee_fit.experiments import Experiment
 from cr_knee_fit.model import Model, ModelConfig
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 
 # break_pos_guesses = [4.2, 5.3, 6.5]
 
 
-def initial_guess_break(bc: SpectralBreakConfig) -> SpectralBreak:
+def initial_guess_break(bc: SpectralBreakConfig, abs_d_alpha_guess: float = 0.5) -> SpectralBreak:
     if bc.fixed_lg_sharpness:
         lg_s = bc.fixed_lg_sharpness
     else:
@@ -32,7 +33,7 @@ def initial_guess_break(bc: SpectralBreakConfig) -> SpectralBreak:
 
     return SpectralBreak(
         lg_break=stats.uniform.rvs(loc=lg_break_mean - lg_break_width / 2, scale=lg_break_width),
-        d_alpha=stats.norm.rvs(loc=0.5 * (1 if bc.is_softening else -1), scale=0.1),
+        d_alpha=stats.norm.rvs(loc=abs_d_alpha_guess * (1 if bc.is_softening else -1), scale=0.1),
         lg_sharpness=lg_s,
         config=bc,
     )
@@ -90,9 +91,11 @@ def initial_guess_main_population(
         ],
         breaks=[initial_guess_break(bc) for bc in pop_config.breaks],
         cutoff=initial_guess_cutoff(pop_config.cutoff) if pop_config.cutoff is not None else None,
-        cutoff_lower=initial_guess_cutoff(pop_config.cutoff_lower)
-        if pop_config.cutoff_lower is not None
-        else None,
+        cutoff_lower=(
+            initial_guess_cutoff(pop_config.cutoff_lower)
+            if pop_config.cutoff_lower is not None
+            else None
+        ),
         all_particle_lg_shift=(
             np.log10(stats.uniform.rvs(loc=1.1, scale=0.9))
             if pop_config.rescale_all_particle
@@ -110,12 +113,20 @@ def initial_guess_main_population(
     )
 
 
+def initial_guess_energy_shifts(
+    experiments: list[Experiment], fixed: Experiment | None = None
+) -> ExperimentEnergyScaleShifts:
+    return ExperimentEnergyScaleShifts(
+        lg_shifts={
+            exp: stats.norm.rvs(loc=0, scale=0.01)
+            for exp in experiments
+            if fixed is None or exp is not fixed
+        }
+    )
+
+
 def initial_guess_one_population_model(config: ModelConfig) -> Model:
     return Model(
-        populations=[
-            initial_guess_main_population(config.population_configs[0]),
-        ],
-        energy_shifts=ExperimentEnergyScaleShifts(
-            lg_shifts={exp: stats.norm.rvs(loc=0, scale=0.01) for exp in config.shifted_experiments}
-        ),
+        populations=[initial_guess_main_population(config.population_configs[0])],
+        energy_shifts=initial_guess_energy_shifts(config.shifted_experiments),
     )
