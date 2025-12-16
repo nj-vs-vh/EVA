@@ -47,6 +47,7 @@ class McmcConfig:
     n_walkers: int
     processes: int
     reuse_saved: bool = True
+    tau_eff_override: float | None = None
 
 
 class FitConfig(pydantic.BaseModel):
@@ -245,6 +246,7 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
 
     sample_path = outdir / "theta.txt"
 
+    # FIXME: use HDF backend in sampler to reuse full sample chain
     if config.mcmc.reuse_saved and sample_path.exists():
         print("Loading saved theta sample")
         theta_sample = np.loadtxt(sample_path)
@@ -281,11 +283,19 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
 
         print("Sampling done")
         print(f"Acceptance fraction: {sampler.acceptance_fraction.mean()}")
-        tau = sampler.get_autocorr_time(quiet=True)
-        print(f"{tau = }")
+        if config.mcmc.tau_eff_override is not None:
+            print(f"Tau overridden: {config.mcmc.tau_eff_override}")
+            tau = []
+            tau_eff = config.mcmc.tau_eff_override
+        else:
+            print("Computing autocorr time...")
+            tau = sampler.get_autocorr_time(quiet=True)
+            print(f"{tau = }")
+            tau_eff = float(np.quantile(tau[np.isfinite(tau)], q=0.95))
 
-        burn_in = 5 * int(tau.max())
-        thin = 2 * int(tau.max())
+        print(f"Effective tau = {tau_eff}...")
+        burn_in = int(5 * tau_eff)
+        thin = int(2 * tau_eff)
 
         print(f"Burn in: {burn_in}; Thinning: {thin}")
 
@@ -307,7 +317,10 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
                     f"Generated on: {datetime.datetime.now()}",
                     sampling_time_msg,
                     f"MCMC config: {config.mcmc}",
-                    f"Estimated autocorrelation lengths: {', '.join(f'{label}: {t}' for label, t in zip(tau_labels, tau))}",
+                    f"Estimated autocorrelation lengths: {', '.join(f'{label}: {t}' for label, t in zip(tau_labels, tau))}"
+                    if tau
+                    else "<overriden>",
+                    f"Effective autocorrelation length: {tau_eff}",
                     f"Burn-in, steps: {burn_in}",
                     f"Thinning, steps: {thin}",
                     f"Sample shape: {theta_sample.shape}",

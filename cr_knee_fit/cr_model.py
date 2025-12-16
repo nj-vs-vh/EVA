@@ -171,6 +171,7 @@ class SpectralBreakConfig:
     lg_break_prior_limits: tuple[float, float] = (-np.inf, np.inf)
     quantity: CharacteristicQuantity = "R"
     lg_break_hint: float | None = None
+    name: str | None = None
 
     def lg_break_initial_guess(self) -> float:
         if (
@@ -200,9 +201,19 @@ class SpectralBreak(Packable[SpectralBreakConfig]):
 
     def labels(self, latex: bool) -> list[str]:
         if latex:
-            labels = [f"\\lg({self.config.quantity}^\\text{{b}})", "\\Delta \\alpha", "\\lg(s)"]
+            name_suffix = f"_\\text{{{self.config.name}}}" if self.config.name is not None else ""
+            labels = [
+                f"\\lg({self.config.quantity}^\\text{{b}}{name_suffix})",
+                f"\\Delta \\alpha{name_suffix}",
+                f"\\lg(s{name_suffix})",
+            ]
         else:
-            labels = [f"lg({self.config.quantity}^b)", "d_alpha", "lg(s)"]
+            name_suffix = f"_{self.config.name}" if self.config.name is not None else ""
+            labels = [
+                f"lg({self.config.quantity}^b{name_suffix})",
+                f"d_alpha{name_suffix}",
+                f"lg(s{name_suffix})",
+            ]
         return labels[: self.ndim()]
 
     def layout_info(self) -> SpectralBreakConfig:
@@ -610,12 +621,15 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         labels: list[str] = []
         for spectrum in self.base_spectra:
             labels.extend(spectrum.labels(latex))
-        for i, b in enumerate(self.breaks):
-            break_idx = i + 1
-            for param_label in b.labels(latex):
-                labels.append(
-                    f"{param_label}_{{{break_idx}}}" if latex else f"{param_label}_{break_idx}"
-                )
+        for break_idx_0, break_ in enumerate(self.breaks):
+            break_idx = break_idx_0 + 1
+            for param_label in break_.labels(latex):
+                if len(self.breaks) > 1:
+                    labels.append(
+                        f"{param_label}_{{{break_idx}}}" if latex else f"{param_label}_{break_idx}"
+                    )
+                else:
+                    labels.append(param_label)
         if self.cutoff is not None:
             labels.extend(self.cutoff.labels(latex))
         if self.cutoff_lower is not None:

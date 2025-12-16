@@ -301,6 +301,7 @@ class DataConfig:
     experiments_elements: Sequence[Experiment | tuple[Experiment, list[Element]]] = (
         dataclasses.field(default_factory=list)
     )
+    # TODO: add other observables, light and ratio
     experiments_all_particle: list[Experiment] = dataclasses.field(default_factory=list)
     experiments_lnA: list[Experiment] = dataclasses.field(default_factory=list)
 
