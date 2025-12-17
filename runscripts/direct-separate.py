@@ -17,16 +17,19 @@ from cr_knee_fit.guesses import (
 )
 from cr_knee_fit.local import LocalRunOptions, guess_analysis_name, run_local
 from cr_knee_fit.model import Model
+from cr_knee_fit.plotting import PosteriorPlotConfig
 
 if __name__ == "__main__":
     opts = LocalRunOptions.parse()
     analysis_name = guess_analysis_name(__file__)
 
+    elements = [Element.H, Element.Fe]
+
     fit_data_config = DataConfig(
         experiments_elements=list(experiments.DIRECT),
         experiments_all_particle=[],
         experiments_lnA=[],
-        default_elements=Element.regular(),
+        default_elements=elements,
     )
 
     validation_data_config = DataConfig(
@@ -39,7 +42,7 @@ if __name__ == "__main__":
             experiments.lhaaso_qgsjet,
         ],
         experiments_lnA=[experiments.lhaaso_qgsjet],
-        default_elements=Element.regular(),
+        default_elements=elements,
     ).excluding(fit_data_config)
 
     def generate_guess() -> Model:
@@ -55,12 +58,13 @@ if __name__ == "__main__":
                             is_softening=True,
                             lg_break_hint=4.0,
                             name=element.name,
+                            max_abs_delta_alpha=10,
                         ),
                     ],
                     rescale_all_particle=False,
                 ),
             )
-            for element in Element.regular()
+            for element in elements
         ]
 
         return Model(
@@ -70,21 +74,27 @@ if __name__ == "__main__":
             ),
         )
 
+    with_contours = PosteriorPlotConfig(best_fit=True, band_cl=None, contours=True)
+
     run_local(
         config=FitConfig.from_guessing_func(
             name=analysis_name,
             fit_data=fit_data_config,
-            mcmc=(
-                McmcConfig(
-                    n_steps=500_000,
-                    n_walkers=64,
-                    processes=8,
-                    reuse_saved=True,
-                )
+            mcmc=McmcConfig(
+                n_steps=100_000,
+                n_walkers=64,
+                processes=8,
+                runtime_thinning=100,
+                reuse_saved=False,
             ),
             generate_guess=generate_guess,
             plots=PlotsConfig(
                 validation_data_config=validation_data_config,
+                # elements=with_contours,
+                # all_particle=with_contours,
+                # all_particle_elements_contribution=with_contours,
+                # lnA=with_contours,
+                # energy_shifts=with_contours,
                 # export_opts=PlotExportOpts(main="composition-only-model.pdf"),
                 # elements=PosteriorPlotConfig(max_margin_around_data=0.2),
                 # all_particle=PosteriorPlotConfig(max_margin_around_data=1.0),

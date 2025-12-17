@@ -12,7 +12,8 @@ num2tex==0.8
 pydantic==2.10.5
 pydantic_numpy==8.0.0
 cmasher==1.9.2
+h5py==3.15.1
 # htcondor>=23
 
 mypy==1.14.1
-# ruff
+ruff==0.14.9

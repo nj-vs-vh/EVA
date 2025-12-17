@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
-from cr_knee_fit.analysis import FitConfig, run_bayesian_analysis
+from cr_knee_fit.analysis import FitConfig, run_analysis
 from cr_knee_fit.utils import ROOT_DIR
 
 OUT_DIR = ROOT_DIR / "out"
@@ -95,7 +95,7 @@ def run_local(config: FitConfig, opts: LocalRunOptions) -> None:
 
     logfile = outdir / "log.txt"
     with logfile.open("w") as log, FileStdoutTee(log, write_to_stdout=(not opts.no_stdout)):  # type: ignore
-        run_bayesian_analysis(config, outdir)
+        run_analysis(config, outdir)
 
 
 if __name__ == "__main__":

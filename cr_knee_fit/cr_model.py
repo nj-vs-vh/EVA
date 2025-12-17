@@ -172,6 +172,7 @@ class SpectralBreakConfig:
     quantity: CharacteristicQuantity = "R"
     lg_break_hint: float | None = None
     name: str | None = None
+    max_abs_delta_alpha: float = np.inf
 
     def lg_break_initial_guess(self) -> float:
         if (
@@ -183,6 +184,13 @@ class SpectralBreakConfig:
             return (self.lg_break_prior_limits[0] + self.lg_break_prior_limits[1]) / 2
         else:
             return 5.0
+
+    @property
+    def delta_alpha_prior_limits(self) -> tuple[float, float]:
+        if self.is_softening:
+            return (0, self.max_abs_delta_alpha)
+        else:
+            return (-self.max_abs_delta_alpha, 0)
 
 
 @dataclass

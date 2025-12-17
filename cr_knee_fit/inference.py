@@ -76,7 +76,8 @@ def logprior(model: Model) -> float:
                 < brk.config.lg_break_prior_limits[1]
             ):
                 return -np.inf
-            if (brk.d_alpha > 0) != brk.config.is_softening:
+            d_alpha_min, d_alpha_max = brk.config.delta_alpha_prior_limits
+            if not (d_alpha_min < brk.d_alpha < d_alpha_max):
                 return -np.inf
             if brk.config.fixed_lg_sharpness is None:
                 s = 10**brk.lg_sharpness
@@ -198,7 +199,7 @@ def loglikelihood(
             y=all_data.F,
             err_stat=all_data.F_err_stat,
             err_syst=all_data.F_err_syst,
-            err_cov_inv=el_data.err_cov_inv,
+            err_cov_inv=all_data.err_cov_inv,
         )
     for exp, lnA_data in fit_data.lnA.items():
         f = model.energy_shifts.f(exp)

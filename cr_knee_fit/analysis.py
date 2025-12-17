@@ -2,8 +2,10 @@ import argparse
 import contextlib
 import dataclasses
 import datetime
+import math
 import multiprocessing
 import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -20,6 +22,7 @@ from scipy import optimize  # type: ignore
 
 from cr_knee_fit.fit_data import Data, DataConfig
 from cr_knee_fit.inference import (
+    CHI2_METHOD,
     loglikelihood,
     logposterior,
     set_global_fit_data,
@@ -46,6 +49,7 @@ class McmcConfig:
     n_steps: int
     n_walkers: int
     processes: int
+    runtime_thinning: int | None = None
     reuse_saved: bool = True
     tau_eff_override: float | None = None
 
@@ -58,6 +62,8 @@ class FitConfig(pydantic.BaseModel):
     plots: PlotsConfig
     initial_guesses: Np2DArrayFp64  # n_sample x n_model_dim
 
+    # skips most analyses, just loading model dumps from disk whenever possible
+    # useful to regenerate plots without rerunning the actual analysis
     reuse_saved_models: bool = False
 
     def __post_init__(self) -> None:
@@ -169,8 +175,123 @@ def run_ml_analysis(
     return map_model, gof
 
 
-def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
+def run_mcmc(
+    config: FitConfig, mcmc_conf: McmcConfig, fit_data: Data, outdir: Path, sample_path: Path
+) -> np.ndarray:
+    ndim = config.generate_initial_guess(fit_data).ndim()
+
+    chain_path = outdir / "chain.h5"
+    if chain_path.exists() and not mcmc_conf.reuse_saved:
+        backup_chain_path = chain_path.with_suffix(f".bck-{datetime.datetime.now().isoformat()}.h5")
+        print(f"Not reusing the existing chain, backing up as {backup_chain_path.name}")
+        shutil.move(chain_path, backup_chain_path)
+
+    backend = emcee.backends.HDFBackend(filename=str(chain_path))
+
+    sampler_pool_ctx = (
+        multiprocessing.Pool(processes=mcmc_conf.processes)
+        if mcmc_conf.processes > 1
+        else contextlib.nullcontext(enter_result=None)
+    )
+    with sampler_pool_ctx as pool:
+        sampler = emcee.EnsembleSampler(
+            nwalkers=mcmc_conf.n_walkers,
+            ndim=ndim,
+            log_prob_fn=logposterior,
+            args=(
+                # on macos passing fit data through a global variable doesn't work
+                # probably because it's using "spawn" multiprocessing method
+                fit_data if sys.platform == "darwin" else None,
+                config.model,
+            ),
+            pool=pool,
+            backend=backend,
+        )
+
+        thin_by = mcmc_conf.runtime_thinning or 1
+
+        try:
+            sampler.get_log_prob()
+            initial_state = None
+            steps_to_run = (
+                mcmc_conf.n_steps - sampler.iteration * thin_by
+            )  # NOTE: this assumes thin_by doesn change across sampling runs, which might not be true
+            print(f"Continuing previously started sampling saved in {backend.filename}")
+        except AttributeError:
+            print("Saved state not found, initializing sampler near ML solution")
+            initial_state = np.array(
+                [config.generate_initial_guess(fit_data).pack() for _ in range(mcmc_conf.n_walkers)]
+            )
+            steps_to_run = mcmc_conf.n_steps
+
+        if steps_to_run <= 0:
+            print(f"Seems like enough samples has been drawn (>={mcmc_conf.n_steps})")
+            sampling_time_msg = "Existing chain reused"
+        else:
+            thinned_steps = int(math.ceil(steps_to_run / thin_by))
+            print(
+                f"Actual sampling steps to run: {steps_to_run}, thinned by {thin_by} = {thinned_steps}"
+            )
+            sampling_start = time.time()
+            sampler.run_mcmc(
+                initial_state,
+                nsteps=thinned_steps,
+                progress=not IS_CLUSTER,
+                thin_by=thin_by,
+            )
+            sampling_time_sec = time.time() - sampling_start
+            sampling_time_msg = f"Sampling done in {sampling_time_sec / 60:.0f} min ~ {sampling_time_sec / 3600:.1f} hrs"
+            print(sampling_time_msg)
+
+        print(f"Acceptance fraction: {sampler.acceptance_fraction.mean()}")
+
+        if mcmc_conf.tau_eff_override is not None:
+            print(f"Tau overridden: {mcmc_conf.tau_eff_override}")
+            tau = None
+            tau_eff = mcmc_conf.tau_eff_override
+        else:
+            print("Computing autocorr time...")
+            tau = sampler.get_autocorr_time(quiet=True)
+            print(f"{tau = }")
+            tau_eff = float(np.quantile(tau[np.isfinite(tau)], q=0.95))
+
+        print(f"Effective tau = {tau_eff}...")
+        burn_in = int(5 * tau_eff)
+        thin = int(2 * tau_eff)
+
+        print(f"Burn in: {burn_in}; Thinning: {thin}")
+
+        theta_sample: np.ndarray = sampler.get_chain(flat=True, discard=burn_in, thin=thin)  # type: ignore
+
+        model_example = Model.unpack(theta_sample[0, :], layout_info=config.model)
+        tau_labels = model_example.labels(latex=False)
+        np.savetxt(
+            sample_path,
+            theta_sample,
+            header="\n".join(
+                [
+                    f"Generated on: {datetime.datetime.now()}",
+                    sampling_time_msg,
+                    f"MCMC config: {mcmc_conf}",
+                    (
+                        f"Estimated autocorrelation lengths: {', '.join(f'{label}: {t}' for label, t in zip(tau_labels, tau))}"
+                        if tau is not None
+                        else "<overriden>"
+                    ),
+                    f"Effective autocorrelation length: {tau_eff}",
+                    f"Burn-in, steps: {burn_in}",
+                    f"Thinning, steps: {thin}",
+                    f"Sample shape: {theta_sample.shape}",
+                ]
+            ),
+        )
+
+    return theta_sample
+
+
+def run_analysis(config: FitConfig, outdir: Path) -> None:
     print(f"Output dir: {outdir}")
+    print(f"chi2 method: {CHI2_METHOD}")
 
     Path(outdir / "config-dump.json").write_text(config.model_dump_json(indent=2))
 
@@ -234,98 +355,29 @@ def run_bayesian_analysis(config: FitConfig, outdir: Path) -> None:
         outdir / "preliminary-mle-result-lnA.png"
     )
 
-    if config.mcmc is None:
-        print("Not running bayesian analysis, mcmc config is None")
-        return
-
     print_delim()
     print("Running bayesian analysis...")
+    if config.mcmc is None:
+        print("Skipping, config is None")
+        return
     print(f"MCMC config: {config.mcmc}")
+
     ndim = config.generate_initial_guess(fit_data).ndim()
     print(f"N dim = {ndim}")
 
     sample_path = outdir / "theta.txt"
-
-    # FIXME: use HDF backend in sampler to reuse full sample chain
-    if config.mcmc.reuse_saved and sample_path.exists():
-        print("Loading saved theta sample")
+    if config.reuse_saved_models and sample_path.exists():
+        print("Loading and reusing saved model sample")
         theta_sample = np.loadtxt(sample_path)
         assert theta_sample.ndim == 2, "Saved theta sample has the wrong number of dimensions"
         assert theta_sample.shape[1] == ndim, "Saved theta sample has wrong dimensions"
     else:
-        print("Sampling theta...")
-        sampling_start = time.time()
-        pool_ctx = (
-            multiprocessing.Pool(processes=config.mcmc.processes)
-            if config.mcmc.processes > 1
-            else contextlib.nullcontext(enter_result=None)
-        )
-        with pool_ctx as pool:
-            sampler = emcee.EnsembleSampler(
-                nwalkers=config.mcmc.n_walkers,
-                ndim=ndim,
-                log_prob_fn=logposterior,
-                args=(
-                    # on macos passing fit data through a global variable doesn't work
-                    # probably because it's using "spawn" multiprocessing method
-                    fit_data if sys.platform == "darwin" else None,
-                    config.model,
-                ),
-                pool=pool,
-            )
-            initial_state = np.array(
-                [
-                    config.generate_initial_guess(fit_data).pack()
-                    for _ in range(config.mcmc.n_walkers)
-                ]
-            )
-            sampler.run_mcmc(initial_state, nsteps=config.mcmc.n_steps, progress=not IS_CLUSTER)
-
-        print("Sampling done")
-        print(f"Acceptance fraction: {sampler.acceptance_fraction.mean()}")
-        if config.mcmc.tau_eff_override is not None:
-            print(f"Tau overridden: {config.mcmc.tau_eff_override}")
-            tau = []
-            tau_eff = config.mcmc.tau_eff_override
-        else:
-            print("Computing autocorr time...")
-            tau = sampler.get_autocorr_time(quiet=True)
-            print(f"{tau = }")
-            tau_eff = float(np.quantile(tau[np.isfinite(tau)], q=0.95))
-
-        print(f"Effective tau = {tau_eff}...")
-        burn_in = int(5 * tau_eff)
-        thin = int(2 * tau_eff)
-
-        print(f"Burn in: {burn_in}; Thinning: {thin}")
-
-        theta_sample: np.ndarray = sampler.get_chain(flat=True, discard=burn_in, thin=thin)  # type: ignore
-
-        sampling_time_sec = time.time() - sampling_start
-        sampling_time_msg = (
-            f"Sampling time: {sampling_time_sec / 60:.0f} min ~ {sampling_time_sec / 3600:.1f} hrs"
-        )
-        print(sampling_time_msg)
-
-        model_example = Model.unpack(theta_sample[0, :], layout_info=config.model)
-        tau_labels = model_example.labels(latex=False)
-        np.savetxt(
-            sample_path,
-            theta_sample,
-            header="\n".join(
-                [
-                    f"Generated on: {datetime.datetime.now()}",
-                    sampling_time_msg,
-                    f"MCMC config: {config.mcmc}",
-                    f"Estimated autocorrelation lengths: {', '.join(f'{label}: {t}' for label, t in zip(tau_labels, tau))}"
-                    if tau
-                    else "<overriden>",
-                    f"Effective autocorrelation length: {tau_eff}",
-                    f"Burn-in, steps: {burn_in}",
-                    f"Thinning, steps: {thin}",
-                    f"Sample shape: {theta_sample.shape}",
-                ]
-            ),
+        theta_sample = run_mcmc(
+            config,
+            config.mcmc,
+            fit_data=fit_data,
+            outdir=outdir,
+            sample_path=sample_path,
         )
 
     print(f"MCMC sample ready, shape: {theta_sample.shape}")
@@ -414,4 +466,4 @@ if __name__ == "__main__":
     print(f"Reading fit config from {config_path}")
 
     fit_config = FitConfig.model_validate_json(config_path.read_text())
-    run_bayesian_analysis(fit_config, outdir=config_path.parent)
+    run_analysis(fit_config, outdir=config_path.parent)
