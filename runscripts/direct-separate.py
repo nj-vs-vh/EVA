@@ -23,7 +23,8 @@ if __name__ == "__main__":
     opts = LocalRunOptions.parse()
     analysis_name = guess_analysis_name(__file__)
 
-    elements = [Element.H, Element.Fe]
+    # elements = [Element.H, Element.Fe]
+    elements = Element.regular()
 
     fit_data_config = DataConfig(
         experiments_elements=list(experiments.DIRECT),
@@ -54,11 +55,11 @@ if __name__ == "__main__":
                         SpectralBreakConfig(
                             fixed_lg_sharpness=0.7,
                             quantity="R",
-                            lg_break_prior_limits=(3.8, 5.0),
+                            lg_break_prior_limits=(3.0, 6.0),
                             is_softening=True,
                             lg_break_hint=4.0,
                             name=element.name,
-                            max_abs_delta_alpha=10,
+                            max_abs_delta_alpha=5,
                         ),
                     ],
                     rescale_all_particle=False,
@@ -81,10 +82,10 @@ if __name__ == "__main__":
             name=analysis_name,
             fit_data=fit_data_config,
             mcmc=McmcConfig(
-                n_steps=100_000,
+                n_steps=1_500_000,
                 n_walkers=64,
-                processes=8,
-                runtime_thinning=100,
+                processes=10,
+                runtime_thinning=1000,
                 reuse_saved=False,
             ),
             generate_guess=generate_guess,
