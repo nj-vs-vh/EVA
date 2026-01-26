@@ -227,7 +227,7 @@ def transform_DAMPE_light():
         f"lake/{file}", usecols=(1, 2, 3, 4, 5, 6), unpack=True
     )
     data = [geom_mean(E_min, E_max), I_E, e_sta, e_sta, e_sys_ana, e_sys_ana]
-    dump(data, "DAMPE_light_energy.txt")
+    dump(data, "DAMPE_H_He_energy.txt")
 
 
 def transform_CREAM_light():
@@ -241,7 +241,7 @@ def transform_CREAM_light():
     e_sta = H[3] + He[3] / 4.0
     e_sys = H[5] + He[5] / 4.0
     data = [geom_mean(E_min, E_max), I_E, e_sta, e_sta, e_sys, e_sys]
-    dump(data, "CREAM_light_energy.txt")
+    dump(data, "CREAM_H_He_energy.txt")
 
 
 def transform_LHAASO():
@@ -543,6 +543,20 @@ def transform_LHAASO_arXiv_2511_05013() -> None:
             dump(data, output)
 
 
+def transform_IceTop_elements() -> None:
+    dir = Path("lake/from-kike")
+    assert dir.exists()
+
+    for input, output in (
+        ("IceTop_proton_data_Sibyll2.1.txt", "ICETOP_SIBYLL_21_H_energy.txt"),
+        ("IceTop_He_data_Sibyll2.1.txt", "ICETOP_SIBYLL_21_He_energy.txt"),
+    ):
+        E, flux, stat_lo, stat_up, syst_lo, syst_up = np.loadtxt(
+            dir / input, usecols=(1, 3, 4, 5, 6, 7), unpack=True
+        )
+        dump((E, flux, stat_lo, stat_up, syst_lo, syst_up), output)
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     logging.info("Backing up old output files")
@@ -572,5 +586,6 @@ if __name__ == "__main__":
     # transform_DAMPE_C_O_ICRC2025()
     transform_DAMPE_arXiv_2511_05409()
     transform_LHAASO_arXiv_2511_05013()
+    transform_IceTop_elements()
 
     logging.info("OK")

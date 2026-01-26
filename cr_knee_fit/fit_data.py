@@ -156,7 +156,9 @@ class GenericExperimentData:
         return ax
 
 
-SpectrumDataElementSpec = Element | None | tuple[Element, ...]
+type AllparticleSpectrum = None
+type ElementSum = tuple[Element, ...]
+type SpectrumDataElementSpec = Element | AllparticleSpectrum | ElementSum
 
 
 @dataclass(frozen=True)
@@ -168,6 +170,9 @@ class CRSpectrumData:
     # to avoid recomputing on energy scale shifts
     precomputed_err_cov: np.ndarray | None = None
     precomputed_err_cov_inv: np.ndarray | None = None
+
+    def __post_init__(self) -> None:
+        assert self.E.size > 0, "Empty spectrum data"
 
     @property
     def E(self) -> np.ndarray:
@@ -206,9 +211,6 @@ class CRSpectrumData:
     def scaled_flux(self, scale: float) -> np.ndarray:
         return self.F * (self.E**scale)
 
-    def __post_init__(self) -> None:
-        assert self.E.size > 0, "Empty spectrum data"
-
     def with_shifted_energy_scale(self, f: float) -> "CRSpectrumData":
         return CRSpectrumData(
             d=GenericExperimentData(
@@ -226,13 +228,25 @@ class CRSpectrumData:
 
     @classmethod
     def load(
-        cls, exp: Experiment, element: Element, R_bounds: tuple[float, float]
+        cls,
+        exp: Experiment,
+        element: Element | ElementSum,
+        R_bounds: tuple[float, float] = (0, np.inf),
     ) -> "CRSpectrumData":
+        match element:
+            case Element() as element:
+                elements_suffix = element.name
+                min_Z = max_Z = element.Z
+            case tuple() as elements:
+                elements_suffix = "_".join(e.name for e in sorted(elements, key=lambda el: el.Z))
+                min_Z = min(e.Z for e in elements)
+                max_Z = max(e.Z for e in elements)
+
         return CRSpectrumData(
             d=GenericExperimentData.load(
                 exp=exp,
-                suffix=f"{element.name}_energy",
-                x_bounds=(R_bounds[0] * element.Z, R_bounds[1] * element.Z),
+                suffix=f"{elements_suffix}_energy",
+                x_bounds=(R_bounds[0] * min_Z, R_bounds[1] * max_Z),
             ),
             element=element,
         )
@@ -250,14 +264,15 @@ class CRSpectrumData:
             element=None,
         )
 
-    def plot_label(self) -> str:
+    def element_label(self) -> str:
         if self.element is None:
-            element_label = "all"
+            return "all"
         elif isinstance(self.element, tuple):
-            element_label = "+".join(p.name for p in self.element)
+            return "+".join(p.name for p in self.element)
         else:
-            element_label = self.element.name
+            return self.element.name
 
+    def plot_label(self) -> str:
         if (self.element, self.d.experiment) in {
             (None, experiments.dampe),
         }:
@@ -265,8 +280,9 @@ class CRSpectrumData:
         else:
             prelim_suffix = ""
 
-        return f"{self.d.experiment.name} {element_label}{prelim_suffix}" + energy_shift_suffix(
-            self.energy_scale_shift
+        return (
+            f"{self.d.experiment.name} {self.element_label()}{prelim_suffix}"
+            + energy_shift_suffix(self.energy_scale_shift)
         )
 
     def plot(
@@ -280,12 +296,7 @@ class CRSpectrumData:
     ) -> Axes:
         axes = self.d.plot(
             ax=ax,
-            color=color
-            or (
-                self.element.color
-                if isinstance(self.element, Element)
-                else ("black" if self.element is None else None)
-            ),
+            color=color or (self.element.color if isinstance(self.element, Element) else "black"),
             scale=scale,
             is_fitted=is_fitted,
             marker_size=marker_size,
@@ -294,6 +305,9 @@ class CRSpectrumData:
         )
         label_energy_flux(axes, scale)
         return axes
+
+
+type AuxDataSpec = ElementSum
 
 
 @dataclass
@@ -307,6 +321,8 @@ class DataConfig:
 
     default_elements: list[Element] = dataclasses.field(default_factory=Element.regular)
     elements_R_bounds: tuple[float, float] = (5e2, 1e8)
+
+    aux_data: Sequence[tuple[Experiment, AuxDataSpec]] = dataclasses.field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.elements_by_exp: dict[Experiment, list[Element]] = {}
@@ -341,6 +357,7 @@ class DataConfig:
             experiments_lnA=list(set(self.experiments_lnA).difference(other.experiments_lnA)),
             default_elements=self.default_elements.copy(),
             elements_R_bounds=self.elements_R_bounds,
+            aux_data=list(set(self.aux_data).difference(other.aux_data)),
         )
 
 
@@ -351,6 +368,7 @@ class Data:
     element_spectra: dict[Experiment, dict[Element, CRSpectrumData]]
     all_particle_spectra: dict[Experiment, CRSpectrumData]
     lnA: dict[Experiment, GenericExperimentData]
+    aux_data: list[CRSpectrumData]
 
     config: DataConfig
 
@@ -386,6 +404,7 @@ class Data:
             element_spectra={},
             all_particle_spectra={},
             lnA={},
+            aux_data=[],
             config=DataConfig(),
         )
 
@@ -431,11 +450,20 @@ class Data:
                     log_loaded(exp, element.name, e)
             element_spectra[exp] = exp_data
 
+        aux_data: list[CRSpectrumData] = []
+        for exp, aux_data_spec in config.aux_data:
+            match aux_data_spec:
+                case tuple() as elements_:
+                    aux_data.append(CRSpectrumData.load(exp, elements_))
+                case spec:
+                    raise RuntimeError(f"Unexpected aux data spec: {spec}")
+
         return Data(
             element_spectra=element_spectra,
             all_particle_spectra=allparticle,
             lnA=lnA,
             config=config,
+            aux_data=aux_data,
         )
 
     def plot_spectra(

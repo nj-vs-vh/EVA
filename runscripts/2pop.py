@@ -14,11 +14,12 @@ from cr_knee_fit.cr_model import (
     SharedPowerLawSpectrum,
     SpectralBreakConfig,
     SpectralComponentConfig,
+    SpectralCutoffConfig,
 )
 from cr_knee_fit.elements import Element
 from cr_knee_fit.fit_data import DataConfig
 from cr_knee_fit.guesses import (
-    initial_guess_break,
+    initial_guess_cutoff,
     initial_guess_main_population,
 )
 from cr_knee_fit.local import LocalRunOptions, guess_analysis_name, run_local
@@ -33,8 +34,8 @@ if __name__ == "__main__":
         experiments_elements=list(
             experiments.DIRECT
             + [
-                # experiments.grapes,
                 experiments.lhaaso_qgsjet,
+                experiments.ice_top_sibyll,
             ]
         ),
         experiments_all_particle=[
@@ -62,6 +63,11 @@ if __name__ == "__main__":
         ],
         # elements=Element.regular(),
         default_elements=[Element.H, Element.He],
+        aux_data=[
+            (experiments.dampe, (Element.H, Element.He)),
+            (experiments.cream, (Element.H, Element.He)),
+            (experiments.lhaaso_sibyll, (Element.H, Element.He)),
+        ],
     ).excluding(fit_data_config)
 
     def generate_guess() -> Model:
@@ -76,7 +82,7 @@ if __name__ == "__main__":
                 breaks=[
                     SpectralBreakConfig(
                         fixed_lg_sharpness=None,
-                        lg_break_prior_limits=(5.5, 7.0),
+                        lg_break_prior_limits=(5.5, 8.0),
                         is_softening=True,
                         lg_break_hint=6.3,
                     ),
@@ -90,29 +96,31 @@ if __name__ == "__main__":
             base_spectra=[
                 SharedPowerLawSpectrum(
                     lgI_per_element={
-                        Element.H: stats.norm.rvs(loc=-4, scale=0.05),
-                        Element.He: stats.norm.rvs(loc=-6, scale=0.05),
+                        Element.H: stats.norm.rvs(loc=-5, scale=0.05),
+                        Element.He: stats.norm.rvs(loc=-5, scale=0.05),
                         # Element.Fe: stats.norm.rvs(loc=-7, scale=0.05),
                     },
-                    alpha=stats.norm.rvs(loc=1.8, scale=0.05),
+                    alpha=stats.norm.rvs(loc=1.5, scale=0.05),
                 ),
             ],
-            breaks=[
-                initial_guess_break(
-                    SpectralBreakConfig(
-                        fixed_lg_sharpness=None,
-                        lg_break_prior_limits=(3, 5),
-                        is_softening=True,
-                        lg_break_hint=4.5,
-                    ),
-                )
-            ],
-            # cutoff=initial_guess_cutoff(
-            #     SpectralCutoffConfig(
-            #         fixed_lg_sharpness=None,
-            #         lg_cut_prior_limits=(3, 5),
+            # breaks=[
+            #     initial_guess_break(
+            #         SpectralBreakConfig(
+            #             fixed_lg_sharpness=None,
+            #             lg_break_prior_limits=(3, 5),
+            #             is_softening=True,
+            #             lg_break_hint=4.5,
+            #         ),
             #     )
-            # ),
+            # ],
+            breaks=[],
+            cutoff=initial_guess_cutoff(
+                SpectralCutoffConfig(
+                    fixed_lg_sharpness=None,
+                    lg_cut_prior_limits=(3, 6),
+                    lg_cut_hint=4.0,
+                )
+            ),
             all_particle_lg_shift=None,
             free_Z=None,
             unresolved_elements_spectrum=None,

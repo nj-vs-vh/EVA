@@ -75,6 +75,12 @@ class FitConfig(pydantic.BaseModel):
                 f"Some elements in the model are not contstrained by data: {sorted(unconstrained_elements)}"
             )
 
+        if self.fit_data_config.aux_data:
+            warn(
+                "Aux data are ignored in fit data; use validation data "
+                + f"for posterior plotting: {self.fit_data_config.aux_data}"
+            )
+
     @classmethod
     def from_guessing_func(
         cls,
@@ -167,8 +173,8 @@ def run_ml_analysis(
         loglike_at_map=loglikelihood(map_model, fit_data, model_config),
         ndim=map_model.ndim(),
         # we're actually maximizing posterior not likelihood, so this is not strictly AIC
-        # but as mentioned above, this shouldn't matter too much dues to our choice of mostly
-        # trivial priors
+        # but as mentioned above, this shouldn't matter too much due to our choice of mostly
+        # trivial flat priors
         aic=2 * initial_model.ndim() - 2 * max_logpost,
     )
     print(f"Goodness of fit: {gof}")
@@ -351,6 +357,10 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
     mle_model.plot_spectra(fit_data, scale=scale, validation_data=validation_data).savefig(
         outdir / "preliminary-mle-result.png"
     )
+    if validation_data.aux_data:
+        mle_model.plot_aux_data(spectra_scale=scale, validation_data=validation_data).savefig(
+            outdir / "preliminary-mle-aux-data.png"
+        )
     mle_model.plot_lnA(fit_data, validation_data=validation_data).savefig(
         outdir / "preliminary-mle-result-lnA.png"
     )

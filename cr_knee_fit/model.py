@@ -22,7 +22,7 @@ from cr_knee_fit.elements import (
     unresolved_element_names,
 )
 from cr_knee_fit.experiments import Experiment
-from cr_knee_fit.fit_data import Data
+from cr_knee_fit.fit_data import CRSpectrumData, Data
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 from cr_knee_fit.types_ import Packable
 from cr_knee_fit.utils import (
@@ -278,6 +278,62 @@ class Model(Packable[ModelConfig]):
         ax.set_ylabel(LN_A_LABEL)
         legend_with_added_items(ax, legend_items, fontsize="x-small")
         add_elements_lnA_secondary_axis(ax)
+        return fig
+
+    def plot_aux_data(
+        self,
+        spectra_scale: float,
+        validation_data: Data,
+    ) -> Figure:
+        aux_spectra = [d for d in validation_data.aux_data if isinstance(d, CRSpectrumData)]
+        aux_spectra.sort(key=CRSpectrumData.element_label)
+        grouped_spectra = list(
+            (label, list(spectra))
+            for label, spectra in itertools.groupby(aux_spectra, key=CRSpectrumData.element_label)
+        )
+
+        fig, ax_or_axes = plt.subplots(
+            nrows=len(grouped_spectra), figsize=(10, 6 * len(grouped_spectra))
+        )
+        axes = [ax_or_axes] if isinstance(ax_or_axes, Axes) else ax_or_axes
+
+        for ax, (label, spectra) in zip(axes, grouped_spectra):
+            all_energies: list[float] = []
+            legend_items = []
+            for spectrum in spectra:
+                exp = spectrum.d.experiment
+                f_exp = self.energy_shifts.f(exp)
+                spectrum.with_shifted_energy_scale(f=f_exp).plot(
+                    ax=ax, scale=spectra_scale, add_legend_label=False
+                )
+                legend_items.append(
+                    (exp.legend_artist(is_fitted=False), exp.name + energy_shift_suffix(f_exp))
+                )
+                all_energies.extend(spectrum.E)
+
+            if not all_energies:
+                continue
+            ax.set_xscale("log")
+            ax.set_yscale("log")
+            ylim = ax.get_ylim()  # respecting ylim set by data
+
+            E_min = np.min(all_energies)
+            E_max = np.max(all_energies)
+            E_grid = np.geomspace(E_min, E_max, 100)
+            match spectra[0].element:
+                case Element() | None as el:
+                    y = self.compute_spectrum(E_grid, el)
+                case tuple() as elements:
+                    y = sum(
+                        [self.compute_spectrum(E_grid, el) for el in elements],
+                        start=np.zeros_like(E_grid),
+                    )
+            ax.plot(E_grid, E_grid**spectra_scale * y, color="tab:blue")
+            ax.set_ylim(*ylim)
+
+            ax.set_title(label)
+            legend_with_added_items(ax, legend_items, fontsize="x-small")
+
         return fig
 
     def compute_spectrum(self, E: np.ndarray, element: Element | None) -> np.ndarray:
