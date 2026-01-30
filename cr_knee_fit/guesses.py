@@ -120,7 +120,7 @@ def initial_guess_energy_shifts(
         lg_shifts={
             exp: stats.norm.rvs(loc=0, scale=0.01)
             for exp in experiments
-            if fixed is None or exp is not fixed
+            if fixed is None or exp != fixed
         }
     )
 

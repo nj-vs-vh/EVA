@@ -52,7 +52,7 @@ class Element(enum.IntEnum):
     def color(self) -> Any:
         if color := {
             Element.H: "#ff0000",
-            Element.He: "#B7C429",
+            Element.He: "#8F9827",
             Element.C: "#2edaaf",
             Element.O: "#3a889d",
             Element.Mg: "#398be9",
