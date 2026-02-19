@@ -28,11 +28,17 @@ if __name__ == "__main__":
     opts = LocalRunOptions.parse()
     analysis_name = guess_analysis_name(__file__)
 
-    elements = [Element.H]
+    elements = [Element.H, Element.He]
 
     fit_data_config = DataConfig(
         experiments_elements=list(
-            experiments.DIRECT
+            [
+                experiments.ams02,
+                experiments.calet,
+                experiments.dampe,
+                # experiments.cream,
+                # experiments.iss_cream,
+            ]
             + [
                 experiments.lhaaso_qgsjet,
                 experiments.ice_top_sibyll,
@@ -68,7 +74,7 @@ if __name__ == "__main__":
                 SharedPowerLawSpectrum(
                     lgI_per_element={
                         Element.H: stats.norm.rvs(loc=-4.2, scale=0.05),
-                        # Element.He: stats.norm.rvs(loc=-4.2, scale=0.05),
+                        Element.He: stats.norm.rvs(loc=-4.2, scale=0.05),
                     },
                     alpha=stats.norm.rvs(loc=2.7, scale=0.05),
                 ),
@@ -77,14 +83,16 @@ if __name__ == "__main__":
                 initial_guess_break(
                     SpectralBreakConfig(
                         is_softening=True,
-                        fixed_lg_sharpness=0.7,
+                        fixed_lg_sharpness=None,
                         lg_break_hint=4.0,
                         lg_break_prior_limits=(3.0, 5.5),
                     ),
                     abs_d_alpha_guess=1.7,
                 )
             ],
-            population_meta=PopulationMetadata(name="LE", linestyle=":"),
+            population_meta=PopulationMetadata(
+                name="LE", linestyle=":", is_apriori_energy_dominant=True
+            ),
         )
 
         he_model = CosmicRaysModel(
@@ -92,7 +100,7 @@ if __name__ == "__main__":
                 SharedPowerLawSpectrum(
                     lgI_per_element={
                         Element.H: stats.norm.rvs(loc=-4.7, scale=0.05),
-                        # Element.He: stats.norm.rvs(loc=-4.7, scale=0.05),
+                        Element.He: stats.norm.rvs(loc=-4.7, scale=0.05),
                     },
                     alpha=stats.norm.rvs(loc=2.49, scale=0.05),
                 ),
@@ -101,15 +109,17 @@ if __name__ == "__main__":
                 initial_guess_break(
                     SpectralBreakConfig(
                         is_softening=True,
-                        fixed_lg_sharpness=0.7,
+                        fixed_lg_sharpness=None,
                         lg_break_hint=6.5,
                         lg_break_prior_limits=(5.5, 7.5),
                     ),
                     abs_d_alpha_guess=1.22,
                 )
             ],
-            cutoff_lower=initial_guess_cutoff(SpectralCutoffConfig(lg_cut_hint=5.0)),
-            population_meta=PopulationMetadata(name="HE", linestyle="--"),
+            cutoff_lower=initial_guess_cutoff(SpectralCutoffConfig(lg_cut_hint=0.7)),
+            population_meta=PopulationMetadata(
+                name="HE", linestyle="--", is_apriori_energy_dominant=False
+            ),
         )
 
         return Model(

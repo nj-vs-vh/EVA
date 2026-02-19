@@ -1,3 +1,4 @@
+import itertools
 import os
 
 import numpy as np
@@ -124,7 +125,27 @@ def logprior(model: Model) -> float:
             if not (1 <= population.free_Z <= 26.5):
                 return -np.inf
 
-    # experimental energy shifts' prior
+    # sigmoid prior on ratio of populations' energy densities
+    # TODO: tunable params
+    Emin = 1.0
+    Emax = 1e8
+    npoints = 200
+    energy_dominant_pop_densities = [
+        pop._compute_energy_density_simpson(Emin=Emin, Emax=Emax, npoints=npoints)
+        for pop in model.populations
+        if pop.population_meta and pop.population_meta.is_apriori_energy_dominant is True
+    ]
+    energy_inferior_pop_densities = [
+        pop._compute_energy_density_simpson(Emin=Emin, Emax=Emax, npoints=npoints)
+        for pop in model.populations
+        if pop.population_meta and pop.population_meta.is_apriori_energy_dominant is False
+    ]
+    for dom, inf in itertools.product(energy_dominant_pop_densities, energy_inferior_pop_densities):
+        ratio = dom / inf
+        print(dom, inf, ratio)
+        res += -np.log(1 + ratio**-1)  # "smooth step" preferring dom >> inf
+
+    # Gaussian priors on experimental energy scale shifts
     for exp, lg_shift in model.energy_shifts.lg_shifts.items():
         lg_sigma = model.energy_scale_lg_uncertainty_override.get(
             exp
@@ -134,15 +155,11 @@ def logprior(model: Model) -> float:
     return res  # type: ignore
 
 
-def ensure_model(
-    model_or_theta: Model | np.ndarray,
-    config: ModelConfig,
-) -> Model:
-    return (
-        model_or_theta
-        if isinstance(model_or_theta, Model)
-        else Model.unpack(model_or_theta, layout_info=config)
-    )
+def ensure_model(model_or_theta: Model | np.ndarray, config: ModelConfig) -> Model:
+    if isinstance(model_or_theta, Model):
+        return model_or_theta
+    else:
+        return Model.unpack(model_or_theta, layout_info=config)
 
 
 CHI2_METHOD = os.environ.get("CRKNEE_CHI2_METHOD", "correlated")
@@ -215,8 +232,7 @@ def loglikelihood(
             y=lnA_data.y,
             err_stat=lnA_data.err_stat,
             err_syst=lnA_data.err_syst,
-            # TODO: avoid recomputing every time
-            err_cov_inv=np.linalg.inv(lnA_data.err_cov(corr_length=1.0)),
+            err_cov_inv=lnA_data.log_space_err_cov_inv(corr_length=1.0),
         )
 
     return res

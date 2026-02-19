@@ -1,11 +1,13 @@
 import itertools
 from dataclasses import dataclass
-from typing import Literal, Sequence
+from typing import Literal, Sequence, TypeVar
 
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy.integrate  # type: ignore
 from matplotlib.axes import Axes
 from num2tex import num2tex  # type: ignore
+from numpy.typing import NDArray
 
 from cr_knee_fit.elements import (
     Element,
@@ -149,16 +151,31 @@ def quantity_unit(q: CharacteristicQuantity) -> str:
     return "GV" if q == "R" else "GeV"
 
 
+_ArrayOrFloat = TypeVar("_ArrayOrFloat", bound=NDArray[np.floating] | float)
+
+
 def R_to_quantity(
-    R: np.ndarray, Z: float, A: float, quantity: CharacteristicQuantity
-) -> np.ndarray:
+    R: _ArrayOrFloat, Z: float, A: float, quantity: CharacteristicQuantity
+) -> _ArrayOrFloat:
     match quantity:
         case "R":
             return R
         case "E":
-            return R * float(Z)
+            return R * float(Z)  # type: ignore
         case "E_n":
-            return R * (Z / A)
+            return R * (Z / A)  # type: ignore
+
+
+def quantity_to_E(
+    q: _ArrayOrFloat, Z: float, A: float, quantity: CharacteristicQuantity
+) -> _ArrayOrFloat:
+    match quantity:
+        case "E":
+            return q
+        case "R":
+            return q * Z  # type: ignore
+        case "E_n":
+            return q * A  # type: ignore
 
 
 # region: breaks
@@ -350,6 +367,8 @@ class PopulationMetadata:
     name: str
     linestyle: str | None
 
+    is_apriori_energy_dominant: bool | None = None
+
 
 @dataclass
 class CosmicRaysModelConfig:
@@ -448,7 +467,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             raise RuntimeError(f"Element {element} matches more than one component: {matches}")
         return matches[0]
 
-    def compute_rigidity(self, R: np.ndarray, element: Element | str) -> np.ndarray:
+    def compute_rigidity_spectrum(self, R: np.ndarray, element: Element | str) -> np.ndarray:
         if isinstance(element, str):  # unresolved element
             if self.unresolved_elements_spectrum is not None:
                 flux = self.unresolved_elements_spectrum.compute(R, element_name=element)
@@ -494,7 +513,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         else:
             return element.name
 
-    def compute(
+    def compute_spectrum(
         self,
         E: np.ndarray,
         element: Element | str,
@@ -502,7 +521,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
     ) -> np.ndarray:
         Z = self.element_Z(element)
         R = E / Z
-        dNdR = self.compute_rigidity(R, element=element)
+        dNdR = self.compute_rigidity_spectrum(R, element=element)
         dNdE = dNdR / Z
         if contrib_to_all_particle and isinstance(element, Element):
             component = self._get_component(element)
@@ -512,21 +531,47 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
 
     def compute_lnA(self, E: np.ndarray) -> np.ndarray:
         elements = self.all_elements
-        spectra = np.vstack([self.compute(E, el, contrib_to_all_particle=True) for el in elements])
+        spectra = np.vstack(
+            [self.compute_spectrum(E, el, contrib_to_all_particle=True) for el in elements]
+        )
         lnA = np.array([np.log(isotope_average_A(round(self.element_Z(el)))) for el in elements])
         return np.sum(spectra * np.expand_dims(lnA, axis=1), axis=0) / np.sum(spectra, axis=0)
 
-    def compute_all_particle(self, E: np.ndarray) -> np.ndarray:
+    def compute_all_particle_spectrum(self, E: np.ndarray) -> np.ndarray:
         flux = np.zeros_like(E)
         for element in self.all_elements:
-            flux += self.compute(E, element=element, contrib_to_all_particle=True)
+            flux += self.compute_spectrum(E, element=element, contrib_to_all_particle=True)
         if self.all_particle_lg_shift is not None:
             flux *= 10**self.all_particle_lg_shift
         return flux
 
+    def _compute_energy_density_quad(self, Emin: float, Emax: float) -> float:
+        def func(E):
+            return E * self.compute_all_particle_spectrum(np.array([E]))[0]
+
+        return scipy.integrate.quad(func=func, a=Emin, b=Emax)[0]
+
+    def _compute_energy_density_simpson(self, Emin: float, Emax: float, npoints: int) -> float:
+        E_grid = np.geomspace(Emin, Emax, npoints)
+        integrand = E_grid * self.compute_all_particle_spectrum(E_grid)
+        return float(scipy.integrate.simpson(y=integrand, x=E_grid))
+
+    # def compute_energy_density(self, Emin: float = 1.0, Emax: float = 1e7) -> float:
+    #     elements = [el for el in self.all_elements if isinstance(el, Element)]
+    #     min_Z = min(el.Z for el in elements)
+    #     min_A = min(el.Z for el in elements)
+    #     if self.cutoff_lower is not None:
+
+    #     E_below_break = [
+    #         quantity_to_E(
+    #             b.lg_break - 3 * b.lg_sharpness, Z=min_Z, A=min_A, quantity=b.config.quantity
+    #         )
+    #         for b in self.breaks
+    #     ]
+
     def compute_abundances(self, R: float) -> dict[Element | str, float]:
         return {
-            element: float(self.compute_rigidity(np.array([R]), element=element)[0])
+            element: float(self.compute_rigidity_spectrum(np.array([R]), element=element)[0])
             for element in self.all_elements
         }
 
@@ -538,8 +583,8 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             return self.population_meta.linestyle
 
     def compute_extra_all_particle_contribution(self, E: np.ndarray) -> np.ndarray:
-        return self.compute_all_particle(E) - sum(
-            (self.compute(E, element=element) for element in self.all_elements),
+        return self.compute_all_particle_spectrum(E) - sum(
+            (self.compute_spectrum(E, element=element) for element in self.all_elements),
             np.zeros_like(E),
         )
 
@@ -571,7 +616,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         for element in elements or self.resolved_elements:
             ax.plot(
                 E_grid,
-                E_factor * self.compute(E_grid, element),
+                E_factor * self.compute_spectrum(E_grid, element),
                 label=with_prefix(self.element_name(element), preserve_capitalization=True),
                 color=element.color,
                 linestyle=self.linestyle,
@@ -584,7 +629,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
                     E_factor
                     * sum(
                         (
-                            self.compute(E_grid, element=unres_el)
+                            self.compute_spectrum(E_grid, element=unres_el)
                             for unres_el in unresolved_element_names
                         ),
                         start=np.zeros_like(E_grid),
@@ -608,7 +653,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         if all_particle or has_extra_allparticle_contrib:
             ax.plot(
                 E_grid,
-                E_factor * self.compute_all_particle(E_grid),
+                E_factor * self.compute_all_particle_spectrum(E_grid),
                 label=with_prefix("All particle"),
                 color="black",
                 linestyle=self.linestyle,

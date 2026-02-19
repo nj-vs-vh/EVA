@@ -337,7 +337,7 @@ def plot_everything(
                     continue
                 ax_el.plot(
                     E_grid,
-                    E_factor * pop.compute(E_grid, element=element),
+                    E_factor * pop.compute_spectrum(E_grid, element=element),
                     color=element.color,
                     linewidth=POP_CONTRIB_LINEWIDTH,
                     linestyle=pop.linestyle,
@@ -414,7 +414,7 @@ def plot_everything(
                     (
                         sum(
                             (
-                                pop.compute(E, element=element)
+                                pop.compute_spectrum(E, element=element)
                                 for element in unresolved_element_names
                             ),
                             np.zeros_like(E),
@@ -438,7 +438,7 @@ def plot_everything(
             for pop in best_fit_model.populations:
                 ax_all.plot(
                     E_grid,
-                    E_factor * pop.compute_all_particle(E_grid),
+                    E_factor * pop.compute_all_particle_spectrum(E_grid),
                     color=ALL_PARTICLE_COLOR,
                     linewidth=POP_CONTRIB_LINEWIDTH,
                     linestyle=pop.linestyle,
