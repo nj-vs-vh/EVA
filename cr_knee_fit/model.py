@@ -340,9 +340,9 @@ class Model(Packable[ModelConfig]):
         return sum(
             (
                 (
-                    pop.compute(E, element=element, contrib_to_all_particle=False)
+                    pop.compute_spectrum(E, element=element, contrib_to_all_particle=False)
                     if element is not None
-                    else pop.compute_all_particle(E)
+                    else pop.compute_all_particle_spectrum(E)
                 )
                 for pop in self.populations
             ),
@@ -358,7 +358,7 @@ class Model(Packable[ModelConfig]):
         for pop in self.populations:
             if Element.FreeZ not in pop.layout_info().resolved_elements:
                 continue
-            spectra.append(pop.compute(E, element=Element.FreeZ))
+            spectra.append(pop.compute_spectrum(E, element=Element.FreeZ))
             lnA.append(np.log(isotope_average_A(round(pop.element_Z(Element.FreeZ)))))
 
         spectra_arr = np.vstack(spectra)

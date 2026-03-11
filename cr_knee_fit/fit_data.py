@@ -89,6 +89,10 @@ class GenericExperimentData:
 
         return stat_cov + syst_cov
 
+    @functools.cache
+    def log_space_err_cov_inv(self, corr_length: float) -> np.ndarray:
+        return np.linalg.inv(self.err_cov(corr_length=corr_length, log_space_correlation=True))
+
     @classmethod
     def load(
         cls,
