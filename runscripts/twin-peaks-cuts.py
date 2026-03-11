@@ -11,13 +11,11 @@ from cr_knee_fit.cr_model import (
     CosmicRaysModel,
     PopulationMetadata,
     SharedPowerLawSpectrum,
-    SpectralBreakConfig,
     SpectralCutoffConfig,
 )
 from cr_knee_fit.elements import Element
 from cr_knee_fit.fit_data import DataConfig
 from cr_knee_fit.guesses import (
-    initial_guess_break,
     initial_guess_cutoff,
     initial_guess_energy_shifts,
 )
