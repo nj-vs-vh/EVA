@@ -37,12 +37,9 @@ energy_scale_uncertainties = {
     # > The uncertainty of 30% is statistics dominant in the measurement of the shift.
     # however, we tentatively set the uncertainty to ~10 to roughly match other indirect experiments
     # TEMP
-    experiments.lhaaso_epos: 1.0,
-    experiments.lhaaso_qgsjet: 1.0,
-    experiments.lhaaso_sibyll: 1.0,
-    # experiments.lhaaso_epos: 10.0,
-    # experiments.lhaaso_qgsjet: 10.0,
-    # experiments.lhaaso_sibyll: 10.0,
+    experiments.lhaaso_epos: 10.0,
+    experiments.lhaaso_qgsjet: 10.0,
+    experiments.lhaaso_sibyll: 10.0,
 }
 
 default_energy_scale_uncertainty = 10.0

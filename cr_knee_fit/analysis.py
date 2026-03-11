@@ -318,7 +318,7 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
         else Data.empty()
     )
 
-    scale = 2.8 if fit_data.E_max() > 2e6 else 2.6
+    scale = 2.75 if fit_data.E_max() > 2e6 else 2.6
     fit_data.plot(scale=scale, describe=True).savefig(outdir / "data.png")
     validation_data.plot(scale=scale, describe=True).savefig(outdir / "data-validation.png")
 

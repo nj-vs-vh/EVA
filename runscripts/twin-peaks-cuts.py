@@ -12,11 +12,13 @@ from cr_knee_fit.cr_model import (
     PopulationMetadata,
     SharedPowerLawSpectrum,
     SpectralBreakConfig,
+    SpectralCutoffConfig,
 )
 from cr_knee_fit.elements import Element
 from cr_knee_fit.fit_data import DataConfig
 from cr_knee_fit.guesses import (
     initial_guess_break,
+    initial_guess_cutoff,
     initial_guess_energy_shifts,
 )
 from cr_knee_fit.local import LocalRunOptions, guess_analysis_name, run_local
@@ -26,7 +28,7 @@ if __name__ == "__main__":
     opts = LocalRunOptions.parse()
     analysis_name = guess_analysis_name(__file__)
 
-    elements = [Element.H, Element.He]
+    elements = [Element.H]
 
     fit_data_config = DataConfig(
         experiments_elements=list(
@@ -54,7 +56,7 @@ if __name__ == "__main__":
     )
 
     validation_data_config = DataConfig(
-        experiments_elements=[experiments.ams02, experiments.calet, experiments.ice_top_sibyll],
+        experiments_elements=[],
         experiments_all_particle=[],
         experiments_lnA=[],
         default_elements=elements,
@@ -69,25 +71,27 @@ if __name__ == "__main__":
         le_model = CosmicRaysModel(
             base_spectra=[
                 SharedPowerLawSpectrum(
-                    lgI_per_element={Element.H: stats.norm.rvs(loc=-4.2, scale=0.05)},
+                    lgI_per_element={
+                        Element.H: stats.norm.rvs(loc=-4.2, scale=0.05),
+                        # Element.He: stats.norm.rvs(loc=-4.2, scale=0.05),
+                    },
                     alpha=stats.norm.rvs(loc=2.7, scale=0.05),
-                ),
-                SharedPowerLawSpectrum(
-                    lgI_per_element={Element.He: stats.norm.rvs(loc=-4.2, scale=0.05)},
-                    alpha=stats.norm.rvs(loc=2.6, scale=0.05),
                 ),
             ],
             breaks=[
-                initial_guess_break(
-                    SpectralBreakConfig(
-                        is_softening=True,
-                        fixed_lg_sharpness=0.7,
-                        lg_break_hint=4.0,
-                        lg_break_prior_limits=(3.0, 5.5),
-                    ),
-                    abs_d_alpha_guess=1.7,
-                )
+                # initial_guess_break(
+                #     SpectralBreakConfig(
+                #         is_softening=True,
+                #         fixed_lg_sharpness=None,
+                #         lg_break_hint=4.0,
+                #         lg_break_prior_limits=(3.0, 5.5),
+                #     ),
+                #     abs_d_alpha_guess=1.7,
+                # )
             ],
+            cutoff=initial_guess_cutoff(
+                SpectralCutoffConfig(lg_cut_hint=4.3, lg_cut_prior_limits=(3.0, 5.5))
+            ),
             population_meta=PopulationMetadata(name="LE", linestyle=":"),
         )
 
@@ -96,26 +100,25 @@ if __name__ == "__main__":
                 SharedPowerLawSpectrum(
                     lgI_per_element={
                         Element.H: stats.norm.rvs(loc=-4.7, scale=0.05),
-                        Element.He: stats.norm.rvs(loc=-4.7, scale=0.05),
+                        # Element.He: stats.norm.rvs(loc=-4.7, scale=0.05),
                     },
                     alpha=stats.norm.rvs(loc=2.49, scale=0.05),
                 ),
-                # SharedPowerLawSpectrum(
-                #     lgI_per_element={Element.He: stats.norm.rvs(loc=-4.7, scale=0.05)},
-                #     alpha=stats.norm.rvs(loc=2.49, scale=0.05),
-                # ),
             ],
             breaks=[
-                initial_guess_break(
-                    SpectralBreakConfig(
-                        is_softening=True,
-                        fixed_lg_sharpness=0.7,
-                        lg_break_hint=6.5,
-                        lg_break_prior_limits=(5.5, 7.5),
-                    ),
-                    abs_d_alpha_guess=1.22,
-                )
+                # initial_guess_break(
+                #     SpectralBreakConfig(
+                #         is_softening=True,
+                #         fixed_lg_sharpness=None,
+                #         lg_break_hint=6.5,
+                #         lg_break_prior_limits=(5.5, 7.5),
+                #     ),
+                #     abs_d_alpha_guess=1.22,
+                # )
             ],
+            cutoff=initial_guess_cutoff(
+                SpectralCutoffConfig(lg_cut_hint=6.5, lg_cut_prior_limits=(5.0, 7.5))
+            ),
             # cutoff_lower=initial_guess_cutoff(SpectralCutoffConfig(lg_cut_hint=5.0)),
             population_meta=PopulationMetadata(name="HE", linestyle="--"),
         )

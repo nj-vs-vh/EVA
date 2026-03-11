@@ -521,6 +521,8 @@ def transform_DAMPE_arXiv_2511_05409() -> None:
     for element in ("H", "He", "C", "O", "Fe"):
         input, output = f"DAMPE_2025_{element}_kineticEnergy.txt", f"DAMPE_{element}_energy.txt"
         data = np.loadtxt(dir / input, unpack=True)
+        # data[4, :] /= 10
+        # data[5, :] /= 10
         dump(data, output)
 
 

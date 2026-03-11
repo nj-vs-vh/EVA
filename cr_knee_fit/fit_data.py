@@ -197,8 +197,11 @@ class CRSpectrumData:
         if self.precomputed_err_cov is not None:
             return self.precomputed_err_cov
 
+        # 1 decade rougly follows the use in DAMPE's paper of 4 nuisance parameter shifts per 4 decades of spectrum
+        corr_length = 1.0 if self.d.experiment == experiments.dampe else 1.0
+
         return self.d.err_cov(
-            corr_length=1.0,  # 1 decade, rougly following DAMPE's paper use of 4 nuisance parameter shifts per 4 decades of spectrum
+            corr_length=corr_length,
             log_space_correlation=True,
         )
 
