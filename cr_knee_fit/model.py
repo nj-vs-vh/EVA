@@ -14,13 +14,7 @@ from cr_knee_fit.cr_model import (
     SpectralBreak,
     SpectralBreakConfig,
 )
-from cr_knee_fit.elements import (
-    Element,
-    Z_to_element_name,
-    isotope_average_A,
-    low_energy_CR_spectra,
-    unresolved_element_names,
-)
+from cr_knee_fit.elements import Element, isotope_average_A
 from cr_knee_fit.experiments import Experiment
 from cr_knee_fit.fit_data import CRSpectrumData, Data
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
@@ -287,10 +281,10 @@ class Model(Packable[ModelConfig]):
     ) -> Figure:
         aux_spectra = [d for d in validation_data.aux_data if isinstance(d, CRSpectrumData)]
         aux_spectra.sort(key=CRSpectrumData.element_label)
-        grouped_spectra = list(
+        grouped_spectra = [
             (label, list(spectra))
             for label, spectra in itertools.groupby(aux_spectra, key=CRSpectrumData.element_label)
-        )
+        ]
 
         fig, ax_or_axes = plt.subplots(
             nrows=len(grouped_spectra), figsize=(10, 6 * len(grouped_spectra))
@@ -377,35 +371,23 @@ class Model(Packable[ModelConfig]):
         }
 
         Z_grid = np.arange(1, 29, step=1, dtype=int)
-        pre_list: list[float] = []
         post_list: list[float] = []
         for Z in Z_grid:
-            element_name = Z_to_element_name[Z]
-            pre_list.append(low_energy_CR_spectra[element_name][0])
+            element_name = Element(int(Z)).name
             post_list.append(fitted_abundances.get(element_name, np.nan))
-        pre = np.array(pre_list)
         post = np.array(post_list)
 
         fig, ax = plt.subplots()
-        ax.plot(
-            Z_grid,
-            pre,
-            label="Extrapolated from GeV range",
-            zorder=-10,
-        )
-        is_unresolved_mask = np.array(
-            [Z_to_element_name[Z] in unresolved_element_names for Z in Z_grid]
-        )
         ax.scatter(
-            Z_grid[~is_unresolved_mask],
-            post[~is_unresolved_mask],
+            Z_grid,
+            post,
             marker="o",
             label="From TeV - PeV element data",
             color="tab:orange",
         )
         ax.scatter(
-            Z_grid[is_unresolved_mask],
-            post[is_unresolved_mask],
+            Z_grid,
+            post,
             marker="x",
             label="From all-particle (relative abundances fixed)",
             color="tab:orange",
@@ -446,7 +428,6 @@ if __name__ == "__main__":
                 ],
                 all_particle_lg_shift=np.random.random(),
                 free_Z=np.random.random(),
-                unresolved_elements_spectrum=None,
             )
             for _ in range(3)
         ],

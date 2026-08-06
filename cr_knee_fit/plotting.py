@@ -1,13 +1,14 @@
 import dataclasses
 import itertools
-from typing import Any, Callable, cast
+from collections.abc import Callable
+from typing import Any, cast
 
 import matplotlib
 import matplotlib.colors
-import matplotlib.ticker as ticker
 import matplotlib.tri
 import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib import ticker
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
@@ -505,9 +506,9 @@ def plot_everything(
             elinewidth=0.5,
             capsize=1.5,
         )
-        observable: Observable = lambda model, grid: (  # noqa: E731
-            100 * (model.energy_shifts.f(exp) - 1)
-        ) * np.ones_like(grid)
+        observable: Observable = lambda model, grid: (
+            (100 * (model.energy_shifts.f(exp) - 1)) * np.ones_like(grid)
+        )
         bounds = (i - 0.5, i + 0.5)
         if plots_config.energy_shifts.contours:
             tricontourf_kwargs = tricontourf_kwargs_transparent_colors(

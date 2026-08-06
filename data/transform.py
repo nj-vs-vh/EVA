@@ -1,8 +1,8 @@
 import logging
 import re
 import shutil
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 import numpy as np
 
@@ -489,7 +489,7 @@ def transform_DAMPE_C_O_ICRC2025() -> None:
         offset = 0
         series = []
         for length in lengths:
-            series.append((table[offset : offset + length, :]))
+            series.append(table[offset : offset + length, :])
             offset += length
         assert offset == table.shape[0]
 

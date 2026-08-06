@@ -1,8 +1,9 @@
 import dataclasses
 import functools
 import itertools
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Any, Iterable, Sequence, cast
+from typing import Any, cast
 
 import matplotlib.pyplot as plt
 import numpy as np

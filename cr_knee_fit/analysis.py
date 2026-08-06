@@ -8,8 +8,8 @@ import os
 import shutil
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 from warnings import warn
 
 import corner  # type: ignore
@@ -119,8 +119,7 @@ class FitConfig(pydantic.BaseModel):
             m = Model.unpack(guess, layout_info=self.model)
             if np.isfinite(logposterior(m, data, self.model)):
                 return m
-        else:
-            raise ValueError(f"Failed to generate valid model in {n_try} tries")
+        raise ValueError(f"Failed to generate valid model in {n_try} tries")
 
 
 def print_delim():

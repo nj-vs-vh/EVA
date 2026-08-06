@@ -79,15 +79,15 @@ def dump_datafile(dataset: DatasetDef, skip_existing: bool, combo_level=0, energ
         f.write(f"#ADS: {', '.join(ads_ids)}\n")
         f.write("#E_lo - E_up - y - errSta_lo - errSta_up - errSys_lo - errSys_up\n")
 
-        for e_bin, value, err_sta, err_sys in zip(
-            tab["e_bin"][indices],
-            tab["value"][indices],
-            tab["err_sta"][indices],
-            tab["err_sys"][indices],
-        ):
-            f.write(
-                f"{e_bin[0]:10.5e} {e_bin[1]:10.5e} {value:10.5e} {err_sta[0]:10.5e} {err_sta[1]:10.5e} {err_sys[0]:10.5e} {err_sys[1]:10.5e}\n"
+        f.writelines(
+            f"{e_bin[0]:10.5e} {e_bin[1]:10.5e} {value:10.5e} {err_sta[0]:10.5e} {err_sta[1]:10.5e} {err_sys[0]:10.5e} {err_sys[1]:10.5e}\n"
+            for e_bin, value, err_sta, err_sys in zip(
+                tab["e_bin"][indices],
+                tab["value"][indices],
+                tab["err_sta"][indices],
+                tab["err_sys"][indices],
             )
+        )
     logging.info("Data dump completed.\n")
 
 

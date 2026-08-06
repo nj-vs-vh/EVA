@@ -1,14 +1,14 @@
 import abc
 import datetime
 from pathlib import Path
-from typing import Generic, Self, Type, TypeVar
+from typing import Self, TypeVar
 
 import numpy as np
 
 LayoutInfo = TypeVar("LayoutInfo")
 
 
-class Packable(Generic[LayoutInfo], abc.ABC):
+class Packable[LayoutInfo](abc.ABC):
     def ndim(self) -> int:
         return self.pack().size
 
@@ -23,7 +23,7 @@ class Packable(Generic[LayoutInfo], abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    def unpack(cls: Type[Self], theta: np.ndarray, layout_info: LayoutInfo) -> Self: ...
+    def unpack(cls: type[Self], theta: np.ndarray, layout_info: LayoutInfo) -> Self: ...
 
     def validate_packing(self) -> None:
         packed = self.pack()
@@ -55,7 +55,7 @@ class Packable(Generic[LayoutInfo], abc.ABC):
         )
 
     @classmethod
-    def load(cls: Type[Self], path: Path, layout_info: LayoutInfo) -> Self | None:
+    def load(cls: type[Self], path: Path, layout_info: LayoutInfo) -> Self | None:
         try:
             theta = np.loadtxt(path)
             return cls.unpack(theta, layout_info=layout_info)

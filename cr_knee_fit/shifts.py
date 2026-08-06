@@ -29,7 +29,7 @@ class ExperimentEnergyScaleShifts(Packable[list[Experiment]]):
 
     def labels(self, latex: bool = False) -> list[str]:
         if latex:
-            return [f"\\lg(f_\\text{{{exp.name}}})" for exp in self.experiments]
+            return [f"\\lg f_\\text{{{exp.name}}}" for exp in self.experiments]
         else:
             return [f"lg(f_{exp.name})" for exp in self.experiments]
 

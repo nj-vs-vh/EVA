@@ -1,6 +1,6 @@
 import subprocess
+from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Iterable, Sequence
 
 import numpy as np
 from matplotlib.artist import Artist

@@ -1,0 +1,346 @@
+import functools
+import itertools
+from dataclasses import dataclass
+
+import matplotlib.pyplot as plt
+import numpy as np
+from crams import (
+    ELEMENT_NAMES as CRAMS_ELEMENT_NAMES,
+)
+from crams import (
+    CramsRunner,
+    InjectionParams,
+    PropagationParams,
+)
+from matplotlib.axes import Axes
+
+from cr_knee_fit.cr_model import PopulationMetadata
+from cr_knee_fit.elements import (
+    Element,
+)
+from cr_knee_fit.types_ import Packable
+
+CRAMS_ELEMENTS = [Element[name] for name in CRAMS_ELEMENT_NAMES]
+
+
+def pack_injection(ip: InjectionParams) -> np.ndarray:
+    return np.array(list(itertools.chain(ip.abundances, ip.slopes)))
+
+
+def unpack_injection(v: np.ndarray) -> InjectionParams:
+    return InjectionParams(
+        abundances=v[: len(CRAMS_ELEMENTS)],  # type: ignore
+        slopes=v[len(CRAMS_ELEMENTS) :],  # type: ignore
+    )
+
+
+def pack_propagation(pp: PropagationParams) -> np.ndarray:
+    return np.array(
+        [
+            pp.H_kpc,
+            pp.v_A_km_sec,
+            pp.R_b_GV,
+            pp.delta,
+            pp.ddelta,
+            pp.D_0_cm2_sec,
+            pp.X_src,
+            pp.phi,
+        ]
+    )
+
+
+def unpack_propagation(v: np.ndarray) -> PropagationParams:
+    return PropagationParams(
+        H_kpc=v[0],
+        v_A_km_sec=v[1],
+        R_b_GV=v[2],
+        delta=v[3],
+        ddelta=v[4],
+        D_0_cm2_sec=v[5],
+        X_src=v[6],
+        phi=v[7],
+    )
+
+
+@dataclass
+class CramsModelConfig:
+    crams: CramsRunner
+
+    # fitted params are set to nan in these
+    frozen_propagation: PropagationParams
+    frozen_injection: InjectionParams
+
+    population_meta: PopulationMetadata | None = None
+
+    @functools.cached_property
+    def frozen_injection_packed(self) -> np.ndarray:
+        return pack_injection(self.frozen_injection)
+
+    @functools.cached_property
+    def frozen_propagation_packed(self) -> np.ndarray:
+        return pack_propagation(self.frozen_propagation)
+
+    @functools.cached_property
+    def is_fitted_propagation(self) -> np.ndarray:
+        return np.isnan(self.frozen_propagation_packed)
+
+    @functools.cached_property
+    def is_fitted_injection(self) -> np.ndarray:
+        return np.isnan(self.frozen_injection_packed)
+
+    @staticmethod
+    def default() -> "CramsModelConfig":
+        return CramsModelConfig(
+            crams=CramsRunner(
+                inelastic_model="glauber",
+                fragmentation_model="fluka4dragon",
+            ),
+            frozen_injection=InjectionParams(
+                abundances=[np.nan] * len(CRAMS_ELEMENTS),
+                slopes=[np.nan] * 3,
+            ),
+            frozen_propagation=PropagationParams(
+                H_kpc=np.nan,
+                v_A_km_sec=np.nan,
+                R_b_GV=np.nan,
+                delta=np.nan,
+                ddelta=np.nan,
+                D_0_cm2_sec=np.nan,
+                X_src=-1.0,
+                phi=4.87754e-01,
+            ),
+            population_meta=PopulationMetadata(name="CRAMS", linestyle="-"),
+        )
+
+
+@dataclass
+class CramsModel(Packable[CramsModelConfig]):
+    propagation: PropagationParams
+    injection: InjectionParams
+
+    config: CramsModelConfig
+
+    def description(self) -> str:
+        prop_raw: str = self.propagation.to_input().describe().strip()
+        prop = "\n".join(
+            line
+            for line in prop_raw.splitlines()
+            # these parameters are actually set in the global CramsRunner object
+            if not line.startswith(("flux solver", "inelastic model", "fragmentation model"))
+        )
+        abundances = "\n".join(
+            [
+                f"Q_{el} = {abundance}"
+                for el, abundance in zip(CRAMS_ELEMENT_NAMES, self.injection.abundances)
+            ]
+        )
+        slope_labels = [
+            f"gamma_{el} = {slope}"
+            for el, slope in zip(CRAMS_ELEMENT_NAMES, self.injection.slopes[:-1])
+        ]
+        if len(self.injection.slopes) == len(CRAMS_ELEMENT_NAMES):
+            slope_labels.append(f"gamma_{CRAMS_ELEMENT_NAMES[-1]} = {self.injection.slopes[-1]}")
+        else:
+            slope_labels.append(f"gamma_nuclei = {self.injection.slopes[-1]}")
+        slopes = "\n".join(slope_labels)
+        return f"{prop}\n========\n{abundances}\n{slopes}"
+
+    @property
+    def crams(self) -> CramsRunner:
+        return self.config.crams
+
+    @functools.cached_property
+    def _crams_lg_output(self) -> np.ndarray:
+        return np.log10(self.crams.compute(self.propagation, self.injection))
+
+    @functools.cached_property
+    def crams_lgR_grid(self) -> np.ndarray:
+        return self._crams_lg_output[:, 0]
+
+    def crams_lg_spectrum(self, element: Element) -> np.ndarray:
+        return self._crams_lg_output[:, round(element.Z)]
+
+    def compute_rigidity_spectrum(self, R: np.ndarray, element: Element) -> np.ndarray:
+        return 10 ** (
+            np.interp(
+                np.log10(R),
+                xp=self.crams_lgR_grid,
+                fp=self.crams_lg_spectrum(element),
+                right=0.0,
+            )
+        )
+
+    def compute_spectrum(self, E: np.ndarray, element: Element) -> np.ndarray:
+        Z = element.Z
+        R = E / Z
+        dNdR = self.compute_rigidity_spectrum(R, element=element)
+        return dNdR / Z
+
+    def compute_all_particle_spectrum(self, E: np.ndarray) -> np.ndarray:
+        flux = np.zeros_like(E)
+        for element in CRAMS_ELEMENTS:
+            flux += self.compute_spectrum(E, element)
+        return flux
+
+    def compute_abundances(self, R: float) -> dict[Element | str, float]:
+        return {
+            element: float(self.compute_rigidity_spectrum(np.array([R]), element=element)[0])
+            for element in CRAMS_ELEMENTS
+        }
+
+    @property
+    def linestyle(self) -> str | None:
+        if self.config.population_meta is None:
+            return None
+        else:
+            return self.config.population_meta.linestyle
+
+    def population_prefix(self, latex: bool) -> str:
+        if self.config.population_meta is not None:
+            return self.config.population_meta.plot_prefix(latex)
+        else:
+            return ""
+
+    def plot(
+        self,
+        Emin: float,
+        Emax: float,
+        scale: float,
+        axes: Axes | None = None,
+        all_particle: bool = False,
+        elements: list[Element] | None = None,
+        grid_size: int = 100,
+    ) -> Axes:
+        if axes is not None:
+            ax = axes
+        else:
+            _, ax = plt.subplots()
+
+        E_grid = np.logspace(np.log10(Emin), np.log10(Emax), grid_size)
+        E_factor = E_grid**scale
+        label_prefix = self.population_prefix(latex=False)
+
+        def with_prefix(name: str, preserve_capitalization: bool = False) -> str:
+            if not label_prefix:
+                return name.capitalize()
+            else:
+                return label_prefix + (name if preserve_capitalization else name.lower())
+
+        for element in elements or CRAMS_ELEMENTS:
+            ax.plot(
+                E_grid,
+                E_factor * self.compute_spectrum(E_grid, element),
+                label=with_prefix(element.name, preserve_capitalization=True),
+                color=element.color,
+                linestyle=self.linestyle,
+            )
+        if all_particle:
+            ax.plot(
+                E_grid,
+                E_factor * self.compute_all_particle_spectrum(E_grid),
+                label=with_prefix("All particle"),
+                color="black",
+                linestyle=self.linestyle,
+            )
+        return ax
+
+    def labels(self, latex: bool) -> list[str]:
+        labels: list[str] = []
+
+        if latex:
+            propagation_labels = [
+                "H_kpc",
+                "v_A_km_sec",
+                "R_b_GV",
+                "delta",
+                "ddelta",
+                "D_0_cm2_sec",
+                "X_src",
+                "phi",
+            ]
+        else:
+            propagation_labels = [
+                r"$H \; / \; \text{kpc}$",
+                r"$v_A \; / \; \text{km} \; \text{s}^{-1}$",
+                r"$R_b \; / \; \text{GV}$",
+                r"$\delta$",
+                r"$\Delta \delta$",
+                r"$D_0 \; / \; \text{cm}^2 \; \text{s}^{-1}$",
+                r"$X_{\text{src}} \; / \; \text{g} \text{cm}^{-2}$",
+                r"$\phi \; / \; \text{GV}$",
+            ]
+        labels.extend(
+            [
+                lbl
+                for lbl, is_fitted in zip(propagation_labels, self.config.is_fitted_propagation)
+                if is_fitted
+            ]
+        )
+
+        injection_labels = [f"q_\\text{{{el}}}" for el in self.injection.abundances]
+        injection_labels.extend(
+            [
+                f"\\gamma_\\text{{{el}}}"
+                for el, _ in zip(CRAMS_ELEMENT_NAMES, self.injection.slopes[:-1])
+            ]
+        )
+        if len(self.injection.slopes) == len(CRAMS_ELEMENT_NAMES):
+            injection_labels.append(f"\\gamma_\\text{{{CRAMS_ELEMENT_NAMES[-1]}}}")
+        else:
+            injection_labels.append("\\gamma_\\text{nuc}")
+        labels.extend(
+            [
+                lbl
+                for lbl, is_fitted in zip(injection_labels, self.config.is_fitted_injection)
+                if is_fitted
+            ]
+        )
+
+        prefix = self.population_prefix(latex)
+        labels = [prefix + label for label in labels]
+        return labels
+
+    def pack(self) -> np.ndarray:
+        return np.concatenate(
+            (
+                pack_propagation(self.propagation)[self.config.is_fitted_propagation],
+                pack_injection(self.injection)[self.config.is_fitted_injection],
+            )
+        )
+
+    def layout_info(self) -> CramsModelConfig:
+        return self.config
+
+    @classmethod
+    def unpack(cls, theta: np.ndarray, layout_info: CramsModelConfig) -> "CramsModel":
+        config = layout_info
+
+        propagation_packed = config.frozen_propagation_packed
+        propagation_n_params = np.sum(config.is_fitted_propagation)
+        propagation_packed[config.is_fitted_propagation] = theta[:propagation_n_params]
+
+        injection_packed = config.frozen_injection_packed
+        injection_packed[config.is_fitted_injection] = theta[propagation_n_params:]
+
+        return CramsModel(
+            injection=unpack_injection(injection_packed),
+            propagation=unpack_propagation(propagation_packed),
+            config=config,
+        )
+
+
+if __name__ == "__main__":
+    ip = InjectionParams.default()
+    ip2 = unpack_injection(pack_injection(ip))
+    assert np.allclose(np.array(ip.abundances), ip2.abundances)
+    assert np.allclose(np.array(ip.slopes), ip2.slopes)
+
+    cm = CramsModel(
+        injection=InjectionParams.default(),
+        propagation=PropagationParams(),
+        config=CramsModelConfig.default(),
+    )
+    print(cm.pack())
+    cm2 = CramsModel.unpack(theta=cm.pack(), layout_info=cm.layout_info())
+    print(cm2.description())
+    assert np.allclose(cm.pack(), cm2.pack())

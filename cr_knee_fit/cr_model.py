@@ -1,6 +1,7 @@
 import itertools
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Literal, Sequence, TypeVar
+from typing import Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,11 +12,7 @@ from numpy.typing import NDArray
 
 from cr_knee_fit.elements import (
     Element,
-    element_name_to_Z_A,
     isotope_average_A,
-    low_energy_CR_spectra,
-    unresolved_element_names,
-    unresolved_element_normalized_abundances_at_1TV,
 )
 from cr_knee_fit.types_ import Packable
 
@@ -68,15 +65,15 @@ class SharedPowerLawSpectrum(Packable[SpectralComponentConfig]):
     def labels(self, latex: bool) -> list[str]:
         ps_label = component_label(self.elements)
         if latex:
-            res = [f"\\lg(I_\\text{{{p.name}}})" for p in self.elements]
+            res = [f"\\lg I_\\text{{{p.name}}}" for p in self.elements]
             res.append(f"\\alpha_\\text{{{ps_label}}}")
             if self.lg_scale_contrib_to_all:
-                res.append(f"\\lg(K_\\text{{{ps_label}}})")
+                res.append(f"\\lg K_\\text{{{ps_label}}}")
             return res
         else:
             res = [f"lgI_{{{p.name}}}" for p in self.elements] + [f"alpha_{{{ps_label}}}"]
             if self.lg_scale_contrib_to_all:
-                res.append(f"lg(K)_{{{ps_label}}}")
+                res.append(f"lg K_{{{ps_label}}}")
             return res
 
     def description(self) -> str:
@@ -109,37 +106,6 @@ class SharedPowerLawSpectrum(Packable[SpectralComponentConfig]):
 
 # endregion
 
-
-@dataclass
-class UnresolvedElementsSpectrum(Packable[None]):
-    lgI: float
-
-    def compute(self, R: np.ndarray, element_name: str) -> np.ndarray:
-        I = 10.0**self.lgI * unresolved_element_normalized_abundances_at_1TV[element_name]
-        alpha = low_energy_CR_spectra[element_name][1]
-        return I * (R / R0) ** -alpha
-
-    def pack(self) -> np.ndarray:
-        return np.array([self.lgI])
-
-    def ndim(self) -> int:
-        return 1
-
-    def labels(self, latex: bool) -> list[str]:
-        subscript = "\\text{Unres.}" if latex else "Unres"
-        if latex:
-            return [f"\\lg(I_{subscript})"]
-        else:
-            return [f"lgI_{subscript}"]
-
-    def layout_info(self) -> None:
-        return None
-
-    @classmethod
-    def unpack(cls, theta: np.ndarray, layout_info: None) -> "UnresolvedElementsSpectrum":
-        return UnresolvedElementsSpectrum(lgI=theta[0])
-
-
 CharacteristicQuantity = Literal[
     "R",  # rigidity, GV
     "E",  # total energy, GeV
@@ -151,12 +117,9 @@ def quantity_unit(q: CharacteristicQuantity) -> str:
     return "GV" if q == "R" else "GeV"
 
 
-_ArrayOrFloat = TypeVar("_ArrayOrFloat", bound=NDArray[np.floating] | float)
-
-
-def R_to_quantity(
-    R: _ArrayOrFloat, Z: float, A: float, quantity: CharacteristicQuantity
-) -> _ArrayOrFloat:
+def R_to_quantity[ArrayOrFloat: NDArray[np.floating] | float](
+    R: ArrayOrFloat, Z: float, A: float, quantity: CharacteristicQuantity
+) -> ArrayOrFloat:
     match quantity:
         case "R":
             return R
@@ -166,9 +129,9 @@ def R_to_quantity(
             return R * (Z / A)  # type: ignore
 
 
-def quantity_to_E(
-    q: _ArrayOrFloat, Z: float, A: float, quantity: CharacteristicQuantity
-) -> _ArrayOrFloat:
+def quantity_to_E[ArrayOrFloat: NDArray[np.floating] | float](
+    q: ArrayOrFloat, Z: float, A: float, quantity: CharacteristicQuantity
+) -> ArrayOrFloat:
     match quantity:
         case "E":
             return q
@@ -228,16 +191,16 @@ class SpectralBreak(Packable[SpectralBreakConfig]):
         if latex:
             name_suffix = f"_\\text{{{self.config.name}}}" if self.config.name is not None else ""
             labels = [
-                f"\\lg({self.config.quantity}^\\text{{b}}{name_suffix})",
+                f"\\lg {self.config.quantity}^\\text{{b}}{name_suffix}",
                 f"\\Delta \\alpha{name_suffix}",
-                f"\\lg(s{name_suffix})",
+                f"\\lg s{name_suffix}",
             ]
         else:
             name_suffix = f"_{self.config.name}" if self.config.name is not None else ""
             labels = [
-                f"lg({self.config.quantity}^b{name_suffix})",
+                f"lg {self.config.quantity}^b{name_suffix}",
                 f"d_alpha{name_suffix}",
-                f"lg(s{name_suffix})",
+                f"lg s{name_suffix}",
             ]
         return labels[: self.ndim()]
 
@@ -323,9 +286,9 @@ class SpectralCutoff(Packable[SpectralCutoffConfig]):
 
     def labels(self, latex: bool) -> list[str]:
         if latex:
-            labels = [f"\\lg({self.config.quantity}^\\text{{cut}})", "\\lg(b)"]
+            labels = [f"\\lg {self.config.quantity}^\\text{{cut}}", "\\lg b"]
         else:
-            labels = [f"lg({self.config.quantity}^cut)", "lg(b)"]
+            labels = [f"lg {self.config.quantity}^cut", "lg b"]
         return labels[: self.ndim()]
 
     def layout_info(self) -> SpectralCutoffConfig:
@@ -368,6 +331,12 @@ class PopulationMetadata:
     linestyle: str | None
 
     is_apriori_energy_dominant: bool | None = None
+
+    def plot_prefix(self, latex: bool) -> str:
+        if self.name:
+            return f"\\text{{{self.name}}}\\;" if latex else self.name + " "
+        else:
+            return ""
 
 
 @dataclass
@@ -421,8 +390,6 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
     all_particle_lg_shift: float | None = None  # sum of elements* 10^shift = all particle spectrum
     free_Z: float | None = None
 
-    unresolved_elements_spectrum: UnresolvedElementsSpectrum | None = None
-
     population_meta: PopulationMetadata | None = None
 
     def __post_init__(self) -> None:
@@ -440,14 +407,11 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
 
     @property
     def resolved_elements(self) -> list[Element]:
-        return self.layout_info().resolved_elements
+        return self.layout_info().resolved_elements  # legacy from when we had "unresolved elements"
 
     @property
-    def all_elements(self) -> list[Element | str]:
-        res: list[Element | str] = [e for e in self.layout_info().resolved_elements]
-        if self.unresolved_elements_spectrum:
-            res.extend(unresolved_element_names)
-        return res
+    def all_elements(self) -> list[Element]:
+        return self.resolved_elements
 
     def description(self) -> str:
         return "; ".join(
@@ -467,17 +431,11 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             raise RuntimeError(f"Element {element} matches more than one component: {matches}")
         return matches[0]
 
-    def compute_rigidity_spectrum(self, R: np.ndarray, element: Element | str) -> np.ndarray:
-        if isinstance(element, str):  # unresolved element
-            if self.unresolved_elements_spectrum is not None:
-                flux = self.unresolved_elements_spectrum.compute(R, element_name=element)
-            else:
-                return np.zeros_like(R)
-        else:
-            spectrum = self._get_component(element)
-            if spectrum is None:
-                return np.zeros_like(R)
-            flux = spectrum.compute(R, element)
+    def compute_rigidity_spectrum(self, R: np.ndarray, element: Element) -> np.ndarray:
+        spectrum = self._get_component(element)
+        if spectrum is None:
+            return np.zeros_like(R)
+        flux = spectrum.compute(R, element)
 
         Z = round(self.element_Z(element))
         A = isotope_average_A(Z)
@@ -489,17 +447,14 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             flux *= self.cutoff_lower.compute(R, Z=Z, A=A, is_lower=True)
         return flux
 
-    def element_Z(self, element: Element | str) -> float:
+    def element_Z(self, element: Element) -> float:
         if element is Element.FreeZ:
             if self.free_Z is None:
                 raise ValueError(
                     "Attempted to get FreeZ element but it's Z is not included in the model"
                 )
             return self.free_Z
-        elif isinstance(element, str):
-            return element_name_to_Z_A[element][0]
-        else:
-            return element.Z
+        return element.Z
 
     def element_name(self, element: Element | str) -> str:
         if element is Element.FreeZ:
@@ -516,7 +471,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
     def compute_spectrum(
         self,
         E: np.ndarray,
-        element: Element | str,
+        element: Element,
         contrib_to_all_particle: bool = False,
     ) -> np.ndarray:
         Z = self.element_Z(element)
@@ -528,14 +483,6 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             if component is not None and component.lg_scale_contrib_to_all:
                 dNdE *= 10 ** (component.lg_scale_contrib_to_all)
         return dNdE
-
-    def compute_lnA(self, E: np.ndarray) -> np.ndarray:
-        elements = self.all_elements
-        spectra = np.vstack(
-            [self.compute_spectrum(E, el, contrib_to_all_particle=True) for el in elements]
-        )
-        lnA = np.array([np.log(isotope_average_A(round(self.element_Z(el)))) for el in elements])
-        return np.sum(spectra * np.expand_dims(lnA, axis=1), axis=0) / np.sum(spectra, axis=0)
 
     def compute_all_particle_spectrum(self, E: np.ndarray) -> np.ndarray:
         flux = np.zeros_like(E)
@@ -622,24 +569,6 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
                 linestyle=self.linestyle,
             )
 
-        if self.unresolved_elements_spectrum:
-            ax.plot(
-                E_grid,
-                (
-                    E_factor
-                    * sum(
-                        (
-                            self.compute_spectrum(E_grid, element=unres_el)
-                            for unres_el in unresolved_element_names
-                        ),
-                        start=np.zeros_like(E_grid),
-                    )
-                ),
-                label=with_prefix("Unresolved elements"),
-                color="magenta",
-                linestyle=self.linestyle,
-            )
-
         extra_all_particle_contrib = self.compute_extra_all_particle_contribution(E_grid)
         has_extra_allparticle_contrib = np.any(extra_all_particle_contrib > 0)
         if has_extra_allparticle_contrib:
@@ -661,12 +590,8 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         return ax
 
     def population_prefix(self, latex: bool) -> str:
-        if self.population_meta is not None and self.population_meta.name:
-            return (
-                f"\\text{{{self.population_meta.name}}}\\;"
-                if latex
-                else self.population_meta.name + " "
-            )
+        if self.population_meta is not None:
+            return self.population_meta.plot_prefix(latex)
         else:
             return ""
 
@@ -687,10 +612,8 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             labels.extend(self.cutoff.labels(latex))
         if self.cutoff_lower is not None:
             labels.extend(self.cutoff_lower.labels(latex))  # FIXME: specify lower cutoff labels
-        if self.unresolved_elements_spectrum is not None:
-            labels.extend(self.unresolved_elements_spectrum.labels(latex))
         if self.all_particle_lg_shift is not None:
-            labels.append("\\lg(K)" if latex else "lgK")
+            labels.append("\\lg K" if latex else "lgK")
         if self.free_Z is not None:
             labels.append("Z_\\text{Unobs. eff}" if latex else "Z_Unobs")
 
@@ -707,8 +630,6 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             subvectors.append(self.cutoff.pack())
         if self.cutoff_lower is not None:
             subvectors.append(self.cutoff_lower.pack())
-        if self.unresolved_elements_spectrum is not None:
-            subvectors.append(self.unresolved_elements_spectrum.pack())
         if self.all_particle_lg_shift is not None:
             subvectors.append(np.array([self.all_particle_lg_shift]))
         if self.free_Z:
@@ -722,7 +643,6 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             cutoff=self.cutoff.layout_info() if self.cutoff is not None else None,
             cutoff_lower=self.cutoff_lower.layout_info() if self.cutoff_lower is not None else None,
             rescale_all_particle=self.all_particle_lg_shift is not None,
-            add_unresolved_elements=self.unresolved_elements_spectrum is not None,
             population_meta=self.population_meta,
         )
 
@@ -756,11 +676,6 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             cutoff_lower = SpectralCutoff.unpack(theta[offset:], layout_info.cutoff_lower)
             offset += cutoff_lower.ndim()
 
-        unresolved_elements_spectrum: UnresolvedElementsSpectrum | None = None
-        if layout_info.add_unresolved_elements:
-            unresolved_elements_spectrum = UnresolvedElementsSpectrum.unpack(theta[offset:], None)
-            offset += unresolved_elements_spectrum.ndim()
-
         if layout_info.rescale_all_particle:
             all_particle_lg_shift = theta[offset]
             offset += 1
@@ -778,7 +693,6 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             breaks=breaks,
             cutoff=cutoff,
             cutoff_lower=cutoff_lower,
-            unresolved_elements_spectrum=unresolved_elements_spectrum,
             all_particle_lg_shift=all_particle_lg_shift,
             free_Z=free_Z,
             population_meta=layout_info.population_meta,
@@ -857,9 +771,6 @@ if __name__ == "__main__":
                 fixed_lg_sharpness=None,
                 lg_cut_prior_limits=(7, 10),
             ),
-        ),
-        unresolved_elements_spectrum=UnresolvedElementsSpectrum(
-            lgI=np.random.random(),
         ),
         all_particle_lg_shift=np.random.random(),
         free_Z=np.random.random(),
