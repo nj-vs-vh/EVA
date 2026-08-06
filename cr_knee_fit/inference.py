@@ -115,12 +115,10 @@ def logprior(model: Model) -> float:
 
         # other model params
         lgK = population.all_particle_lg_shift
-        if lgK is not None:
-            if not (1 <= 10**lgK <= 2):
-                return -np.inf
-        if population.free_Z is not None:
-            if not (1 <= population.free_Z <= 26.5):
-                return -np.inf
+        if lgK is not None and not (1 <= 10**lgK <= 2):
+            return -np.inf
+        if population.free_Z is not None and not (1 <= population.free_Z <= 26.5):
+            return -np.inf
 
     # sigmoid prior on ratio of populations' energy densities
     # TODO: tunable params

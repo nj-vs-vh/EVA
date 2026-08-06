@@ -1,3 +1,4 @@
+import functools
 import itertools
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -422,6 +423,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             )
         )
 
+    @functools.lru_cache(maxsize=28, typed=True)  # noqa: B019
     def _get_component(self, element: Element) -> SharedPowerLawSpectrum | None:
         matches = [comp for comp in self.base_spectra if element in comp.elements]
         if not matches:
@@ -429,6 +431,9 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         if len(matches) > 1:
             raise RuntimeError(f"Element {element} matches more than one component: {matches}")
         return matches[0]
+
+    def has_element(self, element: Element) -> bool:
+        return self._get_component(element) is not None
 
     def compute_rigidity_spectrum(self, R: np.ndarray, element: Element) -> np.ndarray:
         spectrum = self._get_component(element)

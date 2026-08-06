@@ -112,6 +112,10 @@ class CramsModelConfig:
             population_meta=PopulationMetadata(name="CRAMS", linestyle="-"),
         )
 
+    @property
+    def elements(self) -> list[Element]:
+        return CRAMS_ELEMENTS
+
 
 @dataclass
 class CramsModel(Packable[CramsModelConfig]):
@@ -145,6 +149,17 @@ class CramsModel(Packable[CramsModelConfig]):
         slopes = "\n".join(slope_labels)
         return f"{prop}\n========\n{abundances}\n{slopes}"
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, CramsModel):
+            return False
+        # NOTE: use with caution; this method ignores the embedded CramsRunner that might have different
+        # configurations between self and other, and hence give different results
+        return (
+            self.propagation == other.propagation
+            and np.allclose(self.injection.abundances, other.injection.abundances)
+            and np.allclose(self.injection.slopes, other.injection.slopes)
+        )
+
     @property
     def crams(self) -> CramsRunner:
         return self.config.crams
@@ -168,7 +183,7 @@ class CramsModel(Packable[CramsModelConfig]):
                 fp=self.crams_lg_spectrum(element),
                 right=0.0,
             )
-        )
+        )  # type: ignore
 
     def compute_spectrum(self, E: np.ndarray, element: Element) -> np.ndarray:
         Z = element.Z
@@ -308,6 +323,9 @@ class CramsModel(Packable[CramsModelConfig]):
             )
         )
 
+    def ndim(self) -> int:
+        return np.sum(self.config.is_fitted_injection) + np.sum(self.config.is_fitted_propagation)
+
     def layout_info(self) -> CramsModelConfig:
         return self.config
 
@@ -316,11 +334,12 @@ class CramsModel(Packable[CramsModelConfig]):
         config = layout_info
 
         propagation_packed = config.frozen_propagation_packed
-        propagation_n_params = np.sum(config.is_fitted_propagation)
-        propagation_packed[config.is_fitted_propagation] = theta[:propagation_n_params]
+        n_prop = np.sum(config.is_fitted_propagation)
+        propagation_packed[config.is_fitted_propagation] = theta[:n_prop]
 
         injection_packed = config.frozen_injection_packed
-        injection_packed[config.is_fitted_injection] = theta[propagation_n_params:]
+        n_inj = np.sum(config.is_fitted_injection)
+        injection_packed[config.is_fitted_injection] = theta[n_prop : (n_prop + n_inj)]
 
         return CramsModel(
             injection=unpack_injection(injection_packed),
@@ -340,7 +359,6 @@ if __name__ == "__main__":
         propagation=PropagationParams(),
         config=CramsModelConfig.default(),
     )
+    print(cm.description())
     print(cm.pack())
-    cm2 = CramsModel.unpack(theta=cm.pack(), layout_info=cm.layout_info())
-    print(cm2.description())
-    assert np.allclose(cm.pack(), cm2.pack())
+    cm.validate_packing()

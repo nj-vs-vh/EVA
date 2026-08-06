@@ -47,7 +47,7 @@ class Packable[LayoutInfo](abc.ABC):
             self.pack(),
             header="\n".join(
                 [
-                    f"Dumped on: {datetime.datetime.now()}",
+                    f"Dumped on: {datetime.datetime.now()}",  # noqa: DTZ005
                     f"Layout info: {self.layout_info()}",
                     *(header or []),
                 ]

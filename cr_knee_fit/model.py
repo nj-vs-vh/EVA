@@ -14,6 +14,7 @@ from cr_knee_fit.cr_model import (
     SpectralBreak,
     SpectralBreakConfig,
 )
+from cr_knee_fit.crams_model import CramsModel, CramsModelConfig
 from cr_knee_fit.elements import Element, isotope_average_A
 from cr_knee_fit.experiments import Experiment
 from cr_knee_fit.fit_data import CRSpectrumData, Data
@@ -34,9 +35,13 @@ from cr_knee_fit.utils import (
 class ModelConfig:
     shifted_experiments: list[Experiment]
 
-    population_configs: list[CosmicRaysModelConfig] = dataclasses.field(default_factory=list)
-    cr_model_config: CosmicRaysModelConfig | None = None  # backwards compatibility
+    crams_config: CramsModelConfig | None = None
 
+    population_configs: list[CosmicRaysModelConfig] = dataclasses.field(default_factory=list)
+    # single population, for backwards compatibility
+    cr_model_config: CosmicRaysModelConfig | None = None
+
+    # if specified, these uncertainties are used instead of the default one hard-coded in inference.py
     energy_scale_lg_uncertainty_override: dict[Experiment, float] = dataclasses.field(
         default_factory=dict
     )
@@ -57,21 +62,24 @@ class ModelConfig:
         self.shifted_experiments = deduplicated_shifted_experiments
 
     def elements(self, only_fixed_Z: bool) -> list[Element]:
-        return sorted(
-            {
-                p
-                for p in itertools.chain.from_iterable(
-                    c.resolved_elements for c in self.population_configs
-                )
-                if p is not Element.FreeZ or not only_fixed_Z
-            }
-        )
+        all = {
+            element
+            for element in itertools.chain.from_iterable(
+                c.resolved_elements for c in self.population_configs
+            )
+            if element is not Element.FreeZ or not only_fixed_Z
+        }
+        if self.crams_config is not None:
+            all.update(self.crams_config.elements)
+        return sorted(all)
 
 
 @dataclasses.dataclass
 class Model(Packable[ModelConfig]):
     populations: list[CosmicRaysModel]
     energy_shifts: ExperimentEnergyScaleShifts
+
+    crams: CramsModel | None = None
 
     energy_scale_lg_uncertainty_override: dict[Experiment, float] = dataclasses.field(
         default_factory=dict
@@ -81,17 +89,23 @@ class Model(Packable[ModelConfig]):
         assert self.populations, "populations list can't be empty"
 
     def pack(self) -> np.ndarray:
-        chunks = [pop.pack() for pop in self.populations]
+        chunks: list[np.ndarray] = []
+        if self.crams is not None:
+            chunks.append(self.crams.pack())
+        chunks.extend(pop.pack() for pop in self.populations)
         chunks.append(self.energy_shifts.pack())
         return np.hstack(chunks)
 
     def labels(self, latex: bool) -> list[str]:
-        return list(
-            itertools.chain.from_iterable(m.labels(latex) for m in self.populations)
-        ) + self.energy_shifts.labels(latex)
+        return (
+            (self.crams.labels(latex) if self.crams is not None else [])
+            + list(itertools.chain.from_iterable(m.labels(latex) for m in self.populations))
+            + self.energy_shifts.labels(latex)
+        )
 
     def layout_info(self) -> ModelConfig:
         return ModelConfig(
+            crams_config=self.crams.layout_info() if self.crams is not None else None,
             population_configs=[pop.layout_info() for pop in self.populations],
             shifted_experiments=self.energy_shifts.experiments,
             energy_scale_lg_uncertainty_override=self.energy_scale_lg_uncertainty_override,
@@ -99,8 +113,15 @@ class Model(Packable[ModelConfig]):
 
     @classmethod
     def unpack(cls, theta: np.ndarray, layout_info: ModelConfig) -> "Model":
-        populations: list[CosmicRaysModel] = []
         offset = 0
+
+        if layout_info.crams_config is not None:
+            crams = CramsModel.unpack(theta, layout_info=layout_info.crams_config)
+            offset += crams.ndim()
+        else:
+            crams = None
+
+        populations: list[CosmicRaysModel] = []
         for pop_conf in layout_info.population_configs:
             population = CosmicRaysModel.unpack(theta[offset:], layout_info=pop_conf)
             offset += population.ndim()
@@ -137,7 +158,7 @@ class Model(Packable[ModelConfig]):
                 continue
             for exp, data_by_particle in data_.element_spectra.items():
                 f_exp = self.energy_shifts.f(exp)
-                for _, element_data in data_by_particle.items():
+                for element_data in data_by_particle.values():
                     element_data = element_data.with_shifted_energy_scale(f=f_exp)
                     element_data.plot(
                         scale=scale,
@@ -170,6 +191,15 @@ class Model(Packable[ModelConfig]):
         ax.set_yscale("log")
         ylim = ax.get_ylim()  # respecting ylim set by data
 
+        if self.crams is not None:
+            self.crams.plot(
+                Emin=E_min,
+                Emax=E_max,
+                scale=scale,
+                axes=ax,
+                all_particle=plot_allpart,
+                # TODO: clean up the plot from all the un-fitted elements
+            )
         for pop in self.populations:
             pop.plot(
                 Emin=E_min,
@@ -331,22 +361,26 @@ class Model(Packable[ModelConfig]):
         return fig
 
     def compute_spectrum(self, E: np.ndarray, element: Element | None) -> np.ndarray:
-        return sum(
-            (
-                (
-                    pop.compute_spectrum(E, element=element, contrib_to_all_particle=False)
-                    if element is not None
-                    else pop.compute_all_particle_spectrum(E)
-                )
-                for pop in self.populations
-            ),
-            start=np.zeros_like(E),
-        )
+        components: list[np.ndarray] = []
+        if self.crams is not None:
+            components.append(
+                self.crams.compute_spectrum(E, element)
+                if element is not None
+                else self.crams.compute_all_particle_spectrum(E)
+            )
+
+        for pop in self.populations:
+            if element is not None and pop.has_element(element):
+                components.append(pop.compute_spectrum(E, element, contrib_to_all_particle=False))
+            else:
+                components.append(pop.compute_all_particle_spectrum(E))
+
+        return sum(components, start=np.zeros_like(E))
 
     def compute_lnA(self, E: np.ndarray) -> np.ndarray:
-        simple_elements = self.layout_info().elements(only_fixed_Z=True)
-        spectra = [self.compute_spectrum(E, element=element) for element in simple_elements]
-        lnA = [np.log(p.A) for p in simple_elements]
+        elements = self.layout_info().elements(only_fixed_Z=True)
+        spectra = [self.compute_spectrum(E, element=element) for element in elements]
+        lnA = [np.log(p.A) for p in elements]
 
         # adding FreeZ components per-population as they are potentially distinct
         for pop in self.populations:
@@ -360,9 +394,11 @@ class Model(Packable[ModelConfig]):
         return np.sum(spectra_arr * lnA_arr, axis=0) / np.sum(spectra_arr, axis=0)
 
     def compute_abundances(self, R: float) -> dict[Element | str, float]:
-        pop_abundances = [pop.compute_abundances(R) for pop in self.populations]
-        all_elements = list(set(itertools.chain.from_iterable(ab.keys() for ab in pop_abundances)))
-        return {el: sum(ab.get(el, 0.0) for ab in pop_abundances) for el in all_elements}
+        abundances = [pop.compute_abundances(R) for pop in self.populations]
+        if self.crams is not None:
+            abundances.append(self.crams.compute_abundances(R))
+        all_elements = list(set(itertools.chain.from_iterable(ab.keys() for ab in abundances)))
+        return {el: sum(ab.get(el, 0.0) for ab in abundances) for el in all_elements}
 
     def plot_abundances(self) -> Figure:
         fitted_abundances = {
