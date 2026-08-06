@@ -347,7 +347,6 @@ class CosmicRaysModelConfig:
     cutoff_lower: SpectralCutoffConfig | None = None
 
     rescale_all_particle: bool = False
-    add_unresolved_elements: bool = False
 
     population_meta: PopulationMetadata | None = None
 

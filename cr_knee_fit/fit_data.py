@@ -90,7 +90,7 @@ class GenericExperimentData:
 
         return stat_cov + syst_cov
 
-    @functools.cache
+    @functools.cache  # noqa: B019
     def log_space_err_cov_inv(self, corr_length: float) -> np.ndarray:
         return np.linalg.inv(self.err_cov(corr_length=corr_length, log_space_correlation=True))
 
@@ -203,7 +203,7 @@ class CRSpectrumData:
             return self.precomputed_err_cov
 
         # 1 decade rougly follows the use in DAMPE's paper of 4 nuisance parameter shifts per 4 decades of spectrum
-        corr_length = 1.0 if self.d.experiment == experiments.dampe else 1.0
+        corr_length = 1.0 if self.d.experiment == experiments.dampe else 1.0  # noqa: RUF034
 
         return self.d.err_cov(
             corr_length=corr_length,

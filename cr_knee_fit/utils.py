@@ -95,7 +95,7 @@ def legend_artist_line(
         [],
         color=color,
         marker="none",
-        linestyle=linestyle,
+        linestyle=linestyle or "-",  # type: ignore
         linewidth=linewidth,
     )
 

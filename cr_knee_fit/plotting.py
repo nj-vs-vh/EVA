@@ -12,7 +12,7 @@ from matplotlib import ticker
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
-from cr_knee_fit.elements import Element, unresolved_element_names
+from cr_knee_fit.elements import Element
 from cr_knee_fit.fit_data import CRSpectrumData, Data, DataConfig, GenericExperimentData
 from cr_knee_fit.inference import (
     get_energy_scale_lg_uncertainty,
@@ -301,7 +301,7 @@ def plot_everything(
     for data, is_fitted in ((fit_data, True), (validation_data, False)):
         for exp, data_by_particle in data.element_spectra.items():
             f_exp = best_fit_model.energy_shifts.f(exp)
-            for _, spec_data in data_by_particle.items():
+            for spec_data in data_by_particle.values():
                 spec_data = spec_data.with_shifted_energy_scale(f=f_exp)
                 plotted_elem_spectra.append(spec_data)
                 spec_data.plot(
@@ -405,30 +405,6 @@ def plot_everything(
                 color="gray",
             )
             element_legend_items.append((legend_artist_line("gray"), "Extra contribution"))
-
-        if plots_config.all_particle_unresolved_elements_contribution and any(
-            pop_conf.add_unresolved_elements for pop_conf in model_config.population_configs
-        ):
-            plot_model_predictions(
-                ax=ax_all,
-                observable=lambda model, E: sum(
-                    (
-                        sum(
-                            (
-                                pop.compute_spectrum(E, element=element)
-                                for element in unresolved_element_names
-                            ),
-                            np.zeros_like(E),
-                        )
-                        for pop in model.populations
-                    ),
-                    np.zeros_like(E),
-                ),
-                E_bounds=all_Elim,
-                plot_config=plots_config.all_particle_unresolved_elements_contribution,
-                color="magenta",
-            )
-            element_legend_items.append((legend_artist_line("magenta"), "Unresolved elements"))
 
         if (
             plots_config.all_particle.population_contribs_best_fit

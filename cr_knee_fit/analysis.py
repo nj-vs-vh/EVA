@@ -123,7 +123,7 @@ class FitConfig(pydantic.BaseModel):
 
 
 def print_delim():
-    print("\n" + "=" * 15 + "\n" + datetime.datetime.now().isoformat(sep=" ", timespec="seconds"))
+    print("\n" + "=" * 15 + "\n" + datetime.datetime.now().isoformat(sep=" ", timespec="seconds"))  # noqa: DTZ005
 
 
 @dataclasses.dataclass
@@ -146,7 +146,7 @@ def run_ml_analysis(
         model_config = dataclasses.replace(model_config, shifted_experiments=[])
         initial_model = dataclasses.replace(
             initial_model,
-            energy_shifts=ExperimentEnergyScaleShifts(dict()),
+            energy_shifts=ExperimentEnergyScaleShifts({}),
         )
 
     def to_minimize(v: np.ndarray) -> float:
@@ -187,7 +187,7 @@ def run_mcmc(
 
     chain_path = outdir / "chain.h5"
     if chain_path.exists() and not mcmc_conf.reuse_saved:
-        backup_chain_path = chain_path.with_suffix(f".bck-{datetime.datetime.now().isoformat()}.h5")
+        backup_chain_path = chain_path.with_suffix(f".bck-{datetime.datetime.now().isoformat()}.h5")  # noqa: DTZ005
         print(f"Not reusing the existing chain, backing up as {backup_chain_path.name}")
         shutil.move(chain_path, backup_chain_path)
 
@@ -233,7 +233,7 @@ def run_mcmc(
             print(f"Seems like enough samples has been drawn (>={mcmc_conf.n_steps})")
             sampling_time_msg = "Existing chain reused"
         else:
-            thinned_steps = int(math.ceil(steps_to_run / thin_by))
+            thinned_steps = math.ceil(steps_to_run / thin_by)
             print(
                 f"Actual sampling steps to run: {steps_to_run}, thinned by {thin_by} = {thinned_steps}"
             )
@@ -275,7 +275,7 @@ def run_mcmc(
             theta_sample,
             header="\n".join(
                 [
-                    f"Generated on: {datetime.datetime.now()}",
+                    f"Generated on: {datetime.datetime.now()}",  # noqa: DTZ005
                     sampling_time_msg,
                     f"MCMC config: {mcmc_conf}",
                     (

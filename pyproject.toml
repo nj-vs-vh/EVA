@@ -13,4 +13,5 @@ ignore = ["E741"]
 exclude = [
     "^misc/model",
     "^data",
+    "^runscripts/archive",
 ]
