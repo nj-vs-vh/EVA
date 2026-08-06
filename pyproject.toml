@@ -1,3 +1,14 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cr_knee_fit"
+version = "0.0.1"
+
+[tool.setuptools]
+packages = ["cr_knee_fit"]
+
 [tool.ruff]
 line-length = 100
 indent-width = 4
@@ -5,13 +16,9 @@ target-version = "py312"
 extend-exclude = ["venv", "misc/model"]
 
 [tool.ruff.lint]
-extend-select = ["I"]  # check and fix imports
+extend-select = ["I"] # check and fix imports
 ignore = ["E741"]
 
 
 [tool.mypy]
-exclude = [
-    "^misc/model",
-    "^data",
-    "^runscripts/archive",
-]
+exclude = ["^misc/model", "^data", "^runscripts/archive"]
