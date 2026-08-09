@@ -1,9 +1,12 @@
 import functools
 import itertools
+import json
 from dataclasses import dataclass
+from typing import Annotated, Any
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pydantic
 from crams import (
     ELEMENT_NAMES as CRAMS_ELEMENT_NAMES,
 )
@@ -49,6 +52,18 @@ def pack_propagation(pp: PropagationParams) -> np.ndarray:
     )
 
 
+PROPAGATION_BOUNDS = [
+    (0.1, 100),
+    (1e-4, 1e4),
+    (100, 1000),
+    (0.0, 1.5),
+    (0.0, 1.0),
+    (1e26, 1e30),
+    None,
+    (0.1, 1.0),
+]
+
+
 def unpack_propagation(v: np.ndarray) -> PropagationParams:
     return PropagationParams(
         H_kpc=v[0],
@@ -62,9 +77,40 @@ def unpack_propagation(v: np.ndarray) -> PropagationParams:
     )
 
 
-@dataclass
-class CramsModelConfig:
-    crams: CramsRunner
+ABUNDANCE_BOUND = (0.0, 10.0)
+SLOPE_BOUND = (4.01, 4.99)  # (4, 5) is strictly enforced by CRAMS, here we add a small margin
+
+
+def _serialize_crams(cr: CramsRunner) -> str:
+    assert isinstance(cr, CramsRunner)
+    return json.dumps(
+        {
+            "inelastic_model": cr._inelastic_model,
+            "fragmentation_model": cr._fragmentation_model,
+            "verbose": cr._verbose,
+            "file_output": cr._file_output,
+        }
+    )
+
+
+def _validate_crams(input: Any) -> CramsRunner:
+    if isinstance(input, CramsRunner):
+        return input
+    raw = json.loads(input)
+    return CramsRunner(
+        inelastic_model=raw["inelastic_model"],
+        fragmentation_model=raw["fragmentation_model"],
+        verbose=raw["verbose"],
+        file_output=raw["file_output"],
+    )
+
+
+class CramsModelConfig(pydantic.BaseModel):
+    crams: Annotated[
+        CramsRunner,
+        pydantic.PlainValidator(_validate_crams),
+        pydantic.PlainSerializer(_serialize_crams, return_type=str),
+    ]
 
     # fitted params are set to nan in these
     frozen_propagation: PropagationParams
@@ -100,7 +146,7 @@ class CramsModelConfig:
                 slopes=[np.nan] * 3,
             ),
             frozen_propagation=PropagationParams(
-                H_kpc=np.nan,
+                H_kpc=7.0,
                 v_A_km_sec=np.nan,
                 R_b_GV=np.nan,
                 delta=np.nan,
@@ -123,6 +169,14 @@ class CramsModel(Packable[CramsModelConfig]):
     injection: InjectionParams
 
     config: CramsModelConfig
+
+    @staticmethod
+    def default() -> "CramsModel":
+        return CramsModel(
+            propagation=PropagationParams(),
+            injection=InjectionParams.default(),
+            config=CramsModelConfig.default(),
+        )
 
     def description(self) -> str:
         prop_raw: str = self.propagation.to_input().describe().strip()
@@ -181,7 +235,8 @@ class CramsModel(Packable[CramsModelConfig]):
                 np.log10(R),
                 xp=self.crams_lgR_grid,
                 fp=self.crams_lg_spectrum(element),
-                right=0.0,
+                left=np.nan,  # explicitly invalid for points out of computed bound
+                right=np.nan,
             )
         )  # type: ignore
 
@@ -292,7 +347,7 @@ class CramsModel(Packable[CramsModelConfig]):
             ]
         )
 
-        injection_labels = [f"q_\\text{{{el}}}" for el in self.injection.abundances]
+        injection_labels = [f"q_\\text{{{el.name}}}" for el in CRAMS_ELEMENTS]
         injection_labels.extend(
             [
                 f"\\gamma_\\text{{{el}}}"
@@ -322,6 +377,20 @@ class CramsModel(Packable[CramsModelConfig]):
                 pack_injection(self.injection)[self.config.is_fitted_injection],
             )
         )
+
+    def ml_bounds(self) -> list[tuple[float, float] | None] | None:
+        injection_bounds = [ABUNDANCE_BOUND] * len(self.injection.abundances) + [SLOPE_BOUND] * len(
+            self.injection.slopes
+        )
+        return [
+            bound
+            for bound, is_fitted in zip(PROPAGATION_BOUNDS, self.config.is_fitted_propagation)
+            if is_fitted
+        ] + [
+            bound
+            for bound, is_fitted in zip(injection_bounds, self.config.is_fitted_injection)
+            if is_fitted
+        ]
 
     def ndim(self) -> int:
         return np.sum(self.config.is_fitted_injection) + np.sum(self.config.is_fitted_propagation)
@@ -362,3 +431,4 @@ if __name__ == "__main__":
     print(cm.description())
     print(cm.pack())
     cm.validate_packing()
+    print(cm.ml_bounds())

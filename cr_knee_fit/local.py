@@ -10,7 +10,7 @@ from cr_knee_fit.utils import ROOT_DIR
 OUT_DIR = ROOT_DIR / "out"
 
 
-PHASE = 5
+PHASE = 6
 
 
 def guess_analysis_name(filename: str) -> str:

@@ -464,6 +464,8 @@ def transform_HAWC_2025() -> None:
 def transform_KISS() -> None:
     kiss_dir = Path("KISS/kiss_tables")
     assert kiss_dir.exists(), f"KISS dir not found, please clone it first: {kiss_dir}"
+
+    # EKN tables
     for input, output, A in (
         ("CALET_Cr_kineticEnergyPerNucleon.txt", "CALET_Cr_energy.txt", 52),
         ("CALET_Ti_kineticEnergyPerNucleon.txt", "CALET_Ti_energy.txt", 48),
@@ -474,6 +476,38 @@ def transform_KISS() -> None:
         )
         data = transform_T2E(E_center, E_center, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up, A=A)
         dump(data, output)
+
+    # R tables for spectra, converted to energy
+    for input, output, Z in (
+        ("AMS-02_Li_rigidity.txt", "AMS-02_Li_energy.txt", 3),
+        ("AMS-02_B_rigidity.txt", "AMS-02_B_energy.txt", 4),
+        ("AMS-02_Be_rigidity.txt", "AMS-02_Be_energy.txt", 5),
+        ("AMS-02_N_rigidity.txt", "AMS-02_N_energy.txt", 7),
+        ("AMS-02_F_rigidity.txt", "AMS-02_F_energy.txt", 9),
+        ("AMS-02_Ne_rigidity.txt", "AMS-02_Ne_energy.txt", 10),
+        ("AMS-02_Al_rigidity.txt", "AMS-02_Al_energy.txt", 13),
+        ("AMS-02_S_rigidity.txt", "AMS-02_S_energy.txt", 16),
+    ):
+        R_center, I_R, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = np.loadtxt(
+            kiss_dir / input, unpack=True
+        )
+        data = transform_R2E(R_center, R_center, I_R, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up, Z=Z)
+        dump(data, output)
+
+    # R tables for ratios verbatim
+    for input in (
+        "AMS-02_B_C_rigidity.txt",
+        "AMS-02_B_O_rigidity.txt",
+        "AMS-02_Be_B_rigidity.txt",
+        "AMS-02_C_O_rigidity.txt",
+        "AMS-02_Fe_O_rigidity.txt",
+        "AMS-02_Li_B_rigidity.txt",
+    ):
+        prefix = input.removesuffix("_rigidity.txt")
+        output = f"{prefix}_ratio_rigidity.txt"
+        output_path = OUTPUT_DIR / output
+        shutil.copy(kiss_dir / input, output_path)
+        logging.info("Data moved as-is from KISS to %s", output_path)  # noqa: LOG015
 
 
 def transform_DAMPE_C_O_ICRC2025() -> None:

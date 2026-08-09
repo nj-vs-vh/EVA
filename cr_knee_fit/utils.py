@@ -38,6 +38,7 @@ def merged_lims(vals: Sequence[np.ndarray]) -> tuple[float, float]:
 
 
 E_GEV_LABEL: str = "$E$ / $\\text{GeV}$"
+R_GV_LABEL: str = "$\\mathcal{R}$ / $\\text{GV}$"
 LN_A_LABEL = "$ \\langle \\ln A \\rangle $"
 
 

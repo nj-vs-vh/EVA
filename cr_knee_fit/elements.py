@@ -70,6 +70,7 @@ class Element(enum.IntEnum):
 
     @property
     def color(self) -> Any:
+        # FIXME: ensure the selected colors and the fallback are visually distinct
         if color := {
             Element.H: "#ff0000",
             Element.He: "#8F9827",

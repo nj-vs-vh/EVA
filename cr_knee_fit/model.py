@@ -85,9 +85,6 @@ class Model(Packable[ModelConfig]):
         default_factory=dict
     )
 
-    def __post_init__(self) -> None:
-        assert self.populations, "populations list can't be empty"
-
     def pack(self) -> np.ndarray:
         chunks: list[np.ndarray] = []
         if self.crams is not None:
@@ -95,6 +92,14 @@ class Model(Packable[ModelConfig]):
         chunks.extend(pop.pack() for pop in self.populations)
         chunks.append(self.energy_shifts.pack())
         return np.hstack(chunks)
+
+    def ml_bounds(self) -> list[tuple[float, float] | None] | None:
+        if self.crams is None:
+            return None
+        crams_bounds = self.crams.ml_bounds()
+        if crams_bounds is None:
+            return None
+        return crams_bounds + [None] * (self.ndim() - self.crams.ndim())
 
     def labels(self, latex: bool) -> list[str]:
         return (
@@ -133,6 +138,7 @@ class Model(Packable[ModelConfig]):
         )
         return Model(
             populations=populations,
+            crams=crams,
             energy_shifts=energy_shifts,
             energy_scale_lg_uncertainty_override=layout_info.energy_scale_lg_uncertainty_override,
         )
@@ -198,7 +204,7 @@ class Model(Packable[ModelConfig]):
                 scale=scale,
                 axes=ax,
                 all_particle=plot_allpart,
-                # TODO: clean up the plot from all the un-fitted elements
+                elements=fit_data.elements(),
             )
         for pop in self.populations:
             pop.plot(
@@ -310,6 +316,9 @@ class Model(Packable[ModelConfig]):
         validation_data: Data,
     ) -> Figure:
         aux_spectra = [d for d in validation_data.aux_data if isinstance(d, CRSpectrumData)]
+        if not aux_spectra:
+            # FIXME: gracefully exit when there's no spectral aux data; plot elemental ratios
+            return plt.figure()
         aux_spectra.sort(key=CRSpectrumData.element_label)
         grouped_spectra = [
             (label, list(spectra))
@@ -437,44 +446,68 @@ class Model(Packable[ModelConfig]):
 
 
 if __name__ == "__main__":
-    m = Model(
-        populations=[
-            CosmicRaysModel(
-                base_spectra=[
-                    SharedPowerLawSpectrum(
-                        lgI_per_element={p: np.random.random()},
-                        alpha=np.random.random(),
-                        lg_scale_contrib_to_all=0.1,
-                    )
-                    for p in Element
-                ],
-                breaks=[
-                    SpectralBreak(
-                        lg_break=np.random.random(),
-                        d_alpha=np.random.random(),
-                        lg_sharpness=np.random.random(),
-                        config=SpectralBreakConfig(
-                            quantity="R",
-                            fixed_lg_sharpness=None,
-                            lg_break_prior_limits=(4, 10),
-                            is_softening=True,
-                        ),
-                    )
-                    for _ in range(5)
-                ],
-                all_particle_lg_shift=np.random.random(),
-                free_Z=np.random.random(),
-            )
-            for _ in range(3)
-        ],
-        energy_shifts=ExperimentEnergyScaleShifts(
-            lg_shifts={
-                e: np.random.random()
-                for e in [
-                    Experiment("a", filename_stem="aaa"),
-                    Experiment("b", filename_stem="bbb"),
-                ]
-            }
+    for m in [
+        Model(
+            populations=[
+                CosmicRaysModel(
+                    base_spectra=[
+                        SharedPowerLawSpectrum(
+                            lgI_per_element={p: np.random.random()},
+                            alpha=np.random.random(),
+                            lg_scale_contrib_to_all=0.1,
+                        )
+                        for p in Element
+                    ],
+                    breaks=[
+                        SpectralBreak(
+                            lg_break=np.random.random(),
+                            d_alpha=np.random.random(),
+                            lg_sharpness=np.random.random(),
+                            config=SpectralBreakConfig(
+                                quantity="R",
+                                fixed_lg_sharpness=None,
+                                lg_break_prior_limits=(4, 10),
+                                is_softening=True,
+                            ),
+                        )
+                        for _ in range(5)
+                    ],
+                    all_particle_lg_shift=np.random.random(),
+                    free_Z=np.random.random(),
+                )
+                for _ in range(3)
+            ],
+            energy_shifts=ExperimentEnergyScaleShifts(
+                lg_shifts={
+                    e: np.random.random()
+                    for e in [
+                        Experiment("a", filename_stem="aaa"),
+                        Experiment("b", filename_stem="bbb"),
+                    ]
+                }
+            ),
         ),
-    )
-    m.validate_packing()
+        Model(
+            populations=[],
+            energy_shifts=ExperimentEnergyScaleShifts(
+                lg_shifts={
+                    e: np.random.random()
+                    for e in [
+                        Experiment("a", filename_stem="aaa"),
+                        Experiment("b", filename_stem="bbb"),
+                    ]
+                }
+            ),
+        ),
+        Model(
+            populations=[],
+            crams=CramsModel.default(),
+            energy_shifts=ExperimentEnergyScaleShifts(
+                lg_shifts={Experiment("a", filename_stem="aaa"): np.random.random()}
+            ),
+        ),
+    ]:
+        print()
+        print(m)
+        print(Model.unpack(m.pack(), m.layout_info()))
+        m.validate_packing()

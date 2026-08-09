@@ -16,6 +16,7 @@ devenv.local.nix
 
 venv
 
+cr_knee_fit.egg-info
 bayesian.back.ipynb
 out/
 data/sync.sh

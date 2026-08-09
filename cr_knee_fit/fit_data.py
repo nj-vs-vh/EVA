@@ -17,6 +17,7 @@ from cr_knee_fit.experiments import Experiment
 from cr_knee_fit.utils import (
     DATA_DIR,
     LN_A_LABEL,
+    R_GV_LABEL,
     energy_shift_suffix,
     label_energy_flux,
     legend_with_added_items,
@@ -315,7 +316,97 @@ class CRSpectrumData:
         return axes
 
 
-type AuxDataSpec = ElementSum
+@dataclass(frozen=True)
+class FluxRatio:
+    num: Element
+    denom: Element
+
+    def __str__(self) -> str:
+        return f"{self.num.name} / {self.denom.name}"
+
+
+@dataclass(frozen=True)
+class FluxRatioData:
+    d: GenericExperimentData
+    ratio: FluxRatio
+
+    def __post_init__(self) -> None:
+        assert self.R.size > 0, "Empty flux ratio data"
+
+    @property
+    def R(self) -> np.ndarray:
+        """Rigidity in GV"""
+        return self.d.x
+
+    @property
+    def value(self) -> np.ndarray:
+        """Dimensionless flux ratio"""
+        return self.d.y
+
+    @property
+    def ratio_err_stat(self) -> np.ndarray:
+        return self.d.err_stat
+
+    @property
+    def ratio_err_syst(self) -> np.ndarray:
+        return self.d.err_syst
+
+    # TODO: validate that such error correlation assumptions are reasonable for flux ratio!
+
+    @functools.cached_property
+    def err_cov(self) -> np.ndarray:
+        return self.d.err_cov(corr_length=1.0, log_space_correlation=True)
+
+    @functools.cached_property
+    def err_cov_inv(self) -> np.ndarray:
+        return self.d.log_space_err_cov_inv(corr_length=1.0)
+
+    @classmethod
+    def load(
+        cls,
+        exp: Experiment,
+        spec: FluxRatio,
+        R_bounds: tuple[float, float] = (0, np.inf),
+    ) -> "FluxRatioData":
+        num_name = spec.num.name if spec.num != Element.H else "p"
+        denom_name = spec.denom.name
+        return FluxRatioData(
+            d=GenericExperimentData.load(
+                exp=exp,
+                suffix=f"{num_name}_{denom_name}_ratio_rigidity",
+                x_bounds=R_bounds,
+            ),
+            ratio=spec,
+        )
+
+    def ratio_label(self) -> str:
+        return str(self.ratio)
+
+    def plot_label(self) -> str:
+        return f"{self.d.experiment.name} {self.ratio_label()}"
+
+    def plot(
+        self,
+        ax: Axes | None = None,
+        color: Any | None = None,
+        add_legend_label: bool = True,
+        is_fitted: bool = True,
+        marker_size: float = DEFAULT_MARKER_SIZE,
+    ) -> Axes:
+        axes = self.d.plot(
+            ax=ax,
+            color=color,
+            is_fitted=is_fitted,
+            marker_size=marker_size,
+            label_override=self.plot_label(),
+            add_legend_label=add_legend_label,
+        )
+        axes.set_xlabel(R_GV_LABEL)
+        axes.set_ylabel("Flux ratio")
+        return axes
+
+
+type AuxDataSpec = ElementSum | FluxRatio
 
 
 @dataclass
@@ -347,7 +438,7 @@ class DataConfig:
         return list(
             set(
                 itertools.chain(
-                    (exp_or_exp_elements for exp_or_exp_elements in self.elements_by_exp.keys()),
+                    (exp_or_exp_elements for exp_or_exp_elements in self.elements_by_exp),
                     self.experiments_all_particle,
                 )
             )
@@ -376,7 +467,7 @@ class Data:
     element_spectra: dict[Experiment, dict[Element, CRSpectrumData]]
     all_particle_spectra: dict[Experiment, CRSpectrumData]
     lnA: dict[Experiment, GenericExperimentData]
-    aux_data: list[CRSpectrumData]
+    aux_data: list[CRSpectrumData | FluxRatioData]
 
     config: DataConfig
 
@@ -388,8 +479,14 @@ class Data:
         ):
             all.add(e)
         if not spectra_only:
-            for e in self.lnA.keys():
+            for e in self.lnA:
                 all.add(e)
+        return sorted(all)
+
+    def elements(self) -> list[Element]:
+        all = set[Element]()
+        for spectra in self.element_spectra.values():
+            all.update(spectra.keys())
         return sorted(all)
 
     def is_empty(self) -> bool:
@@ -431,7 +528,7 @@ class Data:
             try:
                 allparticle[exp] = CRSpectrumData.load_all_particle(exp)
                 log_loaded(exp, "all particle")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 log_loaded(exp, "all particle", e)
 
         lnA = {}
@@ -444,7 +541,7 @@ class Data:
                     custom_label=LN_A_LABEL,
                 )
                 log_loaded(exp, "lnA")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 log_loaded(exp, "lnA", e)
 
         element_spectra: dict[Experiment, dict[Element, CRSpectrumData]] = {}
@@ -454,17 +551,25 @@ class Data:
                 try:
                     exp_data[element] = CRSpectrumData.load(exp, element, config.elements_R_bounds)
                     log_loaded(exp, element.name)
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     log_loaded(exp, element.name, e)
             element_spectra[exp] = exp_data
 
-        aux_data: list[CRSpectrumData] = []
+        aux_data: list[CRSpectrumData | FluxRatioData] = []
         for exp, aux_data_spec in config.aux_data:
-            match aux_data_spec:
-                case tuple() as elements_:
-                    aux_data.append(CRSpectrumData.load(exp, elements_))
-                case spec:
-                    raise RuntimeError(f"Unexpected aux data spec: {spec}")
+            try:
+                match aux_data_spec:
+                    case tuple() as elements_:
+                        aux_data.append(
+                            CRSpectrumData.load(exp, elements_, config.elements_R_bounds)
+                        )
+                    case FluxRatio() as ratio:
+                        aux_data.append(FluxRatioData.load(exp, ratio))
+                    case spec:
+                        raise RuntimeError(f"Unexpected aux data spec: {spec}")
+                log_loaded(exp, str(aux_data_spec))
+            except Exception as e:  # noqa: BLE001
+                log_loaded(exp, str(aux_data_spec), e)
 
         return Data(
             element_spectra=element_spectra,

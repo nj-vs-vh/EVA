@@ -158,10 +158,11 @@ def run_ml_analysis(
     res = optimize.minimize(
         to_minimize,
         x0=initial_model.pack(),
-        method="Nelder-Mead",
-        options={
-            "maxiter": 100_000,
-        },
+        bounds=initial_model.ml_bounds(),
+        method="L-BFGS-B",
+        # options={
+        #     "maxiter": 100_000,
+        # },
     )
     print(res)
     map_model = Model.unpack(res.x, layout_info=model_config)
@@ -310,16 +311,15 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
     print("Loading fit data...")
     fit_data = Data.load(config.fit_data_config)
     set_global_fit_data(fit_data)
-
-    validation_data = (
-        Data.load(config.plots.validation_data_config)
-        if config.plots.validation_data_config is not None
-        else Data.empty()
-    )
-
     scale = 2.75 if fit_data.E_max() > 2e6 else 2.6
     fit_data.plot(scale=scale, describe=True).savefig(outdir / "data.png")
-    validation_data.plot(scale=scale, describe=True).savefig(outdir / "data-validation.png")
+
+    if config.plots.validation_data_config is not None:
+        print("Loading validation data...")
+        validation_data = Data.load(config.plots.validation_data_config)
+        validation_data.plot(scale=scale, describe=True).savefig(outdir / "data-validation.png")
+    else:
+        validation_data = Data.empty()
 
     print_delim()
     print("Initial guess model (example):")

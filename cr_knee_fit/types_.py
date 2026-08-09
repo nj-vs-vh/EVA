@@ -25,12 +25,23 @@ class Packable[LayoutInfo](abc.ABC):
     @abc.abstractmethod
     def unpack(cls: type[Self], theta: np.ndarray, layout_info: LayoutInfo) -> Self: ...
 
+    def ml_bounds(self) -> list[tuple[float, float] | None] | None:
+        """Bounds to be used during optimization. By default, no bounds are specified."""
+        return None
+
     def validate_packing(self) -> None:
         packed = self.pack()
-        labels = self.labels(latex=False)
-        assert len(packed) == len(labels)
         assert len(packed) == self.ndim()
-        assert self.unpack(packed, layout_info=self.layout_info()) == self
+
+        for pad_at_the_end in (0, 1, 5):
+            packed_ = packed.copy()
+            packed_ = np.concatenate((packed_, np.zeros((pad_at_the_end,))))
+            assert self.unpack(packed_, layout_info=self.layout_info()) == self
+
+        if bounds := self.ml_bounds():
+            assert len(bounds) == self.ndim()
+
+        assert len(self.labels(latex=False)) == self.ndim()
 
     def format_params(self) -> str:
         lines: list[str] = []
