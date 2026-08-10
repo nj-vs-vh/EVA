@@ -437,11 +437,18 @@ class SpectrumDataConfig:
         return SpectrumDataConfig(exp, None)
 
 
+@dataclass(frozen=True)
+class FluxRatioDataConfig:
+    experiment: Experiment
+    ratio: FluxRatio
+    R_bounds: tuple[float, float] = (0, np.inf)
+
+
 @dataclass
 class DataConfig:
     spectra: Sequence[SpectrumDataConfig] = dataclasses.field(default_factory=list)
     lnA: Sequence[Experiment] = dataclasses.field(default_factory=list)
-    flux_ratios: Sequence[tuple[Experiment, FluxRatio]] = dataclasses.field(default_factory=list)
+    flux_ratios: Sequence[FluxRatioDataConfig] = dataclasses.field(default_factory=list)
 
     @property
     def experiments_spectra(self) -> list[Experiment]:
@@ -574,12 +581,18 @@ class Data:
                 log_loaded(exp, "lnA", e)
 
         flux_ratios: list[FluxRatioData] = []
-        for exp, ratio in config.flux_ratios:
+        for fr_conf in config.flux_ratios:
             try:
-                flux_ratios.append(FluxRatioData.load(exp, ratio))
-                log_loaded(exp, str(ratio))
+                flux_ratios.append(
+                    FluxRatioData.load(
+                        fr_conf.experiment,
+                        fr_conf.ratio,
+                        R_bounds=fr_conf.R_bounds,
+                    )
+                )
+                log_loaded(fr_conf.experiment, str(fr_conf.ratio))
             except Exception as e:  # noqa: BLE001
-                log_loaded(exp, str(ratio), e)
+                log_loaded(fr_conf.experiment, str(fr_conf.ratio), e)
 
         return Data(spectra=spectra, lnA=lnA, flux_ratios=flux_ratios, config=config)
 

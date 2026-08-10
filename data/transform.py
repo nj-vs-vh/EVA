@@ -480,8 +480,8 @@ def transform_KISS() -> None:
     # R tables for spectra, converted to energy
     for input, output, Z in (
         ("AMS-02_Li_rigidity.txt", "AMS-02_Li_energy.txt", 3),
-        ("AMS-02_B_rigidity.txt", "AMS-02_B_energy.txt", 4),
-        ("AMS-02_Be_rigidity.txt", "AMS-02_Be_energy.txt", 5),
+        ("AMS-02_Be_rigidity.txt", "AMS-02_Be_energy.txt", 4),
+        ("AMS-02_B_rigidity.txt", "AMS-02_B_energy.txt", 5),
         ("AMS-02_N_rigidity.txt", "AMS-02_N_energy.txt", 7),
         ("AMS-02_F_rigidity.txt", "AMS-02_F_energy.txt", 9),
         ("AMS-02_Ne_rigidity.txt", "AMS-02_Ne_energy.txt", 10),
@@ -502,6 +502,7 @@ def transform_KISS() -> None:
         "AMS-02_C_O_rigidity.txt",
         "AMS-02_Fe_O_rigidity.txt",
         "AMS-02_Li_B_rigidity.txt",
+        "AMS-02_He_O_rigidity.txt",
     ):
         prefix = input.removesuffix("_rigidity.txt")
         output = f"{prefix}_ratio_rigidity.txt"

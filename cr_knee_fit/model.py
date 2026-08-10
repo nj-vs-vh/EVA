@@ -328,11 +328,8 @@ class Model(Packable[ModelConfig]):
             for fr in data.flux_ratios:
                 fr.plot(
                     ax=ax,
-                    add_legend_label=False,
+                    add_legend_label=True,
                     is_fitted=is_fitted,
-                )
-                legend_items.append(
-                    (fr.d.experiment.legend_artist(is_fitted), fr.d.experiment.name)
                 )
                 all_R.extend(fr.R)
                 ratios_to_plot.add(fr.ratio)
@@ -350,7 +347,7 @@ class Model(Packable[ModelConfig]):
         ax.set_yscale("log")
         ax.set_xlabel(R_GV_LABEL)
         ax.set_ylabel("Flux ratio")
-        legend_with_added_items(ax, legend_items, fontsize="x-small")
+        ax.legend()
         return fig
 
     def plot_all_observables(

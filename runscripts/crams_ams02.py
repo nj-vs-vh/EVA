@@ -7,7 +7,7 @@ from cr_knee_fit.analysis import (
 )
 from cr_knee_fit.crams_model import CramsModel
 from cr_knee_fit.elements import Element
-from cr_knee_fit.fit_data import DataConfig, FluxRatio, SpectrumDataConfig
+from cr_knee_fit.fit_data import DataConfig, FluxRatio, FluxRatioDataConfig, SpectrumDataConfig
 from cr_knee_fit.guesses import (
     initial_guess_energy_shifts,
 )
@@ -18,19 +18,55 @@ if __name__ == "__main__":
     opts = LocalRunOptions.parse()
     analysis_name = guess_analysis_name(__file__)
 
+    # this is the exact setup from CRAMS fit, with the same elements, ratios, and R bounds
     fit_data_config = DataConfig(
         spectra=[
-            SpectrumDataConfig(experiments.ams02, spec=element, bounds=(5, np.inf))
-            for element in Element.regular()
+            SpectrumDataConfig(
+                experiments.ams02,
+                spec=element,
+                bounds=(
+                    (
+                        20.0
+                        if element
+                        in {Element.Fe, Element.N, Element.Mg, Element.Ne, Element.S, Element.Si}
+                        else 5.0
+                    ),
+                    np.inf,
+                ),
+            )
+            for element in [
+                Element.B,
+                Element.C,
+                Element.Fe,
+                Element.H,
+                Element.He,
+                Element.Mg,
+                Element.N,
+                Element.Ne,
+                Element.O,
+                Element.S,
+                Element.Si,
+            ]
         ],
         flux_ratios=[
-            (experiments.ams02, FluxRatio(Element.H, Element.He)),
-            (experiments.ams02, FluxRatio(Element.Li, Element.B)),
-            (experiments.ams02, FluxRatio(Element.B, Element.C)),
-            (experiments.ams02, FluxRatio(Element.B, Element.O)),
-            (experiments.ams02, FluxRatio(Element.Be, Element.B)),
-            (experiments.ams02, FluxRatio(Element.C, Element.O)),
-            (experiments.ams02, FluxRatio(Element.Fe, Element.O)),
+            FluxRatioDataConfig(
+                experiments.ams02, FluxRatio(Element.B, Element.C), R_bounds=(5.0, np.inf)
+            ),
+            FluxRatioDataConfig(
+                experiments.ams02, FluxRatio(Element.B, Element.O), R_bounds=(5.0, np.inf)
+            ),
+            FluxRatioDataConfig(
+                experiments.ams02, FluxRatio(Element.C, Element.O), R_bounds=(5.0, np.inf)
+            ),
+            FluxRatioDataConfig(
+                experiments.ams02, FluxRatio(Element.H, Element.He), R_bounds=(5.0, np.inf)
+            ),
+            FluxRatioDataConfig(
+                experiments.ams02, FluxRatio(Element.He, Element.O), R_bounds=(5.0, np.inf)
+            ),
+            FluxRatioDataConfig(
+                experiments.ams02, FluxRatio(Element.He, Element.O), R_bounds=(5.0, np.inf)
+            ),
         ],
     )
 
@@ -42,7 +78,7 @@ if __name__ == "__main__":
             SpectrumDataConfig(experiments.dampe, Element.Fe),
         ],
         flux_ratios=[
-            (experiments.calet, FluxRatio(Element.H, Element.He)),
+            FluxRatioDataConfig(experiments.calet, FluxRatio(Element.H, Element.He)),
         ],
     )
 
