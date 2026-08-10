@@ -7,7 +7,7 @@ from cr_knee_fit.analysis import (
 )
 from cr_knee_fit.crams_model import CramsModel
 from cr_knee_fit.elements import Element
-from cr_knee_fit.fit_data import DataConfig, FluxRatio
+from cr_knee_fit.fit_data import DataConfig, FluxRatio, SpectrumDataConfig
 from cr_knee_fit.guesses import (
     initial_guess_energy_shifts,
 )
@@ -19,20 +19,12 @@ if __name__ == "__main__":
     analysis_name = guess_analysis_name(__file__)
 
     fit_data_config = DataConfig(
-        experiments_elements=[experiments.ams02],
-        experiments_all_particle=[],
-        experiments_lnA=[],
-        default_elements=Element.regular(),
-        elements_R_bounds=(5, np.inf),
-    )
-
-    validation_data_config = DataConfig(
-        experiments_elements=[experiments.dampe, experiments.calet],
-        experiments_all_particle=[experiments.hawc],
-        experiments_lnA=[],
-        aux_data=[
+        spectra=[
+            SpectrumDataConfig(experiments.ams02, spec=element, bounds=(5, np.inf))
+            for element in Element.regular()
+        ],
+        flux_ratios=[
             (experiments.ams02, FluxRatio(Element.H, Element.He)),
-            (experiments.calet, FluxRatio(Element.H, Element.He)),
             (experiments.ams02, FluxRatio(Element.Li, Element.B)),
             (experiments.ams02, FluxRatio(Element.B, Element.C)),
             (experiments.ams02, FluxRatio(Element.B, Element.O)),
@@ -40,19 +32,36 @@ if __name__ == "__main__":
             (experiments.ams02, FluxRatio(Element.C, Element.O)),
             (experiments.ams02, FluxRatio(Element.Fe, Element.O)),
         ],
-        default_elements=Element.regular(),
-        elements_R_bounds=(0, np.inf),
-    ).excluding(fit_data_config)
+    )
+
+    validation_data_config = DataConfig(
+        spectra=[
+            SpectrumDataConfig.allparticle(experiments.hawc),
+            SpectrumDataConfig(experiments.dampe, Element.H),
+            SpectrumDataConfig(experiments.dampe, Element.He),
+            SpectrumDataConfig(experiments.dampe, Element.Fe),
+        ],
+        flux_ratios=[
+            (experiments.calet, FluxRatio(Element.H, Element.He)),
+        ],
+    )
 
     def generate_guess() -> Model:
         return Model(
             populations=[],
             energy_shifts=initial_guess_energy_shifts(
-                fit_data_config.experiments_spectrum,
+                fit_data_config.experiments_spectra,
                 fixed=experiments.ams02,
             ),
             crams=CramsModel.default(),
         )
+
+    # m = generate_guess()
+    # d = Data.load(fit_data_config, verbose=True)
+    # print()
+    # vd = Data.load(validation_data_config, verbose=True)
+    # m.plot_spectra(d, scale=2.7, validation_data=vd).savefig("temp_spectra.png")
+    # m.plot_flux_ratios(d, validation_data=vd).savefig("temp_ratios.png")
 
     run_local(
         config=FitConfig.from_guessing_func(

@@ -68,17 +68,11 @@ class FitConfig(pydantic.BaseModel):
 
     def __post_init__(self) -> None:
         model_elements = set(self.model.elements(only_fixed_Z=True))
-        data_elements = set(self.fit_data_config.default_elements)
+        data_elements = set(self.fit_data_config.elements)
         unconstrained_elements = model_elements - data_elements
         if unconstrained_elements:
             warn(
                 f"Some elements in the model are not contstrained by data: {sorted(unconstrained_elements)}"
-            )
-
-        if self.fit_data_config.aux_data:
-            warn(
-                "Aux data are ignored in fit data; use validation data "
-                + f"for posterior plotting: {self.fit_data_config.aux_data}"
             )
 
     @classmethod
@@ -159,10 +153,10 @@ def run_ml_analysis(
         to_minimize,
         x0=initial_model.pack(),
         bounds=initial_model.ml_bounds(),
-        method="L-BFGS-B",
-        # options={
-        #     "maxiter": 100_000,
-        # },
+        method="Nelder-Mead",
+        options={
+            "maxiter": 100_000,
+        },
     )
     print(res)
     map_model = Model.unpack(res.x, layout_info=model_config)
@@ -295,6 +289,32 @@ def run_mcmc(
     return theta_sample
 
 
+def plot_and_print_model(
+    outdir: Path,
+    prefix: str,
+    model: Model,
+    fit_data: Data,
+    validation_data: Data,
+    scale: float,
+):
+    model.print_params()
+    model.plot_spectra(fit_data, scale=scale, validation_data=validation_data).savefig(
+        outdir / f"{prefix}-spectra.png"
+    )
+
+    if fig := model.plot_lnA(fit_data, validation_data):
+        fig.savefig(outdir / f"{prefix}-lnA.png")
+    if fig := model.plot_flux_ratios(fit_data, validation_data):
+        fig.savefig(outdir / f"{prefix}-flux-ratios.png")
+
+    detailed_dir = outdir / prefix
+    detailed_dir.mkdir(exist_ok=True)
+    for (exp, observable), fig in model.plot_all_observables(
+        fit_data, spectra_scale=scale, validation_data=validation_data
+    ).items():
+        fig.savefig(detailed_dir / f"{exp.filename_prefix}_{observable}.png")
+
+
 def run_analysis(config: FitConfig, outdir: Path) -> None:
     print(f"Output dir: {outdir}")
     print(f"chi2 method: {CHI2_METHOD}")
@@ -312,12 +332,14 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
     fit_data = Data.load(config.fit_data_config)
     set_global_fit_data(fit_data)
     scale = 2.75 if fit_data.E_max() > 2e6 else 2.6
-    fit_data.plot(scale=scale, describe=True).savefig(outdir / "data.png")
+    if fig := fit_data.plot(scale=scale, describe=True):
+        fig.savefig(outdir / "data.png")
 
     if config.plots.validation_data_config is not None:
         print("Loading validation data...")
         validation_data = Data.load(config.plots.validation_data_config)
-        validation_data.plot(scale=scale, describe=True).savefig(outdir / "data-validation.png")
+        if fig := validation_data.plot(scale=scale, describe=True):
+            fig.savefig(outdir / "data-validation.png")
     else:
         validation_data = Data.empty()
 
@@ -352,16 +374,13 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
         )
         mle_model.save(mle_model_dump, header=[f"GoF: {gof}"])
 
-    mle_model.print_params()
-    mle_model.plot_spectra(fit_data, scale=scale, validation_data=validation_data).savefig(
-        outdir / "preliminary-mle-result.png"
-    )
-    if validation_data.aux_data:
-        mle_model.plot_aux_data(spectra_scale=scale, validation_data=validation_data).savefig(
-            outdir / "preliminary-mle-aux-data.png"
-        )
-    mle_model.plot_lnA(fit_data, validation_data=validation_data).savefig(
-        outdir / "preliminary-mle-result-lnA.png"
+    plot_and_print_model(
+        outdir=outdir,
+        prefix="mle-prelim",
+        model=mle_model,
+        fit_data=fit_data,
+        validation_data=validation_data,
+        scale=scale,
     )
 
     print_delim()
@@ -434,12 +453,13 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
         )
         posterior_ml_best.save(posterior_ml_dump, header=[f"GoF: {gof}"])
 
-    posterior_ml_best.print_params()
-    posterior_ml_best.plot_spectra(fit_data, scale=scale, validation_data=validation_data).savefig(
-        outdir / "mle-from-posterior-best.png"
-    )
-    posterior_ml_best.plot_lnA(fit_data, validation_data=validation_data).savefig(
-        outdir / "mle-from-posterior-best-lnA.png"
+    plot_and_print_model(
+        outdir=outdir,
+        prefix="mle-map",
+        model=posterior_ml_best,
+        fit_data=fit_data,
+        validation_data=validation_data,
+        scale=scale,
     )
 
     print_delim()

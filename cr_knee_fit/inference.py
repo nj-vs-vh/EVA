@@ -199,27 +199,18 @@ def loglikelihood(
 ) -> float:
     model = ensure_model(model_or_theta, config)
     res = 0.0
-    for exp, data_by_element in fit_data.element_spectra.items():
-        for element, el_data in data_by_element.items():
-            el_data = el_data.with_shifted_energy_scale(f=model.energy_shifts.f(exp))
-            res += chi_squared_loglikelihood(
-                prediction=model.compute_spectrum(el_data.E, element=element),
-                y=el_data.F,
-                err_stat=el_data.F_err_stat,
-                err_syst=el_data.F_err_syst,
-                err_cov_inv=el_data.err_cov_inv,
-            )
-    for exp, all_data in fit_data.all_particle_spectra.items():
-        all_data = all_data.with_shifted_energy_scale(f=model.energy_shifts.f(exp))
+
+    for spectrum in fit_data.spectra:
+        spectrum = spectrum.with_shifted_energy_scale(f=model.energy_shifts.f(spectrum.experiment))
         res += chi_squared_loglikelihood(
-            prediction=model.compute_spectrum(all_data.E, element=None),
-            y=all_data.F,
-            err_stat=all_data.F_err_stat,
-            err_syst=all_data.F_err_syst,
-            err_cov_inv=all_data.err_cov_inv,
+            prediction=model.compute_spectrum(spectrum.E, element=spectrum.spec),
+            y=spectrum.F,
+            err_stat=spectrum.F_err_stat,
+            err_syst=spectrum.F_err_syst,
+            err_cov_inv=spectrum.err_cov_inv,
         )
-    for exp, lnA_data in fit_data.lnA.items():
-        f = model.energy_shifts.f(exp)
+    for lnA_data in fit_data.lnA:
+        f = model.energy_shifts.f(lnA_data.experiment)
         E_exp = lnA_data.x
         # for lnA, the energy scale shift does not affect values as it includes dE in both numerator and denominator
         E_true = E_exp * f
@@ -228,7 +219,16 @@ def loglikelihood(
             y=lnA_data.y,
             err_stat=lnA_data.err_stat,
             err_syst=lnA_data.err_syst,
-            err_cov_inv=lnA_data.log_space_err_cov_inv(corr_length=1.0),
+            err_cov_inv=lnA_data.log_space_err_cov_inv,
+        )
+    for flux_ratio in fit_data.flux_ratios:
+        # flux ratios are used at low energies, where energy scale is very well constrained, hence no shift is applied
+        res += chi_squared_loglikelihood(
+            prediction=model.compute_flux_ratio(flux_ratio.R, fr=flux_ratio.ratio),
+            y=flux_ratio.value,
+            err_stat=flux_ratio.d.err_stat,
+            err_syst=flux_ratio.d.err_syst,
+            err_cov_inv=flux_ratio.d.log_space_err_cov_inv,
         )
 
     return res

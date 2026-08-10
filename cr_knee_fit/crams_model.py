@@ -1,6 +1,7 @@
 import functools
 import itertools
 import json
+from collections.abc import Collection
 from dataclasses import dataclass
 from typing import Annotated, Any
 
@@ -42,10 +43,10 @@ def pack_propagation(pp: PropagationParams) -> np.ndarray:
         [
             pp.H_kpc,
             pp.v_A_km_sec,
-            pp.R_b_GV,
+            np.log10(pp.R_b_GV),
             pp.delta,
             pp.ddelta,
-            pp.D_0_cm2_sec,
+            np.log10(pp.D_0_cm2_sec),
             pp.X_src,
             pp.phi,
         ]
@@ -55,10 +56,10 @@ def pack_propagation(pp: PropagationParams) -> np.ndarray:
 PROPAGATION_BOUNDS = [
     (0.1, 100),
     (1e-4, 1e4),
-    (100, 1000),
+    (np.log10(100), np.log10(1000)),
     (0.0, 1.5),
     (0.0, 1.0),
-    (1e26, 1e30),
+    (np.log10(1e26), np.log10(1e30)),
     None,
     (0.1, 1.0),
 ]
@@ -68,10 +69,10 @@ def unpack_propagation(v: np.ndarray) -> PropagationParams:
     return PropagationParams(
         H_kpc=v[0],
         v_A_km_sec=v[1],
-        R_b_GV=v[2],
+        R_b_GV=10 ** v[2],
         delta=v[3],
         ddelta=v[4],
-        D_0_cm2_sec=v[5],
+        D_0_cm2_sec=10 ** v[5],
         X_src=v[6],
         phi=v[7],
     )
@@ -105,6 +106,39 @@ def _validate_crams(input: Any) -> CramsRunner:
     )
 
 
+# copied from CRAMS source code
+DEFAULT_ABUNDANCES = {
+    Element.H: 5.06605e-02,
+    Element.He: 2.54369e-02,
+    Element.Li: 0.0,
+    Element.Be: 0.0,
+    Element.B: 0.0,
+    Element.C: 3.98879e-03,
+    Element.N: 3.36117e-04,
+    Element.O: 7.15129e-03,
+    Element.F: 0.0,
+    Element.Ne: 1.34031e-03,
+    Element.Na: 0.5e-4,
+    Element.Mg: 2.38948e-03,
+    Element.Al: 2.7e-4,
+    Element.Si: 2.77911e-03,
+    Element.P: 1e-4,
+    Element.S: 4.87000e-04,
+    Element.Cl: 0.0,
+    Element.Ar: 3e-4,
+    Element.K: 0.0,
+    Element.Ca: 4e-4,
+    Element.Sc: 0.0,
+    Element.Ti: 0.0,
+    Element.V: 0.0,
+    Element.Cr: 2.5e-4,
+    Element.Mn: 0.0,
+    Element.Fe: 6.80000e-03,
+    Element.Co: 0.0,
+    Element.Ni: 4e-4,
+}
+
+
 class CramsModelConfig(pydantic.BaseModel):
     crams: Annotated[
         CramsRunner,
@@ -135,14 +169,31 @@ class CramsModelConfig(pydantic.BaseModel):
         return np.isnan(self.frozen_injection_packed)
 
     @staticmethod
-    def default() -> "CramsModelConfig":
+    def default(
+        fit_abundances: Collection[Element] = [
+            Element.H,
+            Element.He,
+            Element.C,
+            Element.N,
+            Element.O,
+            Element.Ne,
+            Element.Mg,
+            Element.Si,
+            Element.S,
+            Element.Fe,
+        ],
+    ) -> "CramsModelConfig":
         return CramsModelConfig(
             crams=CramsRunner(
-                inelastic_model="glauber",
-                fragmentation_model="fluka4dragon",
+                # default CRAMS values, but explicitly specified
+                inelastic_model="tripathi99",
+                fragmentation_model="usinewebber03coste12",
             ),
             frozen_injection=InjectionParams(
-                abundances=[np.nan] * len(CRAMS_ELEMENTS),
+                abundances=[
+                    (np.nan if element in fit_abundances else DEFAULT_ABUNDANCES[element])
+                    for element in CRAMS_ELEMENTS
+                ],
                 slopes=[np.nan] * 3,
             ),
             frozen_propagation=PropagationParams(
@@ -153,7 +204,7 @@ class CramsModelConfig(pydantic.BaseModel):
                 ddelta=np.nan,
                 D_0_cm2_sec=np.nan,
                 X_src=-1.0,
-                phi=4.87754e-01,
+                phi=np.nan,
             ),
             population_meta=PopulationMetadata(name="CRAMS", linestyle="-"),
         )
@@ -172,10 +223,36 @@ class CramsModel(Packable[CramsModelConfig]):
 
     @staticmethod
     def default() -> "CramsModel":
+        init_fitted_abundances = {
+            Element.H: 4.14e-2,
+            Element.He: 2.04e-2,
+            Element.C: 4.00e-3,
+            Element.N: 3.83e-4,
+            Element.O: 7.21e-3,
+            Element.Ne: 1.35e-3,
+            Element.Mg: 2.38e-3,
+            Element.Si: 2.83e-3,
+            Element.S: 5.06e-4,
+            Element.Fe: 7.53e-3,
+        }
         return CramsModel(
-            propagation=PropagationParams(),
-            injection=InjectionParams.default(),
-            config=CramsModelConfig.default(),
+            propagation=PropagationParams(
+                H_kpc=7.0,
+                D_0_cm2_sec=2.376e28,
+                v_A_km_sec=3.32,
+                R_b_GV=316.9,
+                delta=0.54,
+                ddelta=0.27,
+                phi=0.47,
+            ),
+            injection=InjectionParams(
+                abundances=[
+                    init_fitted_abundances.get(element, DEFAULT_ABUNDANCES[element])
+                    for element in CRAMS_ELEMENTS
+                ],
+                slopes=[4.37, 4.30, 4.36],
+            ),
+            config=CramsModelConfig.default(fit_abundances=list(init_fitted_abundances.keys())),
         )
 
     def description(self) -> str:
@@ -208,8 +285,15 @@ class CramsModel(Packable[CramsModelConfig]):
             return False
         # NOTE: use with caution; this method ignores the embedded CramsRunner that might have different
         # configurations between self and other, and hence give different results
-        return (
-            self.propagation == other.propagation
+        return bool(
+            np.isclose(self.propagation.H_kpc, other.propagation.H_kpc)
+            and np.isclose(self.propagation.v_A_km_sec, other.propagation.v_A_km_sec)
+            and np.isclose(self.propagation.R_b_GV, other.propagation.R_b_GV)
+            and np.isclose(self.propagation.delta, other.propagation.delta)
+            and np.isclose(self.propagation.ddelta, other.propagation.ddelta)
+            and np.isclose(self.propagation.D_0_cm2_sec, other.propagation.D_0_cm2_sec)
+            and np.isclose(self.propagation.X_src, other.propagation.X_src)
+            and np.isclose(self.propagation.phi, other.propagation.phi)
             and np.allclose(self.injection.abundances, other.injection.abundances)
             and np.allclose(self.injection.slopes, other.injection.slopes)
         )

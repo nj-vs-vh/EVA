@@ -317,7 +317,7 @@ def plot_everything(
     for element in elements:
         plot_model_predictions(
             ax=ax_el,
-            observable=lambda model, E: model.compute_spectrum(E, element=element),
+            observable=lambda model, E: model.compute_spectrum(E, element=element),  # noqa: B023
             E_bounds=comp_Elim,
             plot_config=plots_config.elements,
             color=element.color,
@@ -383,7 +383,7 @@ def plot_everything(
             for element in elements:
                 plot_model_predictions(
                     ax=ax_all,
-                    observable=lambda model, E: model.compute_spectrum(E, element=element),
+                    observable=lambda model, E: model.compute_spectrum(E, element=element),  # noqa: B023
                     E_bounds=all_Elim,
                     plot_config=plots_config.all_particle_elements_contribution,
                     color=element.color,
@@ -432,7 +432,8 @@ def plot_everything(
         LN_A_COLOR = "tab:green"
         plotted_lnA_data: list[GenericExperimentData] = []
         for data, is_fitted in ((fit_data, True), (validation_data, False)):
-            for exp, lnA_data in data.lnA.items():
+            for lnA_data in data.lnA:
+                exp = lnA_data.experiment
                 f_exp = best_fit_model.energy_shifts.f(exp)
                 lnA_data = dataclasses.replace(lnA_data, x=lnA_data.x * f_exp)
                 plotted_lnA_data.append(lnA_data)
@@ -483,7 +484,7 @@ def plot_everything(
             capsize=1.5,
         )
         observable: Observable = lambda model, grid: (
-            (100 * (model.energy_shifts.f(exp) - 1)) * np.ones_like(grid)
+            (100 * (model.energy_shifts.f(exp) - 1)) * np.ones_like(grid)  # noqa: B023
         )
         bounds = (i - 0.5, i + 0.5)
         if plots_config.energy_shifts.contours:

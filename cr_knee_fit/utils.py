@@ -5,9 +5,11 @@ from pathlib import Path
 import numpy as np
 from matplotlib.artist import Artist
 from matplotlib.axes import Axes
+from matplotlib.colors import to_rgb
 from matplotlib.figure import Figure
 from matplotlib.legend import Legend
 from matplotlib.lines import Line2D
+from matplotlib.typing import ColorType
 
 from cr_knee_fit.elements import Element
 
@@ -121,6 +123,11 @@ def export_fig(fig: Figure, filename: str) -> None:
                 fig.savefig(path)
             else:
                 print(f"Running {' '.join(cmd)} from {EXPORT_DIR}...")
-                subprocess.run(cmd, cwd=EXPORT_DIR)
-    except Exception as e:
+                subprocess.run(cmd, cwd=EXPORT_DIR, check=False)
+    except Exception as e:  # noqa: BLE001
         print(f"Failed to export figure: {e}")
+
+
+def color_average(colors: list[ColorType]) -> tuple[float, float, float]:
+    rgbs = [to_rgb(c) for c in colors]
+    return tuple(np.mean(np.array(rgbs), axis=0))

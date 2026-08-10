@@ -17,12 +17,13 @@ from cr_knee_fit.cr_model import (
 from cr_knee_fit.crams_model import CramsModel, CramsModelConfig
 from cr_knee_fit.elements import Element, isotope_average_A
 from cr_knee_fit.experiments import Experiment
-from cr_knee_fit.fit_data import CRSpectrumData, Data
+from cr_knee_fit.fit_data import Data, FluxRatio, SpectrumDataSpec
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 from cr_knee_fit.types_ import Packable
 from cr_knee_fit.utils import (
     E_GEV_LABEL,
     LN_A_LABEL,
+    R_GV_LABEL,
     LegendItem,
     add_elements_lnA_secondary_axis,
     add_log_margin,
@@ -268,7 +269,7 @@ class Model(Packable[ModelConfig]):
         self,
         fit_data: Data,
         validation_data: Data | None = None,
-    ) -> Figure:
+    ) -> Figure | None:
         fig, ax = plt.subplots(figsize=(10, 8))
 
         all_energies: list[float] = []
@@ -276,9 +277,10 @@ class Model(Packable[ModelConfig]):
         for data, is_fitted in ((fit_data, True), (validation_data, False)):
             if data is None:
                 continue
-            for exp, lnA_data in data.lnA.items():
+            for lnA_data in data.lnA:
+                exp = lnA_data.experiment
                 f_exp = self.energy_shifts.f(exp)
-                lnA_data = dataclasses.replace(lnA_data, x=lnA_data.x * f_exp)
+                lnA_data = lnA_data.with_shifted_grid(f_exp)
                 lnA_data.plot(
                     scale=0,
                     ax=ax,
@@ -292,7 +294,7 @@ class Model(Packable[ModelConfig]):
                 all_energies.extend(lnA_data.x)
 
         if not all_energies:
-            return fig
+            return None
 
         E_min = np.min(all_energies)
         E_max = np.max(all_energies)
@@ -310,81 +312,142 @@ class Model(Packable[ModelConfig]):
         add_elements_lnA_secondary_axis(ax)
         return fig
 
-    def plot_aux_data(
+    def plot_flux_ratios(
         self,
-        spectra_scale: float,
-        validation_data: Data,
-    ) -> Figure:
-        aux_spectra = [d for d in validation_data.aux_data if isinstance(d, CRSpectrumData)]
-        if not aux_spectra:
-            # FIXME: gracefully exit when there's no spectral aux data; plot elemental ratios
-            return plt.figure()
-        aux_spectra.sort(key=CRSpectrumData.element_label)
-        grouped_spectra = [
-            (label, list(spectra))
-            for label, spectra in itertools.groupby(aux_spectra, key=CRSpectrumData.element_label)
-        ]
+        fit_data: Data,
+        validation_data: Data | None = None,
+    ) -> Figure | None:
+        fig, ax = plt.subplots(figsize=(10, 8))
 
-        fig, ax_or_axes = plt.subplots(
-            nrows=len(grouped_spectra), figsize=(10, 6 * len(grouped_spectra))
-        )
-        axes = [ax_or_axes] if isinstance(ax_or_axes, Axes) else ax_or_axes
-
-        for ax, (label, spectra) in zip(axes, grouped_spectra):
-            all_energies: list[float] = []
-            legend_items = []
-            for spectrum in spectra:
-                exp = spectrum.d.experiment
-                f_exp = self.energy_shifts.f(exp)
-                spectrum.with_shifted_energy_scale(f=f_exp).plot(
-                    ax=ax, scale=spectra_scale, add_legend_label=False
+        all_R: list[float] = []
+        ratios_to_plot: set[FluxRatio] = set()
+        legend_items = []
+        for data, is_fitted in ((fit_data, True), (validation_data, False)):
+            if data is None:
+                continue
+            for fr in data.flux_ratios:
+                fr.plot(
+                    ax=ax,
+                    add_legend_label=False,
+                    is_fitted=is_fitted,
                 )
                 legend_items.append(
-                    (exp.legend_artist(is_fitted=False), exp.name + energy_shift_suffix(f_exp))
+                    (fr.d.experiment.legend_artist(is_fitted), fr.d.experiment.name)
                 )
-                all_energies.extend(spectrum.E)
+                all_R.extend(fr.R)
+                ratios_to_plot.add(fr.ratio)
 
-            if not all_energies:
-                continue
-            ax.set_xscale("log")
-            ax.set_yscale("log")
-            ylim = ax.get_ylim()  # respecting ylim set by data
+        if not all_R:
+            return None
 
-            E_min = np.min(all_energies)
-            E_max = np.max(all_energies)
-            E_grid = np.geomspace(E_min, E_max, 100)
-            match spectra[0].element:
-                case Element() | None as el:
-                    y = self.compute_spectrum(E_grid, el)
-                case tuple() as elements:
-                    y = sum(
-                        [self.compute_spectrum(E_grid, el) for el in elements],
-                        start=np.zeros_like(E_grid),
-                    )
-            ax.plot(E_grid, E_grid**spectra_scale * y, color="tab:blue")
-            ax.set_ylim(*ylim)
+        R_min = np.min(all_R)
+        R_max = np.max(all_R)
+        R_grid = np.geomspace(R_min, R_max, 100)
+        for ratio in ratios_to_plot:
+            ax.plot(R_grid, self.compute_flux_ratio(R_grid, fr=ratio), color=ratio.color())
 
-            ax.set_title(label)
-            legend_with_added_items(ax, legend_items, fontsize="x-small")
-
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_xlabel(R_GV_LABEL)
+        ax.set_ylabel("Flux ratio")
+        legend_with_added_items(ax, legend_items, fontsize="x-small")
         return fig
 
-    def compute_spectrum(self, E: np.ndarray, element: Element | None) -> np.ndarray:
+    def plot_all_observables(
+        self,
+        fit_data: Data,
+        spectra_scale: float,
+        validation_data: Data | None = None,
+    ) -> dict[tuple[Experiment, str], Figure]:
+        res: dict[tuple[Experiment, str], Figure] = {}
+        for data_, is_fitted in ((fit_data, True), (validation_data, False)):
+            if data_ is None:
+                continue
+            for spectrum in data_.spectra:
+                f_exp = self.energy_shifts.f(spectrum.experiment)
+                spectrum = spectrum.with_shifted_energy_scale(f=f_exp)
+                ax = spectrum.plot(scale=spectra_scale, is_fitted=is_fitted)
+                ax.set_xscale("log")
+                ax.set_yscale("log")
+                ax.legend()
+                Emin, Emax = add_log_margin(spectrum.E[0], spectrum.E[-1])
+                E = np.geomspace(Emin, Emax, 100)
+                prediction = self.compute_spectrum(E, element=spectrum.spec)
+                ax.plot(E, E**spectra_scale * prediction, color="k", linewidth=2)
+                res[(spectrum.experiment, spectrum.element_label())] = ax.figure  # type: ignore
+
+            for lnA in data_.lnA:
+                lnA = lnA.with_shifted_grid(self.energy_shifts.f(lnA.experiment))
+                ax = lnA.plot(is_fitted=is_fitted)
+                ax.set_xscale("log")
+                ax.legend()
+                Emin, Emax = add_log_margin(lnA.x[0], lnA.x[-1])
+                E = np.geomspace(Emin, Emax, 100)
+                prediction = self.compute_lnA(E)
+                ax.plot(E, prediction, color="k", linewidth=2)
+                res[(lnA.experiment, "lnA")] = ax.figure  # type: ignore
+
+            for flux_ratio in data_.flux_ratios:
+                # NOTE: we don't apply energy shifts to flux ratios as they are measured in R
+                ax = flux_ratio.plot(is_fitted=is_fitted)
+                ax.set_xscale("log")
+                ax.legend()
+                Rmin, Rmax = add_log_margin(flux_ratio.R[0], flux_ratio.R[-1])
+                R = np.geomspace(Rmin, Rmax, 100)
+                prediction = self.compute_flux_ratio(R, fr=flux_ratio.ratio)
+                ax.plot(R, prediction, color="k", linewidth=2)
+                res[
+                    (
+                        flux_ratio.d.experiment,
+                        f"ratio_{flux_ratio.ratio.num.name}_over_{flux_ratio.ratio.denom.name}",
+                    )
+                ] = ax.figure  # type: ignore
+
+        return res
+
+    def compute_spectrum(
+        self,
+        x: np.ndarray,
+        element: SpectrumDataSpec,
+        rigidity: bool = False,
+    ) -> np.ndarray:
+        if rigidity and element is None:
+            raise ValueError("All-particle spectrum cannot be computed in rigidity")
+
+        if isinstance(element, tuple):
+            element_group = element
+            return sum(
+                (self.compute_spectrum(x, element) for element in element_group), np.zeros_like(x)
+            )
+
         components: list[np.ndarray] = []
         if self.crams is not None:
             components.append(
-                self.crams.compute_spectrum(E, element)
+                (
+                    self.crams.compute_rigidity_spectrum(x, element)
+                    if rigidity
+                    else self.crams.compute_spectrum(x, element)
+                )
                 if element is not None
-                else self.crams.compute_all_particle_spectrum(E)
+                else self.crams.compute_all_particle_spectrum(x)
             )
 
         for pop in self.populations:
             if element is not None and pop.has_element(element):
-                components.append(pop.compute_spectrum(E, element, contrib_to_all_particle=False))
+                components.append(
+                    pop.compute_rigidity_spectrum(x, element)
+                    if rigidity
+                    else pop.compute_spectrum(x, element, contrib_to_all_particle=False)
+                )
             else:
-                components.append(pop.compute_all_particle_spectrum(E))
+                components.append(pop.compute_all_particle_spectrum(x))
 
-        return sum(components, start=np.zeros_like(E))
+        return sum(components, start=np.zeros_like(x))
+
+    def compute_flux_ratio(self, R: np.ndarray, fr: FluxRatio) -> np.ndarray:
+        num = self.compute_spectrum(R, element=fr.num, rigidity=True)
+        denom = self.compute_spectrum(R, element=fr.denom, rigidity=True)
+        return num / denom
 
     def compute_lnA(self, E: np.ndarray) -> np.ndarray:
         elements = self.layout_info().elements(only_fixed_Z=True)

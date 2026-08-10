@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
+from matplotlib.typing import ColorType
 
 from cr_knee_fit import experiments
 from cr_knee_fit.constants import NON_FITTED_ALPHA
@@ -16,8 +17,10 @@ from cr_knee_fit.elements import Element
 from cr_knee_fit.experiments import Experiment
 from cr_knee_fit.utils import (
     DATA_DIR,
+    E_GEV_LABEL,
     LN_A_LABEL,
     R_GV_LABEL,
+    color_average,
     energy_shift_suffix,
     label_energy_flux,
     legend_with_added_items,
@@ -28,13 +31,16 @@ DEFAULT_MARKER_SIZE = 4.0
 
 def load_data(
     filename: str,
-    x_bounds: tuple[float, float],
+    x_bounds: tuple[float, float] | None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     path = str(DATA_DIR / filename)
     cols = (0, 1, 2, 3, 4, 5)
     data = np.loadtxt(path, usecols=cols)
     x = data[:, 0]
-    mask = (x > x_bounds[0]) & (x < x_bounds[1])
+    if x_bounds is not None:
+        mask = (x > x_bounds[0]) & (x < x_bounds[1])
+    else:
+        mask = np.ones_like(x, dtype=bool)
     return (
         x[mask],
         data[mask, 1],  # y
@@ -68,6 +74,10 @@ class GenericExperimentData:
             f"Bad syst error size: {self.err_syst.shape} =/= {(self.size(), 2)}"
         )
 
+    def with_shifted_grid(self, f: float) -> "GenericExperimentData":
+        """Simple grid shift on a multiplicative factor f"""
+        return dataclasses.replace(self, x=self.x * f)
+
     def size(self) -> int:
         return self.x.size
 
@@ -91,16 +101,17 @@ class GenericExperimentData:
 
         return stat_cov + syst_cov
 
-    @functools.cache  # noqa: B019
-    def log_space_err_cov_inv(self, corr_length: float) -> np.ndarray:
-        return np.linalg.inv(self.err_cov(corr_length=corr_length, log_space_correlation=True))
+    @functools.cached_property
+    def log_space_err_cov_inv(self) -> np.ndarray:
+        # TODO: does 1.0 correlation length make sense in all cases?
+        return np.linalg.inv(self.err_cov(corr_length=1.0, log_space_correlation=True))
 
     @classmethod
     def load(
         cls,
         exp: Experiment,
         suffix: str,
-        x_bounds: tuple[float, float],
+        x_bounds: tuple[float, float] | None = None,
         custom_label: str | None = None,
     ) -> "GenericExperimentData":
         x, y, stat, syst = load_data(
@@ -164,13 +175,13 @@ class GenericExperimentData:
 
 type AllparticleSpectrum = None
 type ElementSum = tuple[Element, ...]
-type SpectrumDataElementSpec = Element | AllparticleSpectrum | ElementSum
+type SpectrumDataSpec = Element | ElementSum | AllparticleSpectrum
 
 
 @dataclass(frozen=True)
 class CRSpectrumData:
     d: GenericExperimentData
-    element: SpectrumDataElementSpec
+    spec: SpectrumDataSpec
     energy_scale_shift: float = 1.0
 
     # to avoid recomputing on energy scale shifts
@@ -179,6 +190,10 @@ class CRSpectrumData:
 
     def __post_init__(self) -> None:
         assert self.E.size > 0, "Empty spectrum data"
+
+    @property
+    def experiment(self) -> Experiment:
+        return self.d.experiment
 
     @property
     def E(self) -> np.ndarray:
@@ -229,7 +244,7 @@ class CRSpectrumData:
                 err_syst=self.d.err_syst / f,
                 experiment=self.d.experiment,
             ),
-            element=self.element,
+            spec=self.spec,
             energy_scale_shift=self.energy_scale_shift * f,
             precomputed_err_cov=self.err_cov / (f**2),
             precomputed_err_cov_inv=self.err_cov_inv * (f**2),
@@ -257,32 +272,32 @@ class CRSpectrumData:
                 suffix=f"{elements_suffix}_energy",
                 x_bounds=(R_bounds[0] * min_Z, R_bounds[1] * max_Z),
             ),
-            element=element,
+            spec=element,
         )
 
     @classmethod
     def load_all_particle(
-        cls, exp: Experiment, max_energy: float | None = None
+        cls, exp: Experiment, E_bounds: tuple[float, float] | None = None
     ) -> "CRSpectrumData":
         return CRSpectrumData(
             d=GenericExperimentData.load(
                 exp=exp,
                 suffix="all_energy",
-                x_bounds=(1e3, max_energy or np.inf),
+                x_bounds=E_bounds,
             ),
-            element=None,
+            spec=None,
         )
 
     def element_label(self) -> str:
-        if self.element is None:
+        if self.spec is None:
             return "all"
-        elif isinstance(self.element, tuple):
-            return "+".join(p.name for p in self.element)
+        elif isinstance(self.spec, tuple):
+            return "+".join(p.name for p in self.spec)
         else:
-            return self.element.name
+            return self.spec.name
 
     def plot_label(self) -> str:
-        if (self.element, self.d.experiment) in {
+        if (self.spec, self.d.experiment) in {
             (None, experiments.dampe),
         }:
             prelim_suffix = " (prelim.)"
@@ -293,6 +308,15 @@ class CRSpectrumData:
             f"{self.d.experiment.name} {self.element_label()}{prelim_suffix}"
             + energy_shift_suffix(self.energy_scale_shift)
         )
+
+    def plot_color(self) -> ColorType:
+        match self.spec:
+            case Element():
+                return self.spec.color
+            case tuple():
+                return color_average([el.color for el in self.spec])
+            case None:
+                return "black"
 
     def plot(
         self,
@@ -305,7 +329,7 @@ class CRSpectrumData:
     ) -> Axes:
         axes = self.d.plot(
             ax=ax,
-            color=color or (self.element.color if isinstance(self.element, Element) else "black"),
+            color=color or self.plot_color(),
             scale=scale,
             is_fitted=is_fitted,
             marker_size=marker_size,
@@ -323,6 +347,9 @@ class FluxRatio:
 
     def __str__(self) -> str:
         return f"{self.num.name} / {self.denom.name}"
+
+    def color(self) -> ColorType:
+        return color_average([self.num.color, self.denom.color])
 
 
 @dataclass(frozen=True)
@@ -350,16 +377,6 @@ class FluxRatioData:
     @property
     def ratio_err_syst(self) -> np.ndarray:
         return self.d.err_syst
-
-    # TODO: validate that such error correlation assumptions are reasonable for flux ratio!
-
-    @functools.cached_property
-    def err_cov(self) -> np.ndarray:
-        return self.d.err_cov(corr_length=1.0, log_space_correlation=True)
-
-    @functools.cached_property
-    def err_cov_inv(self) -> np.ndarray:
-        return self.d.log_space_err_cov_inv(corr_length=1.0)
 
     @classmethod
     def load(
@@ -395,7 +412,7 @@ class FluxRatioData:
     ) -> Axes:
         axes = self.d.plot(
             ax=ax,
-            color=color,
+            color=color or self.ratio.color(),
             is_fitted=is_fitted,
             marker_size=marker_size,
             label_override=self.plot_label(),
@@ -406,57 +423,40 @@ class FluxRatioData:
         return axes
 
 
-type AuxDataSpec = ElementSum | FluxRatio
+@dataclass(frozen=True)
+class SpectrumDataConfig:
+    experiment: Experiment
+    spec: SpectrumDataSpec
+    bounds: tuple[float, float] = (
+        0,
+        np.inf,
+    )  # in R for elemental spectra, in E for all-particle and sums
+
+    @staticmethod
+    def allparticle(exp: Experiment) -> "SpectrumDataConfig":
+        return SpectrumDataConfig(exp, None)
 
 
 @dataclass
 class DataConfig:
-    experiments_elements: Sequence[Experiment | tuple[Experiment, list[Element]]] = (
-        dataclasses.field(default_factory=list)
-    )
-    # TODO: add other observables, light and ratio
-    experiments_all_particle: list[Experiment] = dataclasses.field(default_factory=list)
-    experiments_lnA: list[Experiment] = dataclasses.field(default_factory=list)
-
-    default_elements: list[Element] = dataclasses.field(default_factory=Element.regular)
-    elements_R_bounds: tuple[float, float] = (5e2, 1e8)
-
-    aux_data: Sequence[tuple[Experiment, AuxDataSpec]] = dataclasses.field(default_factory=list)
-
-    def __post_init__(self) -> None:
-        self.elements_by_exp: dict[Experiment, list[Element]] = {}
-        for exp_or_pair in self.experiments_elements:
-            if isinstance(exp_or_pair, Experiment):
-                self.elements_by_exp[exp_or_pair] = self.default_elements
-            else:
-                experiment, elements = exp_or_pair
-                self.elements_by_exp[experiment] = elements
-        self.elements_by_exp = {exp: els for exp, els in self.elements_by_exp.items() if els}
+    spectra: Sequence[SpectrumDataConfig] = dataclasses.field(default_factory=list)
+    lnA: Sequence[Experiment] = dataclasses.field(default_factory=list)
+    flux_ratios: Sequence[tuple[Experiment, FluxRatio]] = dataclasses.field(default_factory=list)
 
     @property
-    def experiments_spectrum(self) -> list[Experiment]:
-        return list(
-            set(
-                itertools.chain(
-                    (exp_or_exp_elements for exp_or_exp_elements in self.elements_by_exp),
-                    self.experiments_all_particle,
-                )
-            )
-        )
+    def experiments_spectra(self) -> list[Experiment]:
+        return sorted({s.experiment for s in self.spectra})
+
+    @property
+    def elements(self) -> list[Element]:
+        all = {sp.spec for sp in self.spectra if isinstance(sp.spec, Element)}
+        return sorted(all)
 
     def excluding(self, other: "DataConfig") -> "DataConfig":
         return DataConfig(
-            experiments_elements=[
-                (exp, [el for el in elements if el not in other.elements_by_exp.get(exp, [])])
-                for exp, elements in self.elements_by_exp.items()
-            ],
-            experiments_all_particle=list(
-                set(self.experiments_all_particle).difference(other.experiments_all_particle)
-            ),
-            experiments_lnA=list(set(self.experiments_lnA).difference(other.experiments_lnA)),
-            default_elements=self.default_elements.copy(),
-            elements_R_bounds=self.elements_R_bounds,
-            aux_data=list(set(self.aux_data).difference(other.aux_data)),
+            spectra=list(set(self.spectra).difference(other.spectra)),
+            lnA=list(set(self.lnA).difference(other.lnA)),
+            flux_ratios=list(set(self.flux_ratios).difference(other.flux_ratios)),
         )
 
 
@@ -464,38 +464,50 @@ class DataConfig:
 class Data:
     """Top-level container for a set of experimental data"""
 
-    element_spectra: dict[Experiment, dict[Element, CRSpectrumData]]
-    all_particle_spectra: dict[Experiment, CRSpectrumData]
-    lnA: dict[Experiment, GenericExperimentData]
-    aux_data: list[CRSpectrumData | FluxRatioData]
+    spectra: list[CRSpectrumData]
+    lnA: list[GenericExperimentData]
+    flux_ratios: list[FluxRatioData]
 
     config: DataConfig
 
+    # backwards-compatible properties
+    @property
+    def element_spectra(self) -> dict[Experiment, dict[Element, CRSpectrumData]]:
+        outu: dict[Experiment, dict[Element, CRSpectrumData]] = {}
+        for exp, data in itertools.groupby(self.spectra, key=lambda d: d.experiment):
+            outu[exp] = {d.spec: d for d in data if isinstance(d.spec, Element)}
+        return outu
+
+    @property
+    def all_particle_spectra(self) -> dict[Experiment, CRSpectrumData]:
+        out: dict[Experiment, CRSpectrumData] = {}
+        for exp, data in itertools.groupby(self.spectra, key=lambda d: d.experiment):
+            allparticle = [d for d in data if d.spec is None]
+            if allparticle:
+                out[exp] = allparticle[0]
+        return out
+
+    def __post_init__(self):
+        self.spectra.sort(key=lambda d: d.experiment)
+        self.lnA.sort(key=lambda d: d.experiment)
+        self.flux_ratios.sort(key=lambda frd: frd.d.experiment)
+
     def experiments(self, spectra_only: bool = False) -> list[Experiment]:
-        all = set[Experiment]()
-        for e in itertools.chain(
-            [exp for exp, elements in self.element_spectra.items() if elements],
-            self.all_particle_spectra.keys(),
-        ):
-            all.add(e)
+        all = {sp.d.experiment for sp in self.spectra}
         if not spectra_only:
-            for e in self.lnA:
-                all.add(e)
+            all.update(lnA.experiment for lnA in self.lnA)
+            all.update(fr.d.experiment for fr in self.flux_ratios)
         return sorted(all)
 
     def elements(self) -> list[Element]:
-        all = set[Element]()
-        for spectra in self.element_spectra.values():
-            all.update(spectra.keys())
+        all = {sp.spec for sp in self.spectra if isinstance(sp.spec, Element)}
         return sorted(all)
 
     def is_empty(self) -> bool:
         return len(self.experiments()) > 0
 
     def all_spectra(self) -> Iterable[CRSpectrumData]:
-        for element_spectra in self.element_spectra.values():
-            yield from element_spectra.values()
-        yield from self.all_particle_spectra.values()
+        yield from self.spectra  # legacy iterator
 
     def E_min(self) -> float:
         return min([s.E.min() for s in self.all_spectra()])
@@ -506,10 +518,9 @@ class Data:
     @classmethod
     def empty(cls) -> "Data":
         return Data(
-            element_spectra={},
-            all_particle_spectra={},
-            lnA={},
-            aux_data=[],
+            spectra=[],
+            lnA=[],
+            flux_ratios=[],
             config=DataConfig(),
         )
 
@@ -523,76 +534,67 @@ class Data:
             else:
                 print(f"❌ {exp.name} {param}: {error}")
 
-        allparticle = {}
-        for exp in config.experiments_all_particle:
+        spectra: list[CRSpectrumData] = []
+        for sc in config.spectra:
+            log_label = "<unknown>"
+            spec = sc.spec
             try:
-                allparticle[exp] = CRSpectrumData.load_all_particle(exp)
-                log_loaded(exp, "all particle")
+                match spec:
+                    case Element() | tuple():
+                        log_label = (
+                            spec.name
+                            if isinstance(spec, Element)
+                            else "+".join([s.name for s in spec])
+                        )
+                        spectra.append(
+                            CRSpectrumData.load(sc.experiment, element=spec, R_bounds=sc.bounds)
+                        )
+                    case None:
+                        log_label = "all particle"
+                        spectra.append(
+                            CRSpectrumData.load_all_particle(sc.experiment, E_bounds=sc.bounds)
+                        )
+                log_loaded(sc.experiment, log_label)
             except Exception as e:  # noqa: BLE001
-                log_loaded(exp, "all particle", e)
+                log_loaded(sc.experiment, "all particle", e)
 
-        lnA = {}
-        for exp in config.experiments_lnA:
+        lnA: list[GenericExperimentData] = []
+        for exp in config.lnA:
             try:
-                lnA[exp] = GenericExperimentData.load(
-                    exp,
-                    suffix="lnA_energy",
-                    x_bounds=(0, np.inf),
-                    custom_label=LN_A_LABEL,
+                lnA.append(
+                    GenericExperimentData.load(
+                        exp,
+                        suffix="lnA_energy",
+                        x_bounds=(0, np.inf),
+                        custom_label=LN_A_LABEL,
+                    )
                 )
                 log_loaded(exp, "lnA")
             except Exception as e:  # noqa: BLE001
                 log_loaded(exp, "lnA", e)
 
-        element_spectra: dict[Experiment, dict[Element, CRSpectrumData]] = {}
-        for exp, elements in config.elements_by_exp.items():
-            exp_data = dict[Element, CRSpectrumData]()
-            for element in elements:
-                try:
-                    exp_data[element] = CRSpectrumData.load(exp, element, config.elements_R_bounds)
-                    log_loaded(exp, element.name)
-                except Exception as e:  # noqa: BLE001
-                    log_loaded(exp, element.name, e)
-            element_spectra[exp] = exp_data
-
-        aux_data: list[CRSpectrumData | FluxRatioData] = []
-        for exp, aux_data_spec in config.aux_data:
+        flux_ratios: list[FluxRatioData] = []
+        for exp, ratio in config.flux_ratios:
             try:
-                match aux_data_spec:
-                    case tuple() as elements_:
-                        aux_data.append(
-                            CRSpectrumData.load(exp, elements_, config.elements_R_bounds)
-                        )
-                    case FluxRatio() as ratio:
-                        aux_data.append(FluxRatioData.load(exp, ratio))
-                    case spec:
-                        raise RuntimeError(f"Unexpected aux data spec: {spec}")
-                log_loaded(exp, str(aux_data_spec))
+                flux_ratios.append(FluxRatioData.load(exp, ratio))
+                log_loaded(exp, str(ratio))
             except Exception as e:  # noqa: BLE001
-                log_loaded(exp, str(aux_data_spec), e)
+                log_loaded(exp, str(ratio), e)
 
-        return Data(
-            element_spectra=element_spectra,
-            all_particle_spectra=allparticle,
-            lnA=lnA,
-            config=config,
-            aux_data=aux_data,
-        )
+        return Data(spectra=spectra, lnA=lnA, flux_ratios=flux_ratios, config=config)
 
     def plot_spectra(
         self, scale: float, describe: bool, is_fitted: bool, ax: Axes, legend: bool = True
     ):
         print_ = print if describe else lambda _: None
-        print_("Data by element:")
-        for exp, ps in self.element_spectra.items():
-            print_(exp.name)
-            for p, s in ps.items():
-                print_(f"  {p.name}: {s.E.size} points from {s.E.min():.1e} to {s.E.max():.1e} GeV")
+        print_("Spectra:")
+        for experiment, spectra in itertools.groupby(self.spectra, key=lambda d: d.experiment):
+            print_(experiment.name)
+            for s in spectra:
+                print_(
+                    f"  {s.element_label()}: {s.E.size} points from {s.E.min():.1e} to {s.E.max():.1e} GeV"
+                )
                 s.plot(scale=scale, ax=ax, add_legend_label=False, is_fitted=is_fitted)
-        print_("All particle data:")
-        for exp, s in self.all_particle_spectra.items():
-            print_(f"    {exp.name}: {s.E.size} points from {s.E.min():.1e} to {s.E.max():.1e} GeV")
-            s.plot(scale=scale, ax=ax, add_legend_label=False, is_fitted=is_fitted)
 
         ax.set_xscale("log")
         ax.set_yscale("log")
@@ -609,14 +611,30 @@ class Data:
     def plot_lnA(self, describe: bool, is_fitted: bool, ax: Axes):
         print_ = print if describe else lambda _: None
         print_("lnA data:")
-        for exp, lnA_data in self.lnA.items():
+        for lnA_data in self.lnA:
             print_(
-                f"    {exp.name}: {lnA_data.x.size} points from {lnA_data.x.min():.1e} to {lnA_data.x.max():.1e} GeV"
+                f"    {lnA_data.experiment.name}: {lnA_data.x.size} points "
+                + f"from {lnA_data.x.min():.1e} to {lnA_data.x.max():.1e} GeV"
             )
             lnA_data.plot(ax=ax, is_fitted=is_fitted)
         ax.set_xscale("log")
-        label_energy_flux(ax, scale=0)
+        ax.set_xlabel(E_GEV_LABEL)
         ax.set_ylabel(LN_A_LABEL)
+        ax.legend(fontsize="xx-small")
+
+    def plot_flux_ratios(self, describe: bool, is_fitted: bool, ax: Axes):
+        print_ = print if describe else lambda _: None
+        print_("Flux ratio data:")
+        for fr in self.flux_ratios:
+            print_(
+                f"    {fr.d.experiment.name}: {fr.R.size} points "
+                + f"from {fr.R.min():.1e} to {fr.R.max():.1e} GV"
+            )
+            fr.plot(ax=ax, is_fitted=is_fitted)
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_xlabel(R_GV_LABEL)
+        ax.set_ylabel("Flux ratio")
         ax.legend(fontsize="xx-small")
 
     def plot(
@@ -624,21 +642,24 @@ class Data:
         scale: float,
         describe: bool = False,
         is_fitted: bool = True,
-        figure: Figure | None = None,
-    ) -> Figure:
-        if figure is None:
-            if self.lnA:
-                fig, axes = plt.subplots(ncols=2, figsize=(16, 6))
-                axes = cast(Sequence[Axes], axes)
-            else:
-                fig, ax = plt.subplots(figsize=(8, 6))
-                axes = [ax]
-        else:
-            fig = figure
-            axes = fig.axes
+    ) -> Figure | None:
+        n_subplots = bool(self.spectra) + bool(self.lnA) + bool(self.flux_ratios)
+        if n_subplots == 0:
+            return None
 
-        self.plot_spectra(scale=scale, describe=describe, is_fitted=is_fitted, ax=axes[0])
-        if len(axes) > 1:
-            self.plot_lnA(describe=describe, is_fitted=is_fitted, ax=axes[1])
+        fig, axes = plt.subplots(nrows=n_subplots, figsize=(6, 4 * n_subplots))
+        axes = cast(Sequence[Axes], axes)
 
+        offset = 0
+        if self.spectra:
+            self.plot_spectra(scale=scale, describe=describe, is_fitted=is_fitted, ax=axes[offset])
+            offset += 1
+        if self.lnA:
+            self.plot_lnA(describe=describe, is_fitted=is_fitted, ax=axes[offset])
+            offset += 1
+        if self.flux_ratios:
+            self.plot_flux_ratios(describe=describe, is_fitted=is_fitted, ax=axes[offset])
+            offset += 1
+
+        fig.tight_layout()
         return fig
