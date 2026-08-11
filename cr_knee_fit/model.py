@@ -17,7 +17,15 @@ from cr_knee_fit.cr_model import (
 from cr_knee_fit.crams_model import CramsModel, CramsModelConfig
 from cr_knee_fit.elements import Element, isotope_average_A
 from cr_knee_fit.experiments import Experiment
-from cr_knee_fit.fit_data import Data, FluxRatio, SpectrumDataSpec
+from cr_knee_fit.fit_data import (
+    CRSpectrumData,
+    Data,
+    DataConfig,
+    FluxRatio,
+    FluxRatioData,
+    GenericExperimentData,
+    SpectrumDataSpec,
+)
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 from cr_knee_fit.types_ import Packable
 from cr_knee_fit.utils import (
@@ -321,7 +329,6 @@ class Model(Packable[ModelConfig]):
 
         all_R: list[float] = []
         ratios_to_plot: set[FluxRatio] = set()
-        legend_items = []
         for data, is_fitted in ((fit_data, True), (validation_data, False)):
             if data is None:
                 continue
@@ -350,12 +357,47 @@ class Model(Packable[ModelConfig]):
         ax.legend()
         return fig
 
-    def plot_all_observables(
+    def _chi2_label(self, data: CRSpectrumData | GenericExperimentData | FluxRatioData):
+        # private imports to avoid circular import error
+        from cr_knee_fit.inference import DEFAULT_CHI2_METHOD, Chi2Method, loglikelihood
+
+        match data:
+            case CRSpectrumData():
+                oneshot_data = Data(spectra=[data], config=DataConfig())
+            case GenericExperimentData():
+                oneshot_data = Data(lnA=[data], config=DataConfig())
+            case FluxRatioData():
+                oneshot_data = Data(flux_ratios=[data], config=DataConfig())
+
+        chi2s: list[float] = []
+        run_methods: list[Chi2Method] = (
+            ["correlated", "dimidated"] if DEFAULT_CHI2_METHOD == "correlated" else ["dimidated"]
+        )
+        for method in run_methods:
+            chi2s.append(
+                -2
+                * loglikelihood(
+                    model_or_theta=self,
+                    fit_data=oneshot_data,
+                    config=self.layout_info(),
+                    chi2_method=method,
+                )
+            )
+        chi2_main = chi2s[0]
+        if np.isnan(chi2_main):
+            return "$ \\chi^2 $ not available"
+        res = f"$\\chi^2 \\; / \\; n_\\text{{data}} = {chi2_main:.2g} \\; / \\; {data.size()}$"
+        if len(chi2s) > 1:
+            res += f" (uncorrelated $\\chi^2 = {chi2s[1]:.2g}$)"
+        return res
+
+    def plot_individual_observables(
         self,
         fit_data: Data,
         spectra_scale: float,
         validation_data: Data | None = None,
     ) -> dict[tuple[Experiment, str], Figure]:
+
         res: dict[tuple[Experiment, str], Figure] = {}
         for data_, is_fitted in ((fit_data, True), (validation_data, False)):
             if data_ is None:
@@ -371,6 +413,7 @@ class Model(Packable[ModelConfig]):
                 E = np.geomspace(Emin, Emax, 100)
                 prediction = self.compute_spectrum(E, element=spectrum.spec)
                 ax.plot(E, E**spectra_scale * prediction, color="k", linewidth=2)
+                ax.set_title(self._chi2_label(spectrum))
                 res[(spectrum.experiment, spectrum.element_label())] = ax.figure  # type: ignore
 
             for lnA in data_.lnA:
@@ -382,6 +425,7 @@ class Model(Packable[ModelConfig]):
                 E = np.geomspace(Emin, Emax, 100)
                 prediction = self.compute_lnA(E)
                 ax.plot(E, prediction, color="k", linewidth=2)
+                ax.set_title(self._chi2_label(lnA))
                 res[(lnA.experiment, "lnA")] = ax.figure  # type: ignore
 
             for flux_ratio in data_.flux_ratios:
@@ -393,6 +437,7 @@ class Model(Packable[ModelConfig]):
                 R = np.geomspace(Rmin, Rmax, 100)
                 prediction = self.compute_flux_ratio(R, fr=flux_ratio.ratio)
                 ax.plot(R, prediction, color="k", linewidth=2)
+                ax.set_title(self._chi2_label(flux_ratio))
                 res[
                     (
                         flux_ratio.d.experiment,

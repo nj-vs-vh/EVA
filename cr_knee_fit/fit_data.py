@@ -213,6 +213,9 @@ class CRSpectrumData:
     def F_err_syst(self) -> np.ndarray:
         return self.d.err_syst
 
+    def size(self) -> int:
+        return self.d.size()
+
     @functools.cached_property
     def err_cov(self) -> np.ndarray:
         if self.precomputed_err_cov is not None:
@@ -378,6 +381,9 @@ class FluxRatioData:
     def ratio_err_syst(self) -> np.ndarray:
         return self.d.err_syst
 
+    def size(self) -> int:
+        return self.d.size()
+
     @classmethod
     def load(
         cls,
@@ -471,11 +477,11 @@ class DataConfig:
 class Data:
     """Top-level container for a set of experimental data"""
 
-    spectra: list[CRSpectrumData]
-    lnA: list[GenericExperimentData]
-    flux_ratios: list[FluxRatioData]
-
     config: DataConfig
+
+    spectra: list[CRSpectrumData] = dataclasses.field(default_factory=list)
+    lnA: list[GenericExperimentData] = dataclasses.field(default_factory=list)
+    flux_ratios: list[FluxRatioData] = dataclasses.field(default_factory=list)
 
     # backwards-compatible properties
     @property

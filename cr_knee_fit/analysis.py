@@ -22,7 +22,7 @@ from scipy import optimize  # type: ignore
 
 from cr_knee_fit.fit_data import Data, DataConfig
 from cr_knee_fit.inference import (
-    CHI2_METHOD,
+    DEFAULT_CHI2_METHOD,
     loglikelihood,
     logposterior,
     set_global_fit_data,
@@ -309,7 +309,7 @@ def plot_and_print_model(
 
     detailed_dir = outdir / prefix
     detailed_dir.mkdir(exist_ok=True)
-    for (exp, observable), fig in model.plot_all_observables(
+    for (exp, observable), fig in model.plot_individual_observables(
         fit_data, spectra_scale=scale, validation_data=validation_data
     ).items():
         fig.savefig(detailed_dir / f"{exp.filename_prefix}_{observable}.png")
@@ -317,7 +317,7 @@ def plot_and_print_model(
 
 def run_analysis(config: FitConfig, outdir: Path) -> None:
     print(f"Output dir: {outdir}")
-    print(f"chi2 method: {CHI2_METHOD}")
+    print(f"Default chi2 method: {DEFAULT_CHI2_METHOD}")
 
     Path(outdir / "config-dump.json").write_text(config.model_dump_json(indent=2))
 

@@ -1,5 +1,6 @@
 import itertools
 import os
+from typing import Literal
 
 import numpy as np
 from scipy import stats  # type: ignore
@@ -157,7 +158,8 @@ def ensure_model(model_or_theta: Model | np.ndarray, config: ModelConfig) -> Mod
         return Model.unpack(model_or_theta, layout_info=config)
 
 
-CHI2_METHOD = os.environ.get("CRKNEE_CHI2_METHOD", "correlated")
+Chi2Method = Literal["correlated", "dimidated"]
+DEFAULT_CHI2_METHOD = os.environ.get("CRKNEE_CHI2_METHOD", "correlated")
 
 
 def chi_squared_loglikelihood(
@@ -166,9 +168,10 @@ def chi_squared_loglikelihood(
     err_stat: np.ndarray,
     err_syst: np.ndarray,
     err_cov_inv: np.ndarray,
+    method: Chi2Method | None = None,
 ) -> float:
     residual = prediction - y
-    match CHI2_METHOD:
+    match method or DEFAULT_CHI2_METHOD:
         case "dimidated":
             # Chi2 based on dimidated Gaussian, i.e. using upper and lower errors on corresponding sides. Statistical and systematic
             # uncertainties are assumed to be uncorrelated between bins and are added in quadratures. Further sophistication is
@@ -196,6 +199,7 @@ def loglikelihood(
     model_or_theta: Model | np.ndarray,
     fit_data: Data,
     config: ModelConfig,
+    chi2_method: Chi2Method | None = None,
 ) -> float:
     model = ensure_model(model_or_theta, config)
     res = 0.0
@@ -208,6 +212,7 @@ def loglikelihood(
             err_stat=spectrum.F_err_stat,
             err_syst=spectrum.F_err_syst,
             err_cov_inv=spectrum.err_cov_inv,
+            method=chi2_method,
         )
     for lnA_data in fit_data.lnA:
         f = model.energy_shifts.f(lnA_data.experiment)
@@ -220,6 +225,7 @@ def loglikelihood(
             err_stat=lnA_data.err_stat,
             err_syst=lnA_data.err_syst,
             err_cov_inv=lnA_data.log_space_err_cov_inv,
+            method=chi2_method,
         )
     for flux_ratio in fit_data.flux_ratios:
         # flux ratios are used at low energies, where energy scale is very well constrained, hence no shift is applied
@@ -229,6 +235,7 @@ def loglikelihood(
             err_stat=flux_ratio.d.err_stat,
             err_syst=flux_ratio.d.err_syst,
             err_cov_inv=flux_ratio.d.log_space_err_cov_inv,
+            method=chi2_method,
         )
 
     return res
