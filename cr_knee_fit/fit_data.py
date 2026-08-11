@@ -3,6 +3,7 @@ import functools
 import itertools
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from logging import warning
 from typing import Any, cast
 
 import matplotlib.pyplot as plt
@@ -20,10 +21,13 @@ from cr_knee_fit.utils import (
     E_GEV_LABEL,
     LN_A_LABEL,
     R_GV_LABEL,
+    CharacteristicQuantity,
     color_average,
     energy_shift_suffix,
     label_energy_flux,
     legend_with_added_items,
+    quantity_label,
+    quantity_unit,
 )
 
 DEFAULT_MARKER_SIZE = 4.0
@@ -133,10 +137,11 @@ class GenericExperimentData:
         marker_size: float = DEFAULT_MARKER_SIZE,
         label_override: str | None = None,
         add_legend_label: bool = True,
+        x_factor: float = 1.0,
     ) -> Axes:
         if ax is None:
             _, ax = plt.subplots()
-        x_factor = self.scale_factor(scale=scale)
+        factor = self.scale_factor(scale=scale)
 
         if label_override is not None:
             label = label_override
@@ -144,13 +149,13 @@ class GenericExperimentData:
             label = self.experiment.name
             if self.custom_label is not None:
                 label += " " + self.custom_label
-        x_factor_2D = np.expand_dims(x_factor, axis=-1)
+        factor_2D = np.expand_dims(factor, axis=-1)
 
         alpha = 1.0 if is_fitted else NON_FITTED_ALPHA
         lines = ax.errorbar(
-            self.x,
-            x_factor * self.y,
-            yerr=(x_factor_2D * self.err_stat).T,
+            x_factor * self.x,
+            factor * self.y,
+            yerr=(factor_2D * self.err_stat).T,
             color=color,
             markersize=marker_size,
             elinewidth=0.75,
@@ -161,9 +166,9 @@ class GenericExperimentData:
             alpha=alpha,
         )
         ax.errorbar(
-            self.x,
-            x_factor * self.y,
-            yerr=(x_factor_2D * self.err_syst).T,
+            x_factor * self.x,
+            factor * self.y,
+            yerr=(factor_2D * self.err_syst).T,
             color=lines[0].get_color(),
             alpha=alpha * 0.33,
             elinewidth=marker_size,  # making systematic error bar as wide as the marker
@@ -359,12 +364,13 @@ class FluxRatio:
 class FluxRatioData:
     d: GenericExperimentData
     ratio: FluxRatio
+    quantity: CharacteristicQuantity
 
     def __post_init__(self) -> None:
-        assert self.R.size > 0, "Empty flux ratio data"
+        assert self.Q.size > 0, "Empty flux ratio data"
 
     @property
-    def R(self) -> np.ndarray:
+    def Q(self) -> np.ndarray:
         """Rigidity in GV"""
         return self.d.x
 
@@ -393,20 +399,61 @@ class FluxRatioData:
     ) -> "FluxRatioData":
         num_name = spec.num.name if spec.num != Element.H else "p"
         denom_name = spec.denom.name
-        return FluxRatioData(
-            d=GenericExperimentData.load(
+
+        try:
+            d = GenericExperimentData.load(
                 exp=exp,
                 suffix=f"{num_name}_{denom_name}_ratio_rigidity",
                 x_bounds=R_bounds,
-            ),
-            ratio=spec,
-        )
+            )
+            quantity: CharacteristicQuantity = "R"
+        except FileNotFoundError:
+            d = GenericExperimentData.load(
+                exp=exp,
+                suffix=f"{num_name}_{denom_name}_ratio_energy_per_nucleon",
+                x_bounds=R_bounds,
+            )
+            quantity = "E_n"
+
+        return FluxRatioData(d=d, ratio=spec, quantity=quantity)
 
     def ratio_label(self) -> str:
         return str(self.ratio)
 
     def plot_label(self) -> str:
         return f"{self.d.experiment.name} {self.ratio_label()}"
+
+    def plot_in_R(
+        self,
+        ax: Axes | None = None,
+        color: Any | None = None,
+        add_legend_label: bool = True,
+        is_fitted: bool = True,
+        marker_size: float = DEFAULT_MARKER_SIZE,
+    ) -> Axes | None:
+        match self.quantity:
+            case "E_n":
+                # 2 * E_n roughly gives rigidity, so we can put data in energy per nucleon on rigidity plot
+                x_factor = 2.0
+                label_suffix = " (shifted from $E_n$)"
+            case "R":
+                x_factor = 1.0
+                label_suffix = ""
+            case "E":
+                warning("Can't plot E data in R")  # noqa: LOG015
+                return None
+        axes = self.d.plot(
+            ax=ax,
+            color=color or self.ratio.color(),
+            is_fitted=is_fitted,
+            marker_size=marker_size,
+            label_override=self.plot_label() + label_suffix,
+            add_legend_label=add_legend_label,
+            x_factor=x_factor,
+        )
+        axes.set_xlabel(R_GV_LABEL)
+        axes.set_ylabel("Flux ratio")
+        return axes
 
     def plot(
         self,
@@ -424,7 +471,7 @@ class FluxRatioData:
             label_override=self.plot_label(),
             add_legend_label=add_legend_label,
         )
-        axes.set_xlabel(R_GV_LABEL)
+        axes.set_xlabel(quantity_label(self.quantity))
         axes.set_ylabel("Flux ratio")
         return axes
 
@@ -447,7 +494,7 @@ class SpectrumDataConfig:
 class FluxRatioDataConfig:
     experiment: Experiment
     ratio: FluxRatio
-    R_bounds: tuple[float, float] = (0, np.inf)
+    Q_bounds: tuple[float, float] = (0, np.inf)
 
 
 @dataclass
@@ -593,7 +640,7 @@ class Data:
                     FluxRatioData.load(
                         fr_conf.experiment,
                         fr_conf.ratio,
-                        R_bounds=fr_conf.R_bounds,
+                        R_bounds=fr_conf.Q_bounds,
                     )
                 )
                 log_loaded(fr_conf.experiment, str(fr_conf.ratio))
@@ -646,10 +693,10 @@ class Data:
         print_("Flux ratio data:")
         for fr in self.flux_ratios:
             print_(
-                f"    {fr.d.experiment.name}: {fr.R.size} points "
-                + f"from {fr.R.min():.1e} to {fr.R.max():.1e} GV"
+                f"    {fr.d.experiment.name}: {fr.Q.size} points "
+                + f"from {fr.Q.min():.1e} to {fr.Q.max():.1e} {quantity_unit(fr.quantity)}"
             )
-            fr.plot(ax=ax, is_fitted=is_fitted)
+            fr.plot_in_R(ax=ax, is_fitted=is_fitted)
         ax.set_xscale("log")
         ax.set_yscale("log")
         ax.set_xlabel(R_GV_LABEL)
@@ -682,3 +729,6 @@ class Data:
 
         fig.tight_layout()
         return fig
+
+
+EMPTY_DATA = Data(config=DataConfig())

@@ -53,22 +53,22 @@ fit_data_config = DataConfig(
     ],
     flux_ratios=[
         FluxRatioDataConfig(
-            experiments.ams02, FluxRatio(Element.B, Element.C), R_bounds=(5.0, np.inf)
+            experiments.ams02, FluxRatio(Element.B, Element.C), Q_bounds=(5.0, np.inf)
         ),
         FluxRatioDataConfig(
-            experiments.ams02, FluxRatio(Element.B, Element.O), R_bounds=(5.0, np.inf)
+            experiments.ams02, FluxRatio(Element.B, Element.O), Q_bounds=(5.0, np.inf)
         ),
         FluxRatioDataConfig(
-            experiments.ams02, FluxRatio(Element.C, Element.O), R_bounds=(5.0, np.inf)
+            experiments.ams02, FluxRatio(Element.C, Element.O), Q_bounds=(5.0, np.inf)
         ),
         FluxRatioDataConfig(
-            experiments.ams02, FluxRatio(Element.H, Element.He), R_bounds=(5.0, np.inf)
+            experiments.ams02, FluxRatio(Element.H, Element.He), Q_bounds=(5.0, np.inf)
         ),
         FluxRatioDataConfig(
-            experiments.ams02, FluxRatio(Element.He, Element.O), R_bounds=(5.0, np.inf)
+            experiments.ams02, FluxRatio(Element.He, Element.O), Q_bounds=(5.0, np.inf)
         ),
         FluxRatioDataConfig(
-            experiments.ams02, FluxRatio(Element.He, Element.O), R_bounds=(5.0, np.inf)
+            experiments.ams02, FluxRatio(Element.He, Element.O), Q_bounds=(5.0, np.inf)
         ),
     ],
 )

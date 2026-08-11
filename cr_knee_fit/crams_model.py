@@ -18,11 +18,13 @@ from crams import (
 )
 from matplotlib.axes import Axes
 
-from cr_knee_fit.cr_model import PopulationMetadata
-from cr_knee_fit.elements import (
-    Element,
+from cr_knee_fit.cr_model import (
+    CharacteristicQuantity,
+    PopulationMetadata,
 )
+from cr_knee_fit.elements import Element
 from cr_knee_fit.types_ import Packable
+from cr_knee_fit.utils import q2R_factor
 
 CRAMS_ELEMENTS = [Element[name] for name in CRAMS_ELEMENT_NAMES]
 
@@ -46,7 +48,7 @@ def pack_propagation(pp: PropagationParams) -> np.ndarray:
             np.log10(pp.R_b_GV),
             pp.delta,
             pp.ddelta,
-            np.log10(pp.D_0_cm2_sec),
+            pp.D_0_cm2_sec,
             pp.X_src,
             pp.phi,
         ]
@@ -59,7 +61,7 @@ PROPAGATION_BOUNDS = [
     (np.log10(100), np.log10(1000)),
     (0.0, 1.5),
     (0.0, 1.0),
-    (np.log10(1e26), np.log10(1e30)),
+    (1e26, 1e30),
     None,
     (0.1, 1.0),
 ]
@@ -72,7 +74,7 @@ def unpack_propagation(v: np.ndarray) -> PropagationParams:
         R_b_GV=10 ** v[2],
         delta=v[3],
         ddelta=v[4],
-        D_0_cm2_sec=10 ** v[5],
+        D_0_cm2_sec=v[5],
         X_src=v[6],
         phi=v[7],
     )
@@ -313,7 +315,7 @@ class CramsModel(Packable[CramsModelConfig]):
     def crams_lg_spectrum(self, element: Element) -> np.ndarray:
         return self._crams_lg_output[:, round(element.Z)]
 
-    def compute_rigidity_spectrum(self, R: np.ndarray, element: Element) -> np.ndarray:
+    def _compute_rigidity_spectrum(self, R: np.ndarray, element: Element) -> np.ndarray:
         return 10 ** (
             np.interp(
                 np.log10(R),
@@ -324,21 +326,22 @@ class CramsModel(Packable[CramsModelConfig]):
             )
         )  # type: ignore
 
-    def compute_spectrum(self, E: np.ndarray, element: Element) -> np.ndarray:
-        Z = element.Z
-        R = E / Z
-        dNdR = self.compute_rigidity_spectrum(R, element=element)
-        return dNdR / Z
+    def compute_spectrum(
+        self, Q: np.ndarray, element: Element, quantity: CharacteristicQuantity
+    ) -> np.ndarray:
+        q2R = q2R_factor(element.Z, element.A, quantity=quantity)
+        dNdR = self._compute_rigidity_spectrum(R=q2R * Q, element=element)
+        return dNdR * q2R
 
     def compute_all_particle_spectrum(self, E: np.ndarray) -> np.ndarray:
         flux = np.zeros_like(E)
         for element in CRAMS_ELEMENTS:
-            flux += self.compute_spectrum(E, element)
+            flux += self.compute_spectrum(E, element, quantity="E")
         return flux
 
     def compute_abundances(self, R: float) -> dict[Element | str, float]:
         return {
-            element: float(self.compute_rigidity_spectrum(np.array([R]), element=element)[0])
+            element: float(self._compute_rigidity_spectrum(np.array([R]), element=element)[0])
             for element in CRAMS_ELEMENTS
         }
 
@@ -383,7 +386,7 @@ class CramsModel(Packable[CramsModelConfig]):
         for element in elements or CRAMS_ELEMENTS:
             ax.plot(
                 E_grid,
-                E_factor * self.compute_spectrum(E_grid, element),
+                E_factor * self.compute_spectrum(E_grid, element, quantity="E"),
                 label=with_prefix(element.name, preserve_capitalization=True),
                 color=element.color,
                 linestyle=self.linestyle,
@@ -416,7 +419,7 @@ class CramsModel(Packable[CramsModelConfig]):
             propagation_labels = [
                 r"$H \; / \; \text{kpc}$",
                 r"$v_A \; / \; \text{km} \; \text{s}^{-1}$",
-                r"$R_b \; / \; \text{GV}$",
+                r"$\\lg ( R_b \; / \; \text{GV} )$",
                 r"$\delta$",
                 r"$\Delta \delta$",
                 r"$D_0 \; / \; \text{cm}^2 \; \text{s}^{-1}$",

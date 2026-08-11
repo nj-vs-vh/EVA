@@ -1,3 +1,5 @@
+import itertools
+
 import numpy as np
 
 from cr_knee_fit import experiments
@@ -19,6 +21,30 @@ if __name__ == "__main__":
     analysis_name = guess_analysis_name(__file__)
 
     # this is the exact setup from CRAMS fit, with the same elements, ratios, and R bounds
+
+    ratios_of_interest = [
+        FluxRatio(Element.B, Element.C),
+        FluxRatio(Element.B, Element.O),
+        FluxRatio(Element.C, Element.O),
+        FluxRatio(Element.H, Element.He),
+        FluxRatio(Element.He, Element.O),
+    ]
+    elements_fitted = [
+        Element.Fe,
+        Element.H,
+        Element.Mg,
+        Element.N,
+        Element.Ne,
+        Element.O,
+        Element.S,
+        Element.Si,
+    ]
+    elements_constrained_through_ratios = [
+        Element.B,  # constrained through B/O
+        Element.C,  # constrained through C/O
+        Element.He,  # constrained through H/He
+    ]
+
     fit_data_config = DataConfig(
         spectra=[
             SpectrumDataConfig(
@@ -29,58 +55,42 @@ if __name__ == "__main__":
                         20.0
                         if element
                         in {Element.Fe, Element.N, Element.Mg, Element.Ne, Element.S, Element.Si}
-                        else 5.0
+                        else 10.0
                     ),
                     np.inf,
                 ),
             )
-            for element in [
-                Element.B,
-                Element.C,
-                Element.Fe,
-                Element.H,
-                Element.He,
-                Element.Mg,
-                Element.N,
-                Element.Ne,
-                Element.O,
-                Element.S,
-                Element.Si,
+            for element in elements_fitted
+        ],
+        flux_ratios=(
+            [
+                FluxRatioDataConfig(experiments.ams02, ratio, Q_bounds=(10.0, np.inf))
+                for ratio in ratios_of_interest
             ]
-        ],
-        flux_ratios=[
-            FluxRatioDataConfig(
-                experiments.ams02, FluxRatio(Element.B, Element.C), R_bounds=(5.0, np.inf)
-            ),
-            FluxRatioDataConfig(
-                experiments.ams02, FluxRatio(Element.B, Element.O), R_bounds=(5.0, np.inf)
-            ),
-            FluxRatioDataConfig(
-                experiments.ams02, FluxRatio(Element.C, Element.O), R_bounds=(5.0, np.inf)
-            ),
-            FluxRatioDataConfig(
-                experiments.ams02, FluxRatio(Element.H, Element.He), R_bounds=(5.0, np.inf)
-            ),
-            FluxRatioDataConfig(
-                experiments.ams02, FluxRatio(Element.He, Element.O), R_bounds=(5.0, np.inf)
-            ),
-            FluxRatioDataConfig(
-                experiments.ams02, FluxRatio(Element.He, Element.O), R_bounds=(5.0, np.inf)
-            ),
-        ],
+            + [
+                FluxRatioDataConfig(experiments.dampe, ratio, Q_bounds=(0.0, np.inf))
+                for ratio in ratios_of_interest
+            ]
+        ),
     )
 
     validation_data_config = DataConfig(
         spectra=[
             SpectrumDataConfig.allparticle(experiments.hawc),
-            SpectrumDataConfig(experiments.dampe, Element.H),
-            SpectrumDataConfig(experiments.dampe, Element.He),
-            SpectrumDataConfig(experiments.dampe, Element.Fe),
+        ]
+        + [
+            SpectrumDataConfig(experiments.dampe, element)
+            for element in elements_constrained_through_ratios + elements_fitted
+        ]
+        + [
+            SpectrumDataConfig(experiments.ams02, element)
+            for element in elements_constrained_through_ratios
         ],
         flux_ratios=[
-            FluxRatioDataConfig(experiments.calet, FluxRatio(Element.H, Element.He)),
+            FluxRatioDataConfig(exp, ratio)
+            for ratio, exp in itertools.product(ratios_of_interest, [experiments.calet])
         ],
-    )
+    ).excluding(fit_data_config)
 
     def generate_guess() -> Model:
         return Model(
@@ -99,15 +109,18 @@ if __name__ == "__main__":
     # m.plot_spectra(d, scale=2.7, validation_data=vd).savefig("temp_spectra.png")
     # m.plot_flux_ratios(d, validation_data=vd).savefig("temp_ratios.png")
 
-    run_local(
-        config=FitConfig.from_guessing_func(
-            name=analysis_name,
-            fit_data=fit_data_config,
-            mcmc=None,
-            generate_guess=generate_guess,
-            plots=PlotsConfig(
-                validation_data_config=validation_data_config,
-            ),
+    config = FitConfig.from_guessing_func(
+        name=analysis_name,
+        fit_data=fit_data_config,
+        mcmc=None,
+        generate_guess=generate_guess,
+        plots=PlotsConfig(
+            validation_data_config=validation_data_config,
         ),
+    )
+    config.optimizer = "minuit"
+
+    run_local(
+        config=config,
         opts=opts,
     )

@@ -317,7 +317,7 @@ def plot_everything(
     for element in elements:
         plot_model_predictions(
             ax=ax_el,
-            observable=lambda model, E: model.compute_spectrum(E, element=element),  # noqa: B023
+            observable=lambda model, E: model.compute_spectrum(E, element=element, quantity="E"),  # noqa: B023
             E_bounds=comp_Elim,
             plot_config=plots_config.elements,
             color=element.color,
@@ -338,7 +338,7 @@ def plot_everything(
                     continue
                 ax_el.plot(
                     E_grid,
-                    E_factor * pop.compute_spectrum(E_grid, element=element),
+                    E_factor * pop.compute_spectrum(E_grid, element=element, quantity="E"),
                     color=element.color,
                     linewidth=POP_CONTRIB_LINEWIDTH,
                     linestyle=pop.linestyle,
@@ -372,7 +372,7 @@ def plot_everything(
         ALL_PARTICLE_COLOR = "black"
         plot_model_predictions(
             ax=ax_all,
-            observable=lambda model, E: model.compute_spectrum(E, element=None),
+            observable=lambda model, E: model.compute_spectrum(E, element=None, quantity="E"),
             E_bounds=all_Elim,
             plot_config=plots_config.all_particle,
             color=ALL_PARTICLE_COLOR,
@@ -383,7 +383,11 @@ def plot_everything(
             for element in elements:
                 plot_model_predictions(
                     ax=ax_all,
-                    observable=lambda model, E: model.compute_spectrum(E, element=element),  # noqa: B023
+                    observable=lambda model, E: model.compute_spectrum(
+                        E,
+                        element=element,  # noqa: B023
+                        quantity="E",
+                    ),
                     E_bounds=all_Elim,
                     plot_config=plots_config.all_particle_elements_contribution,
                     color=element.color,

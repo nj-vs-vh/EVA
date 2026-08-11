@@ -18,14 +18,14 @@ def geom_mean(min_values, max_values):
 def read_extracted(filepath: str | Path) -> tuple[np.ndarray, ...]:
     """Read data from a given file and return extracted columns."""
     try:
-        logging.info("Reading data from %s", filepath)
+        logging.info("Reading data from %s", filepath)  # noqa: LOG015
         x_min, x_max, y, y_sta_lo, y_sta_up, y_sys_lo, y_sys_up = np.loadtxt(
             filepath, usecols=(0, 1, 2, 3, 4, 5, 6), unpack=True
         )
-        logging.info("Successfully read data from %s", filepath)
+        logging.info("Successfully read data from %s", filepath)  # noqa: LOG015
         return x_min, x_max, y, y_sta_lo, y_sta_up, y_sys_lo, y_sys_up
     except Exception as e:
-        logging.error("Failed to read data from %s: %s", filepath, e)
+        logging.error("Failed to read data from %s: %s", filepath, e)  # noqa: LOG015
         raise
 
 
@@ -36,10 +36,14 @@ def transform_R2E(R_min, R_max, I_R, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up, Z):
     return [E_mean, I_R / Z, e_sta_lo / Z, e_sta_up / Z, e_sys_lo / Z, e_sys_up / Z]
 
 
+def transform_Ekin2E(Ekin: np.ndarray, A: float) -> np.ndarray:
+    return Ekin + A * 0.931494
+
+
 def transform_T2E(T_min, T_max, I_T, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up, A):
     """Convert kinetic energy per nucleon data to energy data."""
     T_mean = geom_mean(T_min, T_max)
-    E_mean = T_mean * A
+    E_mean = transform_Ekin2E(T_mean * A, A)
     return [E_mean, I_T / A, e_sta_lo / A, e_sta_up / A, e_sys_lo / A, e_sys_up / A]
 
 
@@ -48,7 +52,7 @@ def dump(data: np.ndarray | Sequence[np.ndarray], filename: str, overwrite: bool
     filepath = OUTPUT_DIR / filename
     if filepath.exists():
         if overwrite:
-            logging.warning(
+            logging.warning(  # noqa: LOG015
                 f"File already exists, but will be overwritten due to overwrite=True: {filepath}"
             )
         else:
@@ -59,9 +63,9 @@ def dump(data: np.ndarray | Sequence[np.ndarray], filename: str, overwrite: bool
         with filepath.open("w") as f:
             for i, j, k, l, m, n in zip(E_mean, I_E, I_sta_lo, I_sta_up, I_sys_lo, I_sys_up):
                 f.write(f"{i:5.3e} {j:5.3e} {k:5.3e} {l:5.3e} {m:5.3e} {n:5.3e}\n")
-        logging.info("Data successfully written to %s", filepath)
+        logging.info("Data successfully written to %s", filepath)  # noqa: LOG015
     except Exception as e:
-        logging.error("Failed to write data to %s: %s", filepath, e)
+        logging.error("Failed to write data to %s: %s", filepath, e)  # noqa: LOG015
         raise
 
 
@@ -223,7 +227,7 @@ def transform_TIBET_all():
 
 def transform_DAMPE_light():
     file = "DAMPE_light_totalEnergy.txt"
-    E_min, E_max, I_E, e_sta, e_sys_ana, e_sys_had = np.loadtxt(
+    E_min, E_max, I_E, e_sta, e_sys_ana, _e_sys_had = np.loadtxt(
         f"lake/{file}", usecols=(1, 2, 3, 4, 5, 6), unpack=True
     )
     data = [geom_mean(E_min, E_max), I_E, e_sta, e_sta, e_sys_ana, e_sys_ana]
@@ -494,7 +498,7 @@ def transform_KISS() -> None:
         data = transform_R2E(R_center, R_center, I_R, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up, Z=Z)
         dump(data, output)
 
-    # R tables for ratios verbatim
+    # tables for ratios, copied verbatim, just with a different suffix
     for input in (
         "AMS-02_B_C_rigidity.txt",
         "AMS-02_B_O_rigidity.txt",
@@ -503,62 +507,33 @@ def transform_KISS() -> None:
         "AMS-02_Fe_O_rigidity.txt",
         "AMS-02_Li_B_rigidity.txt",
         "AMS-02_He_O_rigidity.txt",
+        "AMS-02_He_O_rigidity.txt",
+        "DAMPE_B_C_kineticEnergyPerNucleon.txt",
+        "DAMPE_B_O_kineticEnergyPerNucleon.txt",
     ):
-        prefix = input.removesuffix("_rigidity.txt")
-        output = f"{prefix}_ratio_rigidity.txt"
+        output = input.replace("_rigidity", "_ratio_rigidity").replace(
+            "_kineticEnergyPerNucleon", "_ratio_energy_per_nucleon"
+        )
         output_path = OUTPUT_DIR / output
         shutil.copy(kiss_dir / input, output_path)
         logging.info("Data moved as-is from KISS to %s", output_path)  # noqa: LOG015
 
-
-def transform_DAMPE_C_O_ICRC2025() -> None:
-    for input, output, A in (
-        ("lake/dampe-icrc2025/carbon.txt", "DAMPE_C_energy.txt", 12),
-        ("lake/dampe-icrc2025/oxygen.txt", "DAMPE_O_energy.txt", 16),
+    # spectra in kinetic energy, converted to full energy
+    for input, A in (
+        ("DAMPE_H_kineticEnergy.txt", 1.0),
+        ("DAMPE_He_kineticEnergy.txt", 4.0026),
+        ("DAMPE_C_kineticEnergy.txt", 12.011),
+        ("DAMPE_O_kineticEnergy.txt", 15.999),
+        ("DAMPE_Fe_kineticEnergy.txt", 55.845),
     ):
-        raw_file = Path(input)
-        table = np.loadtxt(raw_file, delimiter=",", dtype="float")
-        n_pts = 25
-        n_stat_errs = 7
-        lengths = (n_pts, n_pts, n_pts, n_stat_errs, n_stat_errs)
-        offset = 0
-        series = []
-        for length in lengths:
-            series.append(table[offset : offset + length, :])
-            offset += length
-        assert offset == table.shape[0]
-
-        E, flux = series[0].T
-        syst_up = series[1][:, 1] - flux
-        syst_lo = flux - series[2][:, 1]
-        # stat errors are not accessible for low-energy / high-statistics points because they're below markers, so we arbitrarily set those to systematic / 2
-        stat_up = syst_up / 2
-        stat_lo = syst_lo / 2
-        stat_up[-n_stat_errs:] = series[3][:, 1] - flux[-n_stat_errs:]
-        stat_lo[-n_stat_errs:] = flux[-n_stat_errs:] - series[4][:, 1]
-
-        # undoing the energy scaling of the plot points (E^2.6 x Flux -> Flux)
-        # plus, converting energy per nucleon to full energy
-        mult = E**2.6
-        E *= A
-        flux /= mult * A
-        syst_up /= mult * A
-        syst_lo /= mult * A
-        stat_up /= mult * A
-        stat_lo /= mult * A
-
-        dump((E, flux, stat_lo, stat_up, syst_lo, syst_up), output)
-
-
-def transform_DAMPE_arXiv_2511_05409() -> None:
-    dir = Path("lake/dampe-arXiv:2511.05409")
-    assert dir.exists(), "DAMPE 2025 dir not found"
-    for element in ("H", "He", "C", "O", "Fe"):
-        input, output = f"DAMPE_2025_{element}_kineticEnergy.txt", f"DAMPE_{element}_energy.txt"
-        data = np.loadtxt(dir / input, unpack=True)
-        # data[4, :] /= 10
-        # data[5, :] /= 10
-        dump(data, output)
+        E_kin, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up = np.loadtxt(
+            kiss_dir / input, unpack=True
+        )
+        E = transform_Ekin2E(E_kin, A)
+        dump(
+            [E, I_E, e_sta_lo, e_sta_up, e_sys_lo, e_sys_up],
+            filename=input.replace("kineticEnergy", "energy"),
+        )
 
 
 def transform_LHAASO_arXiv_2511_05013() -> None:
@@ -596,7 +571,7 @@ def transform_IceTop_elements() -> None:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-    logging.info("Backing up old output files")
+    logging.info("Backing up old output files")  # noqa: LOG015
     backup_dir = OUTPUT_DIR / ".backup"
     backup_dir.mkdir(parents=True, exist_ok=True)
     for file in OUTPUT_DIR.iterdir():
@@ -618,11 +593,8 @@ if __name__ == "__main__":
     transform_KASCADE_reanalysis()
     transform_HAWC_2025()
     transform_KISS()
-    # transform_DAMPE()
     # transform_LHAASO_protons()
-    # transform_DAMPE_C_O_ICRC2025()
-    transform_DAMPE_arXiv_2511_05409()
     transform_LHAASO_arXiv_2511_05013()
     transform_IceTop_elements()
 
-    logging.info("OK")
+    logging.info("OK")  # noqa: LOG015

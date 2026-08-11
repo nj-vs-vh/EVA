@@ -18,6 +18,7 @@ from cr_knee_fit.crams_model import CramsModel, CramsModelConfig
 from cr_knee_fit.elements import Element, isotope_average_A
 from cr_knee_fit.experiments import Experiment
 from cr_knee_fit.fit_data import (
+    EMPTY_DATA,
     CRSpectrumData,
     Data,
     DataConfig,
@@ -31,12 +32,13 @@ from cr_knee_fit.types_ import Packable
 from cr_knee_fit.utils import (
     E_GEV_LABEL,
     LN_A_LABEL,
-    R_GV_LABEL,
+    CharacteristicQuantity,
     LegendItem,
     add_elements_lnA_secondary_axis,
     add_log_margin,
     energy_shift_suffix,
     legend_with_added_items,
+    quantity_label,
 )
 
 
@@ -156,7 +158,7 @@ class Model(Packable[ModelConfig]):
         self,
         fit_data: Data,
         scale: float,
-        validation_data: Data | None = None,
+        validation_data: Data = EMPTY_DATA,
         axes: Axes | None = None,
     ) -> Figure:
         if axes is None:
@@ -169,8 +171,6 @@ class Model(Packable[ModelConfig]):
         plot_allpart = False
         all_energies: list[float] = []
         for data_, is_fitted in ((fit_data, True), (validation_data, False)):
-            if data_ is None:
-                continue
             for exp, data_by_particle in data_.element_spectra.items():
                 f_exp = self.energy_shifts.f(exp)
                 for element_data in data_by_particle.values():
@@ -213,7 +213,7 @@ class Model(Packable[ModelConfig]):
                 scale=scale,
                 axes=ax,
                 all_particle=plot_allpart,
-                elements=fit_data.elements(),
+                elements=fit_data.elements() + validation_data.elements(),
             )
         for pop in self.populations:
             pop.plot(
@@ -234,7 +234,7 @@ class Model(Packable[ModelConfig]):
             for element in multipop_elements:
                 ax.plot(
                     E_grid,
-                    E_factor * self.compute_spectrum(E_grid, element=element),
+                    E_factor * self.compute_spectrum(E_grid, element=element, quantity="E"),
                     label="Total " + element.name,
                     color=element.color,
                     linewidth=2,
@@ -242,7 +242,7 @@ class Model(Packable[ModelConfig]):
             if plot_allpart:
                 ax.plot(
                     E_grid,
-                    E_factor * self.compute_spectrum(E_grid, element=None),
+                    E_factor * self.compute_spectrum(E_grid, element=None, quantity="E"),
                     label="Total all particle",
                     color="black",
                     linewidth=2,
@@ -276,15 +276,13 @@ class Model(Packable[ModelConfig]):
     def plot_lnA(
         self,
         fit_data: Data,
-        validation_data: Data | None = None,
+        validation_data: Data = EMPTY_DATA,
     ) -> Figure | None:
         fig, ax = plt.subplots(figsize=(10, 8))
 
         all_energies: list[float] = []
         legend_items = []
         for data, is_fitted in ((fit_data, True), (validation_data, False)):
-            if data is None:
-                continue
             for lnA_data in data.lnA:
                 exp = lnA_data.experiment
                 f_exp = self.energy_shifts.f(exp)
@@ -320,42 +318,70 @@ class Model(Packable[ModelConfig]):
         add_elements_lnA_secondary_axis(ax)
         return fig
 
-    def plot_flux_ratios(
+    def _plot_flux_ratios_per_quantity(
         self,
+        ax: Axes,
         fit_data: Data,
-        validation_data: Data | None = None,
-    ) -> Figure | None:
-        fig, ax = plt.subplots(figsize=(10, 8))
-
-        all_R: list[float] = []
+        validation_data: Data,
+        only_quantity: CharacteristicQuantity,
+    ) -> bool:
+        all_Q: list[float] = []
         ratios_to_plot: set[FluxRatio] = set()
         for data, is_fitted in ((fit_data, True), (validation_data, False)):
-            if data is None:
-                continue
             for fr in data.flux_ratios:
+                if fr.quantity != only_quantity:
+                    continue
                 fr.plot(
                     ax=ax,
                     add_legend_label=True,
                     is_fitted=is_fitted,
                 )
-                all_R.extend(fr.R)
+                all_Q.extend(fr.Q)
                 ratios_to_plot.add(fr.ratio)
 
-        if not all_R:
-            return None
+        if not all_Q:
+            return False
 
-        R_min = np.min(all_R)
-        R_max = np.max(all_R)
-        R_grid = np.geomspace(R_min, R_max, 100)
+        Q_min = np.min(all_Q)
+        Q_max = np.max(all_Q)
+        Q = np.geomspace(Q_min, Q_max, 100)
         for ratio in ratios_to_plot:
-            ax.plot(R_grid, self.compute_flux_ratio(R_grid, fr=ratio), color=ratio.color())
+            ax.plot(
+                Q,
+                self.compute_flux_ratio(Q, fr=ratio, quantity=only_quantity),
+                color=ratio.color(),
+            )
 
         ax.set_xscale("log")
         ax.set_yscale("log")
-        ax.set_xlabel(R_GV_LABEL)
+        ax.set_xlabel(quantity_label(only_quantity))
         ax.set_ylabel("Flux ratio")
         ax.legend()
-        return fig
+        return True
+
+    def plot_flux_ratios(
+        self,
+        fit_data: Data,
+        validation_data: Data = EMPTY_DATA,
+    ) -> Figure | None:
+        fig, axes = plt.subplots(ncols=2, figsize=(12, 6))
+        something_plotted = False
+        for i, q in enumerate(("E_n", "R")):
+            ax = axes[i]
+            if self._plot_flux_ratios_per_quantity(
+                ax=ax,
+                fit_data=fit_data,
+                validation_data=validation_data,
+                only_quantity=q,  # type: ignore
+            ):
+                something_plotted = True
+            else:
+                ax.remove()
+        fig.tight_layout()
+        if something_plotted:
+            return fig
+        else:
+            return None
 
     def _chi2_label(self, data: CRSpectrumData | GenericExperimentData | FluxRatioData):
         # private imports to avoid circular import error
@@ -395,13 +421,11 @@ class Model(Packable[ModelConfig]):
         self,
         fit_data: Data,
         spectra_scale: float,
-        validation_data: Data | None = None,
+        validation_data: Data = EMPTY_DATA,
     ) -> dict[tuple[Experiment, str], Figure]:
 
         res: dict[tuple[Experiment, str], Figure] = {}
         for data_, is_fitted in ((fit_data, True), (validation_data, False)):
-            if data_ is None:
-                continue
             for spectrum in data_.spectra:
                 f_exp = self.energy_shifts.f(spectrum.experiment)
                 spectrum = spectrum.with_shifted_energy_scale(f=f_exp)
@@ -411,7 +435,7 @@ class Model(Packable[ModelConfig]):
                 ax.legend()
                 Emin, Emax = add_log_margin(spectrum.E[0], spectrum.E[-1])
                 E = np.geomspace(Emin, Emax, 100)
-                prediction = self.compute_spectrum(E, element=spectrum.spec)
+                prediction = self.compute_spectrum(E, element=spectrum.spec, quantity="E")
                 ax.plot(E, E**spectra_scale * prediction, color="k", linewidth=2)
                 ax.set_title(self._chi2_label(spectrum))
                 res[(spectrum.experiment, spectrum.element_label())] = ax.figure  # type: ignore
@@ -433,9 +457,13 @@ class Model(Packable[ModelConfig]):
                 ax = flux_ratio.plot(is_fitted=is_fitted)
                 ax.set_xscale("log")
                 ax.legend()
-                Rmin, Rmax = add_log_margin(flux_ratio.R[0], flux_ratio.R[-1])
+                Rmin, Rmax = add_log_margin(flux_ratio.Q[0], flux_ratio.Q[-1])
                 R = np.geomspace(Rmin, Rmax, 100)
-                prediction = self.compute_flux_ratio(R, fr=flux_ratio.ratio)
+                prediction = self.compute_flux_ratio(
+                    R,
+                    fr=flux_ratio.ratio,
+                    quantity=flux_ratio.quantity,
+                )
                 ax.plot(R, prediction, color="k", linewidth=2)
                 ax.set_title(self._chi2_label(flux_ratio))
                 res[
@@ -449,58 +477,63 @@ class Model(Packable[ModelConfig]):
 
     def compute_spectrum(
         self,
-        x: np.ndarray,
+        Q: np.ndarray,
         element: SpectrumDataSpec,
-        rigidity: bool = False,
+        quantity: CharacteristicQuantity,
     ) -> np.ndarray:
-        if rigidity and element is None:
-            raise ValueError("All-particle spectrum cannot be computed in rigidity")
+        if quantity != "E" and element is None:
+            raise ValueError("All-particle spectrum can only be computed in total energy")
 
         if isinstance(element, tuple):
             element_group = element
             return sum(
-                (self.compute_spectrum(x, element) for element in element_group), np.zeros_like(x)
+                (self.compute_spectrum(Q, element, quantity=quantity) for element in element_group),
+                np.zeros_like(Q),
             )
 
         components: list[np.ndarray] = []
         if self.crams is not None:
             components.append(
-                (
-                    self.crams.compute_rigidity_spectrum(x, element)
-                    if rigidity
-                    else self.crams.compute_spectrum(x, element)
-                )
+                self.crams.compute_spectrum(Q, element, quantity=quantity)
                 if element is not None
-                else self.crams.compute_all_particle_spectrum(x)
+                else self.crams.compute_all_particle_spectrum(Q)
             )
 
         for pop in self.populations:
             if element is not None and pop.has_element(element):
                 components.append(
-                    pop.compute_rigidity_spectrum(x, element)
-                    if rigidity
-                    else pop.compute_spectrum(x, element, contrib_to_all_particle=False)
+                    pop.compute_spectrum(
+                        Q,
+                        element,
+                        quantity=quantity,
+                        contrib_to_all_particle=False,
+                    )
                 )
             else:
-                components.append(pop.compute_all_particle_spectrum(x))
+                components.append(pop.compute_all_particle_spectrum(Q))
 
-        return sum(components, start=np.zeros_like(x))
+        return sum(components, start=np.zeros_like(Q))
 
-    def compute_flux_ratio(self, R: np.ndarray, fr: FluxRatio) -> np.ndarray:
-        num = self.compute_spectrum(R, element=fr.num, rigidity=True)
-        denom = self.compute_spectrum(R, element=fr.denom, rigidity=True)
+    def compute_flux_ratio(
+        self,
+        Q: np.ndarray,
+        fr: FluxRatio,
+        quantity: CharacteristicQuantity,
+    ) -> np.ndarray:
+        num = self.compute_spectrum(Q, element=fr.num, quantity=quantity)
+        denom = self.compute_spectrum(Q, element=fr.denom, quantity=quantity)
         return num / denom
 
     def compute_lnA(self, E: np.ndarray) -> np.ndarray:
         elements = self.layout_info().elements(only_fixed_Z=True)
-        spectra = [self.compute_spectrum(E, element=element) for element in elements]
+        spectra = [self.compute_spectrum(E, element=element, quantity="E") for element in elements]
         lnA = [np.log(p.A) for p in elements]
 
         # adding FreeZ components per-population as they are potentially distinct
         for pop in self.populations:
             if Element.FreeZ not in pop.layout_info().resolved_elements:
                 continue
-            spectra.append(pop.compute_spectrum(E, element=Element.FreeZ))
+            spectra.append(pop.compute_spectrum(E, element=Element.FreeZ, quantity="E"))
             lnA.append(np.log(isotope_average_A(round(pop.element_Z(Element.FreeZ)))))
 
         spectra_arr = np.vstack(spectra)

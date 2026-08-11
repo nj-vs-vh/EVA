@@ -207,7 +207,7 @@ def loglikelihood(
     for spectrum in fit_data.spectra:
         spectrum = spectrum.with_shifted_energy_scale(f=model.energy_shifts.f(spectrum.experiment))
         res += chi_squared_loglikelihood(
-            prediction=model.compute_spectrum(spectrum.E, element=spectrum.spec),
+            prediction=model.compute_spectrum(spectrum.E, element=spectrum.spec, quantity="E"),
             y=spectrum.F,
             err_stat=spectrum.F_err_stat,
             err_syst=spectrum.F_err_syst,
@@ -230,7 +230,9 @@ def loglikelihood(
     for flux_ratio in fit_data.flux_ratios:
         # flux ratios are used at low energies, where energy scale is very well constrained, hence no shift is applied
         res += chi_squared_loglikelihood(
-            prediction=model.compute_flux_ratio(flux_ratio.R, fr=flux_ratio.ratio),
+            prediction=model.compute_flux_ratio(
+                flux_ratio.Q, fr=flux_ratio.ratio, quantity=flux_ratio.quantity
+            ),
             y=flux_ratio.value,
             err_stat=flux_ratio.d.err_stat,
             err_syst=flux_ratio.d.err_syst,

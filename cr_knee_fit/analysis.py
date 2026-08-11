@@ -10,10 +10,12 @@ import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import Literal
 from warnings import warn
 
 import corner  # type: ignore
 import emcee  # type: ignore
+import iminuit  # type: ignore
 import numpy as np
 import pydantic
 from matplotlib.figure import Figure
@@ -61,6 +63,8 @@ class FitConfig(pydantic.BaseModel):
     model: ModelConfig
     plots: PlotsConfig
     initial_guesses: Np2DArrayFp64  # n_sample x n_model_dim
+
+    optimizer: Literal["scipy", "minuit"] = "scipy"
 
     # skips most analyses, just loading model dumps from disk whenever possible
     # useful to regenerate plots without rerunning the actual analysis
@@ -149,15 +153,27 @@ def run_ml_analysis(
         # so, let us use logposterior instead
         return -logposterior(v, fit_data, model_config)
 
-    res = optimize.minimize(
-        to_minimize,
-        x0=initial_model.pack(),
-        bounds=initial_model.ml_bounds(),
-        method="Nelder-Mead",
-        options={
-            "maxiter": 100_000,
-        },
-    )
+    start = time.time()
+    match config.optimizer:
+        case "scipy":
+            res: optimize.OptimizeResult = optimize.minimize(
+                to_minimize,
+                x0=initial_model.pack(),
+                bounds=initial_model.ml_bounds(),
+                method="Nelder-Mead",
+                options={
+                    "maxiter": 100_000,
+                },
+            )
+        case "minuit":
+            res = iminuit.minimize(
+                to_minimize,
+                x0=initial_model.pack(),
+                bounds=initial_model.ml_bounds(),
+            )
+    total = time.time() - start
+    print(f"Optimization done in {total:.2g} sec = {total / 60:.2g} min")
+    print("Optimization result:")
     print(res)
     map_model = Model.unpack(res.x, layout_info=model_config)
 

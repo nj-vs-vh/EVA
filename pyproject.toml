@@ -13,12 +13,11 @@ packages = ["cr_knee_fit"]
 line-length = 100
 indent-width = 4
 target-version = "py312"
-extend-exclude = ["venv", "misc/model"]
+extend-exclude = ["venv", "misc/model", "runscripts/archive", "notebooks/archive"]
 
 [tool.ruff.lint]
 extend-select = ["I"] # check and fix imports
 ignore = ["E741"]
 
-
 [tool.mypy]
-exclude = ["^misc/model", "^data", "^runscripts/archive"]
+exclude = ["^misc/model", "^data", "^runscripts/archive", "^notebooks/archive"]

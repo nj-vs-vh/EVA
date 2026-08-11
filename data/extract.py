@@ -8,6 +8,8 @@ import crdb
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
 
+logger = logging.getLogger("main")
+
 
 @dataclass
 class DatasetDef:
@@ -23,22 +25,22 @@ class DatasetDef:
 
 def log_column_names(tab):
     """Log column names from the table for debugging purposes."""
-    logging.info("Column names in table:")
+    logger.info("Column names in table:")
     for icol, col_name in enumerate(tab.dtype.fields):
-        logging.info("%2i: %s", icol, col_name)
+        logger.info("%2i: %s", icol, col_name)
 
 
 def dump_datafile(dataset: DatasetDef, skip_existing: bool, combo_level=0, energy_convert_level=0):
     """Query data from CRDB and save filtered results to a file."""
     filepath = Path("crdb") / dataset.filename
     if skip_existing and filepath.exists():
-        logging.info(f"Output file found, skipping: {dataset.description()}")
+        logger.info(f"Output file found, skipping: {dataset.description()}")
         return
 
     # Ensure the 'crdb' directory exists
     filepath.parent.mkdir(parents=True, exist_ok=True)
 
-    logging.info(f"Searching for {dataset.description()}")
+    logger.info(f"Searching for {dataset.description()}")
 
     # Query data
     tab = crdb.query(
@@ -51,11 +53,11 @@ def dump_datafile(dataset: DatasetDef, skip_existing: bool, combo_level=0, energ
 
     # Get unique sub-experiment names and ADS codes
     sub_exp_names = set(tab["sub_exp"])
-    logging.info("Number of datasets found: %d", len(sub_exp_names))
-    logging.debug("Sub-experiment names: %s", sub_exp_names)
+    logger.info("Number of datasets found: %d", len(sub_exp_names))
+    logger.debug("Sub-experiment names: %s", sub_exp_names)
 
     ads_codes = set(tab["ads"])
-    logging.debug("ADS codes: %s", ads_codes)
+    logger.debug("ADS codes: %s", ads_codes)
 
     # Filter data for the specified sub-experiment
     indices = [
@@ -64,12 +66,12 @@ def dump_datafile(dataset: DatasetDef, skip_existing: bool, combo_level=0, energ
         if dataset.sub_exp_name is None or sub == dataset.sub_exp_name
     ]
     if not indices:
-        logging.error("No data found for sub-experiment '%s'.", dataset.sub_exp_name)
+        logger.error("No data found for sub-experiment '%s'.", dataset.sub_exp_name)
         raise ValueError(f"No data found for the specified sub-experiment: {dataset.sub_exp_name}")
-    logging.info("Number of data entries: %d", len(indices))
+    logger.info("Number of data entries: %d", len(indices))
 
     # Write data to file
-    logging.info(f"Dumping data to {filepath}")
+    logger.info(f"Dumping data to {filepath}")
     ads_ids = sorted(set(tab["ads"][indices]))
     with open(filepath, "w") as f:
         f.write("#source: CRDB\n")
@@ -88,7 +90,7 @@ def dump_datafile(dataset: DatasetDef, skip_existing: bool, combo_level=0, energ
                 tab["err_sys"][indices],
             )
         )
-    logging.info("Data dump completed.\n")
+    logger.info("Data dump completed.\n")
 
 
 if __name__ == "__main__":
@@ -285,7 +287,7 @@ if __name__ == "__main__":
     try:
         for dataset in datasets:
             dump_datafile(dataset, skip_existing=args.new_only)
-        logging.info("All datasets processed successfully.")
+        logger.info("All datasets processed successfully.")
     except Exception:
-        logging.critical("Processing stopped due to error", exc_info=True)
-        logging.info("Program terminated due to a critical error.")
+        logger.critical("Processing stopped due to error", exc_info=True)
+        logger.info("Program terminated due to a critical error.")

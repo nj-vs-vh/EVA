@@ -1,6 +1,7 @@
 import subprocess
 from collections.abc import Iterable, Sequence
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 from matplotlib.artist import Artist
@@ -41,6 +42,7 @@ def merged_lims(vals: Sequence[np.ndarray]) -> tuple[float, float]:
 
 E_GEV_LABEL: str = "$E$ / $\\text{GeV}$"
 R_GV_LABEL: str = "$\\mathcal{R}$ / $\\text{GV}$"
+E_N_GEV_LABEL: str = "$E_n$ / $\\text{GeV}$"
 LN_A_LABEL = "$ \\langle \\ln A \\rangle $"
 
 
@@ -131,3 +133,45 @@ def export_fig(fig: Figure, filename: str) -> None:
 def color_average(colors: list[ColorType]) -> tuple[float, float, float]:
     rgbs = [to_rgb(c) for c in colors]
     return tuple(np.mean(np.array(rgbs), axis=0))
+
+
+CharacteristicQuantity = Literal[
+    "R",  # rigidity, GV
+    "E",  # total energy, GeV
+    "E_n",  # energy per nucleon, GeV
+]
+
+
+def quantity_unit(q: CharacteristicQuantity) -> str:
+    return "GV" if q == "R" else "GeV"
+
+
+def quantity_label(q: CharacteristicQuantity) -> str:
+    match q:
+        case "R":
+            return R_GV_LABEL
+        case "E":
+            return E_GEV_LABEL
+        case "E_n":
+            return E_N_GEV_LABEL
+
+
+def q2E_factor(Z: float, A: float, quantity: CharacteristicQuantity) -> float:
+    match quantity:
+        case "E":
+            return 1
+        case "R":
+            return 1 * Z
+        case "E_n":
+            return 1 * A
+
+
+def q2R_factor(Z: float, A: float, quantity: CharacteristicQuantity) -> float:
+
+    match quantity:
+        case "E":
+            return 1 / Z
+        case "R":
+            return 1
+        case "E_n":
+            return 1 * A / Z
