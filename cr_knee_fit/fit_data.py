@@ -105,6 +105,20 @@ class GenericExperimentData:
 
         return stat_cov + syst_cov
 
+    def total_relative_error(self) -> np.ndarray:
+        err_total = np.sqrt(self.err_stat**2 + self.err_syst**2)
+        mean_err_total = np.mean(err_total, axis=1)
+        return mean_err_total / self.y
+
+    def summary(self, description: str, x_quantity: str) -> str:
+        e = self.total_relative_error()
+        e = e[np.isfinite(e)]
+        return (
+            f"{self.experiment.name} {description}: {self.size()} points "
+            + f"from {self.x.min():.1e} to {self.x.max():.1e} {x_quantity}; "
+            + f"total relative error from {e.min():.2%} to {e.max():.2%}"
+        )
+
     @functools.cached_property
     def log_space_err_cov_inv(self) -> np.ndarray:
         # TODO: does 1.0 correlation length make sense in all cases?
@@ -220,6 +234,9 @@ class CRSpectrumData:
 
     def size(self) -> int:
         return self.d.size()
+
+    def summary(self) -> str:
+        return self.d.summary(self.element_label(), "GeV")
 
     @functools.cached_property
     def err_cov(self) -> np.ndarray:
@@ -389,6 +406,9 @@ class FluxRatioData:
 
     def size(self) -> int:
         return self.d.size()
+
+    def summary(self) -> str:
+        return self.d.summary(self.ratio_label(), quantity_unit(self.quantity))
 
     @classmethod
     def load(
@@ -657,9 +677,7 @@ class Data:
         for experiment, spectra in itertools.groupby(self.spectra, key=lambda d: d.experiment):
             print_(experiment.name)
             for s in spectra:
-                print_(
-                    f"  {s.element_label()}: {s.E.size} points from {s.E.min():.1e} to {s.E.max():.1e} GeV"
-                )
+                print_("    " + s.summary())
                 s.plot(scale=scale, ax=ax, add_legend_label=False, is_fitted=is_fitted)
 
         ax.set_xscale("log")
@@ -678,10 +696,7 @@ class Data:
         print_ = print if describe else lambda _: None
         print_("lnA data:")
         for lnA_data in self.lnA:
-            print_(
-                f"    {lnA_data.experiment.name}: {lnA_data.x.size} points "
-                + f"from {lnA_data.x.min():.1e} to {lnA_data.x.max():.1e} GeV"
-            )
+            print_("    " + lnA_data.summary("<lnA>", "GeV"))
             lnA_data.plot(ax=ax, is_fitted=is_fitted)
         ax.set_xscale("log")
         ax.set_xlabel(E_GEV_LABEL)
@@ -692,10 +707,7 @@ class Data:
         print_ = print if describe else lambda _: None
         print_("Flux ratio data:")
         for fr in self.flux_ratios:
-            print_(
-                f"    {fr.d.experiment.name}: {fr.Q.size} points "
-                + f"from {fr.Q.min():.1e} to {fr.Q.max():.1e} {quantity_unit(fr.quantity)}"
-            )
+            print_("    " + fr.summary())
             fr.plot_in_R(ax=ax, is_fitted=is_fitted)
         ax.set_xscale("log")
         ax.set_yscale("log")
