@@ -8,6 +8,7 @@ from typing import Annotated, Any, Literal
 import matplotlib.pyplot as plt
 import numpy as np
 import pydantic
+import scipy.interpolate  # type: ignore
 from crams import (
     CRAMS_DEFAULT_R_OUT_GRID,
     CRAMS_DEFAULT_T_SIM_GRID,
@@ -195,6 +196,9 @@ class CramsModelConfig(pydantic.BaseModel):
     # fitted params are set to nan in these
     frozen_propagation: PropagationParams
     frozen_injection: InjectionParams
+
+    # NOTE: cubic spline needs work, now it's unpysical
+    interpolation_method: Literal["numpy_linear", "scipy_linear", "scipy_cubic"] = "scipy_linear"
 
     population_meta: PopulationMetadata | None = None
 
@@ -407,16 +411,34 @@ class CramsModel(Packable[CramsModelConfig]):
     def crams_lg_spectrum(self, element: Element) -> np.ndarray:
         return self._crams_lg_output[:, round(element.Z)]
 
+    def _lg_spectrum_spline(self, element: Element) -> scipy.interpolate.BSpline | None:
+        # TODO: add instance-level caching
+        lg_flux = self.crams_lg_spectrum(element)
+        mask = np.isfinite(lg_flux)
+        if np.count_nonzero(mask) < 3:
+            return None  # no interpolator for all-zero data
+        return scipy.interpolate.make_interp_spline(
+            x=self.crams_lgR_grid[mask].squeeze(),
+            y=lg_flux[mask].squeeze(),
+            k=1 if self.config.interpolation_method == "scipy_linear" else 3,
+        )
+
     def _compute_rigidity_spectrum(self, R: np.ndarray, element: Element) -> np.ndarray:
-        return 10 ** (
-            np.interp(
-                np.log10(R),
-                xp=self.crams_lgR_grid,
-                fp=self.crams_lg_spectrum(element),
-                left=np.nan,  # explicitly invalid for points out of computed bound
-                right=np.nan,
-            )
-        )  # type: ignore
+        match self.config.interpolation_method:
+            case "numpy_linear":
+                lg_res = np.interp(
+                    x=np.log10(R),
+                    xp=self.crams_lgR_grid,
+                    fp=self.crams_lg_spectrum(element),
+                    left=np.nan,  # explicitly invalid for points out of computed bound
+                    right=np.nan,
+                )
+            case "scipy_linear" | "scipy_cubic":
+                if spline := self._lg_spectrum_spline(element):
+                    lg_res = spline(np.log10(R))
+                else:
+                    return np.zeros_like(R)
+        return 10**lg_res
 
     def compute_spectrum(
         self, Q: np.ndarray, element: Element, quantity: CharacteristicQuantity
