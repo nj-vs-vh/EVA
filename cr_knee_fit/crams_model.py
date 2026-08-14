@@ -1,5 +1,4 @@
 import functools
-import itertools
 import json
 from collections.abc import Collection
 from dataclasses import dataclass
@@ -9,12 +8,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pydantic
 from crams import (
-    ELEMENT_NAMES as CRAMS_ELEMENT_NAMES,
+    CRAMS_DEFAULT_R_OUT_GRID,
+    CRAMS_DEFAULT_T_SIM_GRID,
+    CramsRunner,
+    InjectionBreak,
+    InjectionParams,
+    LogGrid,
+    PropagationParams,
 )
 from crams import (
-    CramsRunner,
-    InjectionParams,
-    PropagationParams,
+    ELEMENT_NAMES as CRAMS_ELEMENT_NAMES,
 )
 from matplotlib.axes import Axes
 
@@ -30,13 +33,30 @@ CRAMS_ELEMENTS = [Element[name] for name in CRAMS_ELEMENT_NAMES]
 
 
 def pack_injection(ip: InjectionParams) -> np.ndarray:
-    return np.array(list(itertools.chain(ip.abundances, ip.slopes)))
+    components = [ip.abundances, ip.slopes]
+    if ip.feature is not None:
+        components.append((np.log10(ip.feature.R_GV), ip.feature.delta_slope, ip.feature.omega))
+    return np.concatenate(components)
 
 
-def unpack_injection(v: np.ndarray) -> InjectionParams:
+def unpack_injection(v: np.ndarray, n_slopes: int, has_feature: bool) -> InjectionParams:
+    abundances = v[: len(CRAMS_ELEMENTS)]
+    offset = len(CRAMS_ELEMENTS)
+    slopes = v[offset : offset + n_slopes]
+    offset += n_slopes
+    if has_feature:
+        feature = InjectionBreak(
+            R_GV=10 ** v[offset],
+            delta_slope=v[offset + 1],
+            omega=v[offset + 2],
+        )
+        offset += 2
+    else:
+        feature = None
     return InjectionParams(
-        abundances=v[: len(CRAMS_ELEMENTS)],  # type: ignore
-        slopes=v[len(CRAMS_ELEMENTS) :],  # type: ignore
+        abundances=abundances,  # type: ignore
+        slopes=slopes,  # type: ignore
+        feature=feature,
     )
 
 
@@ -82,6 +102,11 @@ def unpack_propagation(v: np.ndarray) -> PropagationParams:
 
 ABUNDANCE_BOUND = (0.0, 10.0)
 SLOPE_BOUND = (4.01, 4.99)  # (4, 5) is strictly enforced by CRAMS, here we add a small margin
+SOURCE_BREAK_BOUNDS = [
+    (np.log10(5e3), np.log10(30e3)),  # DAMPE break expected at ~13 TV
+    (0.0, 2.0),  # break should harden the spectrum
+    (0.01, 1.0),
+]
 
 
 def _serialize_crams(cr: CramsRunner) -> str:
@@ -172,31 +197,40 @@ class CramsModelConfig(pydantic.BaseModel):
 
     @staticmethod
     def default(
-        fit_abundances: Collection[Element] = [
-            Element.H,
-            Element.He,
-            Element.C,
-            Element.N,
-            Element.O,
-            Element.Ne,
-            Element.Mg,
-            Element.Si,
-            Element.S,
-            Element.Fe,
-        ],
+        include_10TeV_break: bool,
+        fit_abundances: Collection[Element] = (
+            [Element.H, Element.He, Element.C, Element.N, Element.O]
+            + [Element.Ne, Element.Mg, Element.Si, Element.S, Element.Fe]
+        ),
     ) -> "CramsModelConfig":
+        if include_10TeV_break:
+            T_sim_grid = LogGrid(
+                min=0.1,  # 0.1 GeV
+                max=5e6,  # 3 PeV
+                size=200,  # enough for numerical errors <0.1%
+            )
+            R_out_grid = LogGrid(
+                min=5,  # GV
+                max=1e6,  # PV
+                size=150,
+            )
+        else:
+            T_sim_grid = CRAMS_DEFAULT_T_SIM_GRID
+            R_out_grid = CRAMS_DEFAULT_R_OUT_GRID
+
         return CramsModelConfig(
-            crams=CramsRunner(
-                # default CRAMS values, but explicitly specified
-                inelastic_model="tripathi99",
-                fragmentation_model="usinewebber03coste12",
-            ),
+            crams=CramsRunner(T_sim_grid=T_sim_grid, R_out_grid=R_out_grid),
             frozen_injection=InjectionParams(
                 abundances=[
                     (np.nan if element in fit_abundances else DEFAULT_ABUNDANCES[element])
                     for element in CRAMS_ELEMENTS
                 ],
                 slopes=[np.nan] * 3,
+                feature=(
+                    InjectionBreak(R_GV=np.nan, delta_slope=np.nan, omega=np.nan)
+                    if include_10TeV_break
+                    else None
+                ),
             ),
             frozen_propagation=PropagationParams(
                 H_kpc=7.0,
@@ -215,6 +249,13 @@ class CramsModelConfig(pydantic.BaseModel):
     def elements(self) -> list[Element]:
         return CRAMS_ELEMENTS
 
+    def unpack_injection(self, v: np.ndarray):
+        return unpack_injection(
+            v,
+            n_slopes=len(self.frozen_injection.slopes),
+            has_feature=self.frozen_injection.feature is not None,
+        )
+
 
 @dataclass
 class CramsModel(Packable[CramsModelConfig]):
@@ -223,8 +264,13 @@ class CramsModel(Packable[CramsModelConfig]):
 
     config: CramsModelConfig
 
+    def __post_init__(self) -> None:
+        assert len(self.injection.abundances) == len(self.config.frozen_injection.abundances)
+        assert len(self.injection.slopes) == len(self.config.frozen_injection.slopes)
+        assert type(self.injection.feature) == type(self.config.frozen_injection.feature)
+
     @staticmethod
-    def default() -> "CramsModel":
+    def default(include_10TeV_break: bool) -> "CramsModel":
         init_fitted_abundances = {
             Element.H: 4.14e-2,
             Element.He: 2.04e-2,
@@ -253,40 +299,38 @@ class CramsModel(Packable[CramsModelConfig]):
                     for element in CRAMS_ELEMENTS
                 ],
                 slopes=[4.37, 4.30, 4.36],
+                feature=(
+                    InjectionBreak(R_GV=15e3, delta_slope=0.2, omega=0.2)
+                    if include_10TeV_break
+                    else None
+                ),
             ),
-            config=CramsModelConfig.default(fit_abundances=list(init_fitted_abundances.keys())),
+            config=CramsModelConfig.default(
+                include_10TeV_break=include_10TeV_break,
+                fit_abundances=list(init_fitted_abundances.keys()),
+            ),
         )
-
-    def description(self) -> str:
-        prop_raw: str = self.propagation.to_input().describe().strip()
-        prop = "\n".join(
-            line
-            for line in prop_raw.splitlines()
-            # these parameters are actually set in the global CramsRunner object
-            if not line.startswith(("flux solver", "inelastic model", "fragmentation model"))
-        )
-        abundances = "\n".join(
-            [
-                f"Q_{el} = {abundance}"
-                for el, abundance in zip(CRAMS_ELEMENT_NAMES, self.injection.abundances)
-            ]
-        )
-        slope_labels = [
-            f"gamma_{el} = {slope}"
-            for el, slope in zip(CRAMS_ELEMENT_NAMES, self.injection.slopes[:-1])
-        ]
-        if len(self.injection.slopes) == len(CRAMS_ELEMENT_NAMES):
-            slope_labels.append(f"gamma_{CRAMS_ELEMENT_NAMES[-1]} = {self.injection.slopes[-1]}")
-        else:
-            slope_labels.append(f"gamma_nuclei = {self.injection.slopes[-1]}")
-        slopes = "\n".join(slope_labels)
-        return f"{prop}\n========\n{abundances}\n{slopes}"
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, CramsModel):
             return False
+
         # NOTE: use with caution; this method ignores the embedded CramsRunner that might have different
         # configurations between self and other, and hence give different results
+
+        if self.injection.feature is not None:
+            if other.injection.feature is None:
+                return False
+            is_feature_same = (
+                np.isclose(self.injection.feature.R_GV, other.injection.feature.R_GV)
+                and np.isclose(
+                    self.injection.feature.delta_slope, other.injection.feature.delta_slope
+                )
+                and np.isclose(self.injection.feature.omega, other.injection.feature.omega)
+            )
+        else:
+            is_feature_same = np.True_
+
         return bool(
             np.isclose(self.propagation.H_kpc, other.propagation.H_kpc)
             and np.isclose(self.propagation.v_A_km_sec, other.propagation.v_A_km_sec)
@@ -298,6 +342,7 @@ class CramsModel(Packable[CramsModelConfig]):
             and np.isclose(self.propagation.phi, other.propagation.phi)
             and np.allclose(self.injection.abundances, other.injection.abundances)
             and np.allclose(self.injection.slopes, other.injection.slopes)
+            and is_feature_same
         )
 
     @property
@@ -402,59 +447,77 @@ class CramsModel(Packable[CramsModelConfig]):
         return ax
 
     def labels(self, latex: bool) -> list[str]:
-        labels: list[str] = []
-
-        if latex:
-            propagation_labels = [
-                "H_kpc",
-                "v_A_km_sec",
-                "R_b_GV",
+        if not latex:
+            all_prop_labels = [
+                "H / kpc",
+                "v_A / km/sec",
+                "lg R_b / GV",
                 "delta",
                 "ddelta",
-                "D_0_cm2_sec",
+                "D_0 / cm2/sec",
                 "X_src",
                 "phi",
             ]
         else:
-            propagation_labels = [
+            all_prop_labels = [
                 r"$H \; / \; \text{kpc}$",
                 r"$v_A \; / \; \text{km} \; \text{s}^{-1}$",
-                r"$\\lg ( R_b \; / \; \text{GV} )$",
+                r"$\lg ( \mathcal{R}_b \; / \; \text{GV} )$",
                 r"$\delta$",
                 r"$\Delta \delta$",
                 r"$D_0 \; / \; \text{cm}^2 \; \text{s}^{-1}$",
                 r"$X_{\text{src}} \; / \; \text{g} \text{cm}^{-2}$",
                 r"$\phi \; / \; \text{GV}$",
             ]
-        labels.extend(
-            [
-                lbl
-                for lbl, is_fitted in zip(propagation_labels, self.config.is_fitted_propagation)
-                if is_fitted
-            ]
-        )
 
-        injection_labels = [f"q_\\text{{{el.name}}}" for el in CRAMS_ELEMENTS]
-        injection_labels.extend(
-            [
-                f"\\gamma_\\text{{{el}}}"
-                for el, _ in zip(CRAMS_ELEMENT_NAMES, self.injection.slopes[:-1])
-            ]
-        )
-        if len(self.injection.slopes) == len(CRAMS_ELEMENT_NAMES):
-            injection_labels.append(f"\\gamma_\\text{{{CRAMS_ELEMENT_NAMES[-1]}}}")
+        if latex:
+            all_inj_labels = [f"q_\\text{{{el.name}}}" for el in CRAMS_ELEMENTS]
+            all_inj_labels.extend(
+                [
+                    f"\\gamma_\\text{{{el}}}"
+                    for el, _ in zip(CRAMS_ELEMENT_NAMES, self.injection.slopes[:-1])
+                ]
+            )
+            if len(self.injection.slopes) == len(CRAMS_ELEMENT_NAMES):
+                all_inj_labels.append(f"\\gamma_\\text{{{CRAMS_ELEMENT_NAMES[-1]}}}")
+            else:
+                all_inj_labels.append("\\gamma_\\text{nuc}")
+            if self.injection.feature is not None:
+                all_inj_labels.extend(
+                    [
+                        r"\lg \mathcal{R}_{b, \text{src}} \; / \; \text{GV}",
+                        r"\Delta \gamma",
+                        r"\omega",
+                    ]
+                )
         else:
-            injection_labels.append("\\gamma_\\text{nuc}")
-        labels.extend(
-            [
-                lbl
-                for lbl, is_fitted in zip(injection_labels, self.config.is_fitted_injection)
-                if is_fitted
-            ]
-        )
+            all_inj_labels = [f"q_{el.name}" for el in CRAMS_ELEMENTS]
+            all_inj_labels.extend(
+                [f"gamma_{el}" for el, _ in zip(CRAMS_ELEMENT_NAMES, self.injection.slopes[:-1])]
+            )
+            if len(self.injection.slopes) == len(CRAMS_ELEMENT_NAMES):
+                all_inj_labels.append(f"gamma_{CRAMS_ELEMENT_NAMES[-1]}")
+            else:
+                all_inj_labels.append("gamma_nuc")
+            if self.injection.feature is not None:
+                all_inj_labels.extend(
+                    [
+                        r"lg R_b, src / GV",
+                        r"Delta gamma",
+                        r"omega",
+                    ]
+                )
 
-        prefix = self.population_prefix(latex)
-        labels = [prefix + label for label in labels]
+        labels = [
+            pl
+            for pl, is_fitted in zip(all_prop_labels, self.config.is_fitted_propagation)
+            if is_fitted
+        ] + [
+            il
+            for il, is_fitted in zip(all_inj_labels, self.config.is_fitted_injection)
+            if is_fitted
+        ]
+        labels = [self.population_prefix(latex) + label for label in labels]
         return labels
 
     def pack(self) -> np.ndarray:
@@ -469,13 +532,16 @@ class CramsModel(Packable[CramsModelConfig]):
         injection_bounds = [ABUNDANCE_BOUND] * len(self.injection.abundances) + [SLOPE_BOUND] * len(
             self.injection.slopes
         )
+        if self.injection.feature is not None:
+            injection_bounds.extend(SOURCE_BREAK_BOUNDS)
+
         return [
-            bound
-            for bound, is_fitted in zip(PROPAGATION_BOUNDS, self.config.is_fitted_propagation)
+            prop_bound
+            for prop_bound, is_fitted in zip(PROPAGATION_BOUNDS, self.config.is_fitted_propagation)
             if is_fitted
         ] + [
-            bound
-            for bound, is_fitted in zip(injection_bounds, self.config.is_fitted_injection)
+            inj_bound
+            for inj_bound, is_fitted in zip(injection_bounds, self.config.is_fitted_injection)
             if is_fitted
         ]
 
@@ -498,24 +564,17 @@ class CramsModel(Packable[CramsModelConfig]):
         injection_packed[config.is_fitted_injection] = theta[n_prop : (n_prop + n_inj)]
 
         return CramsModel(
-            injection=unpack_injection(injection_packed),
+            injection=layout_info.unpack_injection(injection_packed),
             propagation=unpack_propagation(propagation_packed),
             config=config,
         )
 
 
 if __name__ == "__main__":
-    ip = InjectionParams.default()
-    ip2 = unpack_injection(pack_injection(ip))
-    assert np.allclose(np.array(ip.abundances), ip2.abundances)
-    assert np.allclose(np.array(ip.slopes), ip2.slopes)
-
-    cm = CramsModel(
-        injection=InjectionParams.default(),
-        propagation=PropagationParams(),
-        config=CramsModelConfig.default(),
-    )
-    print(cm.description())
-    print(cm.pack())
-    cm.validate_packing()
-    print(cm.ml_bounds())
+    for include_10TeV_break in (False, True):
+        print("\n===\n")
+        cm = CramsModel.default(include_10TeV_break=include_10TeV_break)
+        print(cm.print_params())
+        print(cm.pack())
+        cm.validate_packing()
+        print(cm.ml_bounds())

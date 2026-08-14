@@ -29,25 +29,39 @@ class Packable[LayoutInfo](abc.ABC):
         """Bounds to be used during optimization. By default, no bounds are specified."""
         return None
 
-    def validate_packing(self) -> None:
+    def validate_packing(self, quiet: bool = False) -> None:
         packed = self.pack()
         assert len(packed) == self.ndim()
 
         for pad_at_the_end in (0, 1, 5):
             packed_ = packed.copy()
             packed_ = np.concatenate((packed_, np.zeros((pad_at_the_end,))))
-            assert self.unpack(packed_, layout_info=self.layout_info()) == self
+            unpacked = self.unpack(packed_, layout_info=self.layout_info())
+            if unpacked != self:
+                if not quiet:
+                    print("Packing validation failed")
+                    print("Source:")
+                    self.print_params()
+                    print("\nUnpacked:")
+                    unpacked.print_params()
+                raise RuntimeError("Packing validation failed")
 
         if bounds := self.ml_bounds():
             assert len(bounds) == self.ndim()
 
-        assert len(self.labels(latex=False)) == self.ndim()
+        for latex in (False, True):
+            assert len(self.labels(latex)) == self.ndim()
+
+    def format_param_lines(self) -> list[str]:
+        labels = self.labels(latex=False)
+        longest_label = max(len(lbl) for lbl in labels)
+        lines: list[str] = []
+        for i, (label, value) in enumerate(zip(labels, self.pack())):
+            lines.append(f"{i + 1: >3}. {label: >{longest_label + 1}} = {value:.2e}")
+        return lines
 
     def format_params(self) -> str:
-        lines: list[str] = []
-        for i, (label, value) in enumerate(zip(self.labels(False), self.pack())):
-            lines.append(f"{i + 1: >3}. {label: >32} = {value:.2e}")
-        return "\n".join(lines)
+        return "\n".join(self.format_param_lines())
 
     def print_params(self):
         print(self.format_params())
@@ -61,6 +75,8 @@ class Packable[LayoutInfo](abc.ABC):
                     f"Dumped on: {datetime.datetime.now()}",  # noqa: DTZ005
                     f"Layout info: {self.layout_info()}",
                     *(header or []),
+                    "Human readable:",
+                    *[ln for ln in self.format_param_lines()],
                 ]
             ),
         )

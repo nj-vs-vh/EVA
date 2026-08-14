@@ -292,7 +292,7 @@ class SpectralCutoff(Packable[SpectralCutoffConfig]):
 @dataclass
 class PopulationMetadata:
     name: str
-    linestyle: str | None
+    linestyle: str | None = None
 
     is_apriori_energy_dominant: bool | None = None
 

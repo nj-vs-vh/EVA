@@ -104,7 +104,7 @@ class FitConfig(pydantic.BaseModel):
             initial_guesses=np.array([guess.pack() for guess in guesses]),
         )
 
-    def generate_initial_guess(self, data: Data) -> Model:
+    def generate_initial_guess(self, data: Data, ensure_finite_logpost: bool = True) -> Model:
         n_try = 1000
         for _ in range(n_try):
             # initial guess are not supposed to sample a specific distribution,
@@ -115,7 +115,7 @@ class FitConfig(pydantic.BaseModel):
             b = self.initial_guesses[np.random.choice(n_sample), :]
             guess = a + np.random.random() * (b - a)
             m = Model.unpack(guess, layout_info=self.model)
-            if np.isfinite(logposterior(m, data, self.model)):
+            if not ensure_finite_logpost or np.isfinite(logposterior(m, data, self.model)):
                 return m
         raise ValueError(f"Failed to generate valid model in {n_try} tries")
 
@@ -153,6 +153,7 @@ def run_ml_analysis(
         # so, let us use logposterior instead
         return -logposterior(v, fit_data, model_config)
 
+    print(f"Running optimization with {config.optimizer}...")
     start = time.time()
     match config.optimizer:
         case "scipy":
@@ -352,16 +353,18 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
         fig.savefig(outdir / "data.png")
 
     if config.plots.validation_data_config is not None:
-        print("Loading validation data...")
+        print("\nLoading validation data...")
         validation_data = Data.load(config.plots.validation_data_config)
         if fig := validation_data.plot(scale=scale, describe=True):
             fig.savefig(outdir / "data-validation.png")
+        if validation_data.is_empty():
+            print("    (empty)")
     else:
         validation_data = Data.empty()
 
     print_delim()
-    print("Initial guess model (example):")
-    initial_guess = config.generate_initial_guess(fit_data)
+    print("Initial guess model:")
+    initial_guess = config.generate_initial_guess(fit_data, ensure_finite_logpost=False)
     initial_guess.plot_spectra(fit_data, scale=scale, validation_data=validation_data).savefig(
         outdir / "initial_guess.png"
     )

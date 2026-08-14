@@ -726,7 +726,10 @@ class Data:
             return None
 
         fig, axes = plt.subplots(nrows=n_subplots, figsize=(6, 4 * n_subplots))
-        axes = cast(Sequence[Axes], axes)
+        if n_subplots == 1:
+            axes = [axes]
+        else:
+            axes = cast(Sequence[Axes], axes)
 
         offset = 0
         if self.spectra:

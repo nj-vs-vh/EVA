@@ -10,6 +10,7 @@ from matplotlib.figure import Figure
 from cr_knee_fit.cr_model import (
     CosmicRaysModel,
     CosmicRaysModelConfig,
+    PopulationMetadata,
     SharedPowerLawSpectrum,
     SpectralBreak,
     SpectralBreakConfig,
@@ -612,8 +613,9 @@ if __name__ == "__main__":
                     ],
                     all_particle_lg_shift=np.random.random(),
                     free_Z=np.random.random(),
+                    population_meta=PopulationMetadata(name=f"Pop #{pop_idx + 1}"),
                 )
-                for _ in range(3)
+                for pop_idx in range(3)
             ],
             energy_shifts=ExperimentEnergyScaleShifts(
                 lg_shifts={
@@ -639,13 +641,12 @@ if __name__ == "__main__":
         ),
         Model(
             populations=[],
-            crams=CramsModel.default(),
+            crams=CramsModel.default(include_10TeV_break=False),
             energy_shifts=ExperimentEnergyScaleShifts(
                 lg_shifts={Experiment("a", filename_stem="aaa"): np.random.random()}
             ),
         ),
     ]:
         print()
-        print(m)
-        print(Model.unpack(m.pack(), m.layout_info()))
+        m.print_params()
         m.validate_packing()
