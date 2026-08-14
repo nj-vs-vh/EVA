@@ -214,7 +214,7 @@ class Model(Packable[ModelConfig]):
                 scale=scale,
                 axes=ax,
                 all_particle=plot_allpart,
-                elements=fit_data.elements() + validation_data.elements(),
+                elements=sorted(set(fit_data.elements() + validation_data.elements())),
             )
         for pop in self.populations:
             pop.plot(
@@ -641,7 +641,7 @@ if __name__ == "__main__":
         ),
         Model(
             populations=[],
-            crams=CramsModel.default(include_10TeV_break=False),
+            crams=CramsModel.default(up2PeV=False, source_feature="break"),
             energy_shifts=ExperimentEnergyScaleShifts(
                 lg_shifts={Experiment("a", filename_stem="aaa"): np.random.random()}
             ),

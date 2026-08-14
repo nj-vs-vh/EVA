@@ -19,7 +19,7 @@ from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 m = Model(
     populations=[],
     energy_shifts=ExperimentEnergyScaleShifts({}),
-    crams=CramsModel.default(),
+    crams=CramsModel.default(up2PeV=True, source_feature="none"),
 )
 
 fit_data_config = DataConfig(

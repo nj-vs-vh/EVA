@@ -636,7 +636,7 @@ class Data:
                         )
                 log_loaded(sc.experiment, log_label)
             except Exception as e:  # noqa: BLE001
-                log_loaded(sc.experiment, "all particle", e)
+                log_loaded(sc.experiment, log_label, e)
 
         lnA: list[GenericExperimentData] = []
         for exp in config.lnA:

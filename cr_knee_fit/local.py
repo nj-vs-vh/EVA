@@ -16,7 +16,7 @@ PHASE = 6
 def guess_analysis_name(filename: str) -> str:
     file_stem = Path(filename).stem
     res = f"phase-{PHASE}/{file_stem.removeprefix('run_')}"
-    print(f"Guessed run name: {res} (from {filename})")
+    print(f"Run name: {res} (from {filename})")
     return res
 
 

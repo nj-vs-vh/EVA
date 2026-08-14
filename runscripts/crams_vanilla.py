@@ -99,7 +99,7 @@ if __name__ == "__main__":
                 fit_data_config.experiments_spectra,
                 fixed=experiments.ams02,
             ),
-            crams=CramsModel.default(include_10TeV_break=False),
+            crams=CramsModel.default(up2PeV=False, source_feature="none"),
         )
 
     # m = generate_guess()

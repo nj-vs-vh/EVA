@@ -57,7 +57,7 @@ class Packable[LayoutInfo](abc.ABC):
         longest_label = max(len(lbl) for lbl in labels)
         lines: list[str] = []
         for i, (label, value) in enumerate(zip(labels, self.pack())):
-            lines.append(f"{i + 1: >3}. {label: >{longest_label + 1}} = {value:.2e}")
+            lines.append(f"{i + 1: >3}. {label: >{longest_label + 1}} = {value:.3g}")
         return lines
 
     def format_params(self) -> str:

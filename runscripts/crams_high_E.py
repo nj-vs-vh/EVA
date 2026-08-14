@@ -1,3 +1,5 @@
+from argparse import ArgumentParser
+
 import numpy as np
 
 from cr_knee_fit import experiments
@@ -15,8 +17,15 @@ from cr_knee_fit.local import LocalRunOptions, guess_analysis_name, run_local
 from cr_knee_fit.model import Model
 
 if __name__ == "__main__":
-    opts = LocalRunOptions.parse()
+    p = ArgumentParser()
+    p.add_argument("--feature", default="break")
+
+    opts = LocalRunOptions.parse(p)
     analysis_name = guess_analysis_name(__file__)
+
+    source_feature = opts.args_raw.feature
+    analysis_name += f"_feature_{source_feature}"
+    print(f"Running with feature={source_feature}, full analysis name: {analysis_name}")
 
     # this is the exact setup from CRAMS fit, with the same elements, ratios, and R bounds
 
@@ -61,9 +70,6 @@ if __name__ == "__main__":
             for element in elements_fitted
         ]
         + [
-            SpectrumDataConfig.allparticle(experiments.hawc),
-        ]
-        + [
             SpectrumDataConfig(experiments.dampe, element)
             for element in elements_constrained_through_ratios + elements_fitted
         ],
@@ -81,6 +87,14 @@ if __name__ == "__main__":
         spectra=[
             SpectrumDataConfig(experiments.ams02, element, (10, np.inf))
             for element in elements_constrained_through_ratios
+        ]
+        + [
+            SpectrumDataConfig.allparticle(experiments.hawc),
+        ]
+        + [SpectrumDataConfig(experiments.lhaaso_qgsjet, element) for element in Element.regular()]
+        + [
+            SpectrumDataConfig(experiments.kascade_re_qgsjet, element)
+            for element in Element.regular()
         ],
     ).excluding(fit_data_config)
 
@@ -91,7 +105,7 @@ if __name__ == "__main__":
                 fit_data_config.experiments_spectra,
                 fixed=experiments.ams02,
             ),
-            crams=CramsModel.default(include_10TeV_break=True),
+            crams=CramsModel.default(up2PeV=True, source_feature=source_feature),
         )
 
     config = FitConfig.from_guessing_func(
