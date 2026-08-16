@@ -90,6 +90,7 @@ if __name__ == "__main__":
         ]
         + [
             SpectrumDataConfig.allparticle(experiments.hawc),
+            SpectrumDataConfig.allparticle(experiments.lhaaso_qgsjet),
         ]
         + [SpectrumDataConfig(experiments.lhaaso_qgsjet, element) for element in Element.regular()]
         + [
