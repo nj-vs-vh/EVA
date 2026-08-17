@@ -14,7 +14,7 @@ from cr_knee_fit.cr_model import (
 )
 from cr_knee_fit.crams_model import CramsModel
 from cr_knee_fit.elements import Element
-from cr_knee_fit.fit_data import DataConfig, FluxRatio, SpectrumDataConfig
+from cr_knee_fit.fit_data import DataConfig, SpectrumDataConfig
 from cr_knee_fit.guesses import (
     initial_guess_cutoff,
     initial_guess_energy_shifts,
@@ -27,17 +27,14 @@ if __name__ == "__main__":
     opts = LocalRunOptions.parse()
     analysis_name = guess_analysis_name(__file__)
 
-    ratios_of_interest = [
-        FluxRatio(Element.B, Element.C),
-        FluxRatio(Element.B, Element.O),
-        FluxRatio(Element.C, Element.O),
-        FluxRatio(Element.H, Element.He),
-        FluxRatio(Element.He, Element.O),
+    ratios = [
+        Element.B / Element.C,
+        Element.B / Element.O,
+        Element.C / Element.O,
+        Element.H / Element.He,
+        Element.He / Element.O,
     ]
-    elements_fitted = [
-        Element.H,
-        Element.He,
-    ]
+    elements = [Element.H, Element.He]
 
     fit_data_config = DataConfig(
         spectra=[
@@ -54,13 +51,10 @@ if __name__ == "__main__":
                     np.inf,
                 ),
             )
-            for element in elements_fitted
+            for element in elements
         ]
-        + [SpectrumDataConfig(experiments.dampe, element) for element in elements_fitted]
-        + [
-            SpectrumDataConfig(experiments.lhaaso_qgsjet, Element.H),
-            SpectrumDataConfig(experiments.lhaaso_qgsjet, Element.He),
-        ],
+        + [SpectrumDataConfig(experiments.dampe, element) for element in elements]
+        + [SpectrumDataConfig(experiments.lhaaso_qgsjet, element) for element in elements]
     )
 
     validation_data_config = DataConfig(
@@ -68,7 +62,7 @@ if __name__ == "__main__":
             SpectrumDataConfig.allparticle(experiments.hawc),
             SpectrumDataConfig.allparticle(experiments.lhaaso_qgsjet),
         ]
-        + [SpectrumDataConfig(experiments.calet, element) for element in elements_fitted]
+        + [SpectrumDataConfig(experiments.calet, element) for element in elements]
         + [
             SpectrumDataConfig(experiments.kascade_re_qgsjet, element)
             for element in Element.regular()
