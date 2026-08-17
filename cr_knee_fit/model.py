@@ -655,15 +655,16 @@ class Model(Packable[ModelConfig]):
             )
 
         for pop in self.populations:
-            if element is not None and pop.has_element(element):
-                components.append(
-                    pop.compute_spectrum(
-                        Q,
-                        element,
-                        quantity=quantity,
-                        contrib_to_all_particle=False,
+            if element is not None:
+                if pop.has_element(element):
+                    components.append(
+                        pop.compute_spectrum(
+                            Q,
+                            element,
+                            quantity=quantity,
+                            contrib_to_all_particle=False,
+                        )
                     )
-                )
             else:
                 components.append(pop.compute_all_particle_spectrum(Q))
 

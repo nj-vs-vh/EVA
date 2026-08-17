@@ -562,6 +562,8 @@ class CramsModel(Packable[CramsModelConfig]):
                 return label_prefix + (name if preserve_capitalization else name.lower())
 
         for element in elements or CRAMS_ELEMENTS:
+            if element not in CRAMS_ELEMENTS:
+                continue
             ax.plot(
                 E_grid,
                 E_factor * self.compute_spectrum(E_grid, element, quantity="E"),

@@ -600,6 +600,9 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
                 return label_prefix + (name if preserve_capitalization else name.lower())
 
         for element in elements or self.resolved_elements:
+            if element not in self.resolved_elements:
+                continue
+
             ax.plot(
                 E_grid,
                 E_factor * self.compute_spectrum(E_grid, element, quantity="E"),

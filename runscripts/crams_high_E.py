@@ -28,11 +28,11 @@ if __name__ == "__main__":
     print(f"Running with feature={source_feature}, full analysis name: {analysis_name}")
 
     ratios = [
-        FluxRatio(Element.B, Element.C),
-        FluxRatio(Element.B, Element.O),
-        FluxRatio(Element.C, Element.O),
-        FluxRatio(Element.H, Element.He),
-        FluxRatio(Element.He, Element.O),
+        Element.B / Element.C,
+        Element.B / Element.O,
+        Element.C / Element.O,
+        Element.H / Element.He,
+        Element.He / Element.O,
     ]
     elements = [
         Element.Fe,

@@ -78,6 +78,7 @@ def add_elements_lnA_secondary_axis(ax: Axes) -> Axes:
         labels=[e.name for e in tick_elements],
         minor=False,
     )
+    ax_element_ticks.set_ylim(lnA_min, lnA_max)
     ax_element_ticks.grid(
         visible=True, which="major", axis="y", color="gray", linestyle="--", linewidth=0.75
     )
