@@ -12,7 +12,7 @@ from cr_knee_fit.cr_model import (
     PopulationMetadata,
     SharedPowerLawSpectrum,
     SpectralBreakConfig,
-    SpectralCutoffConfig,
+    ExpCutoffConfig,
 )
 from cr_knee_fit.elements import Element
 from cr_knee_fit.fit_data import DataConfig
@@ -127,7 +127,7 @@ if __name__ == "__main__":
                 )
             ],
             # cutoff_lower=initial_guess_cutoff(SpectralCutoffConfig(lg_cut_hint=5.0)),
-            cutoff_lower=initial_guess_cutoff(SpectralCutoffConfig(lg_cut_hint=0.7)),
+            cutoff_lower=initial_guess_cutoff(ExpCutoffConfig(lg_cut_hint=0.7)),
             population_meta=PopulationMetadata(
                 name="HE", linestyle="--", is_apriori_energy_dominant=False
             ),

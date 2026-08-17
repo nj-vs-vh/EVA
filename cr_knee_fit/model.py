@@ -27,6 +27,7 @@ from cr_knee_fit.fit_data import (
     FluxRatioData,
     GenericExperimentData,
     SpectrumDataSpec,
+    spectrum_data_spec_label,
 )
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 from cr_knee_fit.types_ import Packable
@@ -207,47 +208,15 @@ class Model(Packable[ModelConfig]):
         ax.set_yscale("log")
         ylim = ax.get_ylim()  # respecting ylim set by data
 
-        if self.crams is not None:
-            self.crams.plot(
-                Emin=E_min,
-                Emax=E_max,
-                scale=scale,
-                axes=ax,
-                all_particle=plot_allpart,
-                elements=sorted(set(fit_data.elements() + validation_data.elements())),
-            )
-        for pop in self.populations:
-            pop.plot(
-                Emin=E_min,
-                Emax=E_max,
-                scale=scale,
-                axes=ax,
-                all_particle=plot_allpart and len(pop.all_elements) > 1,
-            )
-        if len(self.populations) > 1:
-            multipop_elements = [
-                element
-                for element in Element.regular()
-                if len([pop for pop in self.populations if element in pop.all_elements]) > 1
-            ]
-            E_grid = np.geomspace(E_min, E_max, 300)
-            E_factor = E_grid**scale
-            for element in multipop_elements:
-                ax.plot(
-                    E_grid,
-                    E_factor * self.compute_spectrum(E_grid, element=element, quantity="E"),
-                    label="Total " + element.name,
-                    color=element.color,
-                    linewidth=2,
-                )
-            if plot_allpart:
-                ax.plot(
-                    E_grid,
-                    E_factor * self.compute_spectrum(E_grid, element=None, quantity="E"),
-                    label="Total all particle",
-                    color="black",
-                    linewidth=2,
-                )
+        self._plot_predictions(
+            ax,
+            E_min,
+            E_max,
+            scale,
+            elements=sorted(set(fit_data.elements() + validation_data.elements())),
+            allparticle=plot_allpart,
+            caption_elements=True,
+        )
 
         legend_with_added_items(
             ax,
@@ -325,12 +294,15 @@ class Model(Packable[ModelConfig]):
         fit_data: Data,
         validation_data: Data,
         only_quantity: CharacteristicQuantity,
+        only_ratio: FluxRatio | None = None,
     ) -> bool:
         all_Q: list[float] = []
         ratios_to_plot: set[FluxRatio] = set()
         for data, is_fitted in ((fit_data, True), (validation_data, False)):
             for fr in data.flux_ratios:
                 if fr.quantity != only_quantity:
+                    continue
+                if only_ratio is not None and fr.ratio != only_ratio:
                     continue
                 fr.plot(
                     ax=ax,
@@ -343,8 +315,7 @@ class Model(Packable[ModelConfig]):
         if not all_Q:
             return False
 
-        Q_min = np.min(all_Q)
-        Q_max = np.max(all_Q)
+        Q_min, Q_max = add_log_margin(np.min(all_Q), np.max(all_Q))
         Q = np.geomspace(Q_min, Q_max, 100)
         for ratio in ratios_to_plot:
             ax.plot(
@@ -357,6 +328,7 @@ class Model(Packable[ModelConfig]):
         ax.set_yscale("log")
         ax.set_xlabel(quantity_label(only_quantity))
         ax.set_ylabel("Flux ratio")
+        ax.set_xlim(Q_min, Q_max)
         ax.legend()
         return True
 
@@ -418,7 +390,7 @@ class Model(Packable[ModelConfig]):
             res += f" (uncorrelated $\\chi^2 = {chi2s[1]:.2g}$)"
         return res
 
-    def plot_individual_observables(
+    def plot_all_datasets(
         self,
         fit_data: Data,
         spectra_scale: float,
@@ -439,6 +411,8 @@ class Model(Packable[ModelConfig]):
                 prediction = self.compute_spectrum(E, element=spectrum.spec, quantity="E")
                 ax.plot(E, E**spectra_scale * prediction, color="k", linewidth=2)
                 ax.set_title(self._chi2_label(spectrum))
+                ax.set_xlim(Emin, Emax)
+                ax.figure.tight_layout()  # type: ignore
                 res[(spectrum.experiment, spectrum.element_label())] = ax.figure  # type: ignore
 
             for lnA in data_.lnA:
@@ -451,6 +425,8 @@ class Model(Packable[ModelConfig]):
                 prediction = self.compute_lnA(E)
                 ax.plot(E, prediction, color="k", linewidth=2)
                 ax.set_title(self._chi2_label(lnA))
+                ax.set_xlim(Emin, Emax)
+                ax.figure.tight_layout()  # type: ignore
                 res[(lnA.experiment, "lnA")] = ax.figure  # type: ignore
 
             for flux_ratio in data_.flux_ratios:
@@ -458,21 +434,199 @@ class Model(Packable[ModelConfig]):
                 ax = flux_ratio.plot(is_fitted=is_fitted)
                 ax.set_xscale("log")
                 ax.legend()
-                Rmin, Rmax = add_log_margin(flux_ratio.Q[0], flux_ratio.Q[-1])
-                R = np.geomspace(Rmin, Rmax, 100)
+                Qmin, Qmax = add_log_margin(flux_ratio.Q[0], flux_ratio.Q[-1])
+                Q = np.geomspace(Qmin, Qmax, 100)
                 prediction = self.compute_flux_ratio(
-                    R,
+                    Q,
                     fr=flux_ratio.ratio,
                     quantity=flux_ratio.quantity,
                 )
-                ax.plot(R, prediction, color="k", linewidth=2)
+                ax.plot(Q, prediction, color="k", linewidth=2)
                 ax.set_title(self._chi2_label(flux_ratio))
+                ax.set_xlim(Qmin, Qmax)
+                ax.figure.tight_layout()  # type: ignore
                 res[
                     (
                         flux_ratio.d.experiment,
                         f"ratio_{flux_ratio.ratio.num.name}_over_{flux_ratio.ratio.denom.name}",
                     )
                 ] = ax.figure  # type: ignore
+
+        return res
+
+    def _plot_predictions(
+        self,
+        ax: Axes,
+        E_min: float,
+        E_max: float,
+        scale: float,
+        elements: list[Element],
+        allparticle: bool,
+        caption_elements: bool,
+    ):
+        if self.crams is not None:
+            self.crams.plot(
+                Emin=E_min,
+                Emax=E_max,
+                scale=scale,
+                axes=ax,
+                all_particle=allparticle,
+                elements=elements,
+                caption_elements=caption_elements,
+            )
+        for pop in self.populations:
+            pop.plot(
+                Emin=E_min,
+                Emax=E_max,
+                scale=scale,
+                axes=ax,
+                all_particle=allparticle and len(pop.all_elements) > 1,
+                elements=elements,
+                caption_elements=caption_elements,
+            )
+        if int(self.crams is not None) + len(self.populations) > 1:
+            per_pop_elements = [
+                element
+                for element in elements
+                if (
+                    len([pop for pop in self.populations if element in pop.all_elements])
+                    > (1 if self.crams is None else 0)
+                )
+            ]
+            E_grid = np.geomspace(E_min, E_max, 300)
+            E_factor = E_grid**scale
+            for plot_element in per_pop_elements:
+                ax.plot(
+                    E_grid,
+                    E_factor * self.compute_spectrum(E_grid, element=plot_element, quantity="E"),
+                    label="Total " + plot_element.name,
+                    color=plot_element.color,
+                    linewidth=2,
+                )
+            if allparticle:
+                ax.plot(
+                    E_grid,
+                    E_factor * self.compute_spectrum(E_grid, element=None, quantity="E"),
+                    label="Total all particle",
+                    color="black",
+                    linewidth=2,
+                )
+
+    def _plot_spectrum(
+        self,
+        spec: SpectrumDataSpec,
+        fit_data: Data,
+        scale: float,
+        validation_data: Data = EMPTY_DATA,
+        axes: Axes | None = None,
+    ) -> Figure:
+        if axes is None:
+            fig, ax = plt.subplots(figsize=(10, 8))
+        else:
+            ax = axes
+            fig = cast(Figure, ax.figure)
+
+        legend_items_by_exp: dict[Experiment, LegendItem] = {}
+        all_energies: list[float] = []
+        for data_, is_fitted in ((fit_data, True), (validation_data, False)):
+            for sd in data_.spectra:
+                if sd.spec != spec:
+                    continue
+                exp = sd.experiment
+                f_exp = self.energy_shifts.f(exp)
+                sd = sd.with_shifted_energy_scale(f=f_exp)
+                sd.plot(scale=scale, ax=ax, add_legend_label=False, is_fitted=is_fitted)
+                all_energies.extend(sd.E)
+                legend_items_by_exp.setdefault(
+                    exp,
+                    (
+                        exp.legend_artist(is_fitted=is_fitted),
+                        exp.name + energy_shift_suffix(f_exp),
+                    ),
+                )
+
+        E_min, E_max = add_log_margin(np.min(all_energies), np.max(all_energies))
+
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ylim = ax.get_ylim()  # respecting ylim set by data
+
+        match spec:
+            case Element():
+                plot_elements = [spec]
+            case tuple():
+                plot_elements = list(spec)
+            case None:
+                plot_elements = Element.regular()
+        plot_allpart = spec is None
+
+        self._plot_predictions(
+            ax,
+            E_min,
+            E_max,
+            scale,
+            elements=plot_elements,
+            allparticle=plot_allpart,
+            caption_elements=spec is not None,
+        )
+
+        legend_with_added_items(
+            ax,
+            list(legend_items_by_exp.values()),
+            fontsize="small",
+            bbox_to_anchor=(0.00, 1.05, 1.0, 0.0),
+            loc="lower left",
+            fancybox=True,
+            shadow=True,
+            ncol=4,
+        )
+        ax.set_ylim(*ylim)
+        ax.set_xlim(E_min, E_max)
+
+        fig.tight_layout()
+        # fig.canvas.draw()
+        # legend_bbox = legend.get_window_extent()
+        # legend_bbox_fig = legend_bbox.transformed(fig.transFigure.inverted())
+        # legend_height = legend_bbox_fig.height
+        # box = ax.get_position()
+        # padding = 0.05
+        # ax.set_position((box.x0, box.y0, box.width, box.height - legend_height - padding))
+        # fig.canvas.draw()
+
+        return fig
+
+    def plot_all_observables(
+        self,
+        fit_data: Data,
+        spectra_scale: float,
+        validation_data: Data = EMPTY_DATA,
+    ) -> dict[str, Figure]:
+        res: dict[str, Figure] = {}
+
+        spectrum_specs = {s.spec for s in fit_data.spectra + validation_data.spectra}
+        for spec in spectrum_specs:
+            fig, ax = plt.subplots()
+            self._plot_spectrum(
+                spec=spec,
+                fit_data=fit_data,
+                scale=spectra_scale,
+                validation_data=validation_data,
+                axes=ax,
+            )
+            res[spectrum_data_spec_label(spec)] = fig
+
+        flux_ratios = {frd.ratio for frd in fit_data.flux_ratios + validation_data.flux_ratios}
+        for fr in flux_ratios:
+            for quantity in ("R", "E_n"):
+                fig, ax = plt.subplots()
+                if self._plot_flux_ratios_per_quantity(
+                    ax=ax,
+                    fit_data=fit_data,
+                    validation_data=validation_data,
+                    only_quantity=quantity,
+                    only_ratio=fr,
+                ):
+                    res[f"ratio_{fr.num.name}_over_{fr.denom.name}_vs_{quantity}"] = fig
 
         return res
 
@@ -641,7 +795,7 @@ if __name__ == "__main__":
         ),
         Model(
             populations=[],
-            crams=CramsModel.default(up2PeV=False, source_feature="break"),
+            crams=CramsModel.make(up2PeV=False, source_feature="break"),
             energy_shifts=ExperimentEnergyScaleShifts(
                 lg_shifts={Experiment("a", filename_stem="aaa"): np.random.random()}
             ),

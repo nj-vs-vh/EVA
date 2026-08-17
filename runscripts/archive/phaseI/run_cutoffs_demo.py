@@ -11,7 +11,7 @@ from cr_knee_fit.cr_model import (
     CosmicRaysModelConfig,
     PopulationMetadata,
     SpectralComponentConfig,
-    SpectralCutoffConfig,
+    ExpCutoffConfig,
 )
 from cr_knee_fit.elements import Element
 from cr_knee_fit.fit_data import Data, DataConfig
@@ -55,7 +55,7 @@ if __name__ == "__main__":
                         ],
                         breaks=[],
                         rescale_all_particle=False,
-                        cutoff=SpectralCutoffConfig(
+                        cutoff=ExpCutoffConfig(
                             lg_cut_prior_limits=(3, 5),
                             lg_cut_hint=4.0,
                         ),
@@ -69,11 +69,11 @@ if __name__ == "__main__":
                         ],
                         breaks=[],
                         rescale_all_particle=False,
-                        cutoff=SpectralCutoffConfig(
+                        cutoff=ExpCutoffConfig(
                             lg_cut_prior_limits=(5, 7),
                             lg_cut_hint=6.0,
                         ),
-                        cutoff_lower=SpectralCutoffConfig(
+                        cutoff_lower=ExpCutoffConfig(
                             lg_cut_prior_limits=(3, 6),
                             lg_cut_hint=4.0,
                         ),

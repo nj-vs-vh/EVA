@@ -87,6 +87,13 @@ class Element(enum.IntEnum):
             # return _ELEMENT_CMAP(idx / (len(Element.regular()) - 1))
             return _FALLBACK_CMAP(self.lnA / self.Fe.lnA)  # type: ignore
 
+    def __truediv__(self, other: Any):
+        if not isinstance(other, Element):
+            return NotImplemented
+        from cr_knee_fit.fit_data import FluxRatio
+
+        return FluxRatio(self, other)
+
 
 element_name_to_Z_A = {
     Element.H: 1.000019399047775,

@@ -4,11 +4,13 @@ from scipy import stats  # type: ignore
 from cr_knee_fit.cr_model import (
     CosmicRaysModel,
     CosmicRaysModelConfig,
+    ExpCutoff,
+    ExpCutoffConfig,
+    LognormalSourceMaxAcceleration,
+    LognormalSourceMaxAccelerationConfig,
     SharedPowerLawSpectrum,
     SpectralBreak,
     SpectralBreakConfig,
-    SpectralCutoff,
-    SpectralCutoffConfig,
 )
 from cr_knee_fit.elements import Element
 from cr_knee_fit.experiments import Experiment
@@ -38,17 +40,30 @@ def initial_guess_break(bc: SpectralBreakConfig, abs_d_alpha_guess: float = 0.5)
     )
 
 
-def initial_guess_cutoff(c: SpectralCutoffConfig) -> SpectralCutoff:
+def initial_guess_cutoff(
+    c: ExpCutoffConfig | LognormalSourceMaxAccelerationConfig,
+) -> ExpCutoff | LognormalSourceMaxAcceleration:
     lg_min, lg_max = c.lg_cut_prior_limits
     lg_mean = c.lg_cut_initial_guess()
     lg_width = min(0.1, lg_max - lg_mean, lg_mean - lg_min)
     if not np.isfinite(lg_width):
         lg_width = 3.0
-    return SpectralCutoff(
-        lg_cut=stats.uniform.rvs(loc=lg_mean - lg_width / 2, scale=lg_width),
-        lg_sharpness=c.fixed_lg_sharpness or stats.norm.rvs(loc=np.log10(2), scale=0.05),
-        config=c,
-    )
+    lg_cut = stats.uniform.rvs(loc=lg_mean - lg_width / 2, scale=lg_width)
+
+    match c:
+        case ExpCutoffConfig():
+            return ExpCutoff(
+                lg_cut=lg_cut,
+                lg_sharpness=c.fixed_lg_sharpness or stats.norm.rvs(loc=np.log10(2), scale=0.05),
+                config=c,
+            )
+        case LognormalSourceMaxAccelerationConfig():
+            return LognormalSourceMaxAcceleration(
+                lg_cut=lg_cut,
+                sigma=stats.uniform.rvs(0.2, 0.3),
+                beta=c.fixed_beta or stats.norm.rvs(loc=0.0, scale=1),
+                config=c,
+            )
 
 
 def initial_guess_pl_index(center: float = 2.6) -> float:
@@ -90,7 +105,7 @@ def initial_guess_main_population(
         ],
         breaks=[initial_guess_break(bc) for bc in pop_config.breaks],
         cutoff=initial_guess_cutoff(pop_config.cutoff) if pop_config.cutoff is not None else None,
-        cutoff_lower=(
+        cutoff_lower=(  # type: ignore
             initial_guess_cutoff(pop_config.cutoff_lower)
             if pop_config.cutoff_lower is not None
             else None

@@ -219,24 +219,25 @@ class CramsModelConfig(pydantic.BaseModel):
         return np.isnan(self.frozen_injection_packed)
 
     @staticmethod
-    def default(
+    def make(
         up2PeV: bool,
         source_feature: SourceFeatureSpec,
         fit_abundances: Collection[Element] = (
             [Element.H, Element.He, Element.C, Element.N, Element.O]
             + [Element.Ne, Element.Mg, Element.Si, Element.S, Element.Fe]
         ),
+        freeze_low_energy_params: bool = False,
     ) -> "CramsModelConfig":
         if up2PeV:
             T_sim_grid = LogGrid(
                 min=0.1,  # 0.1 GeV
-                max=5e6,  # 3 PeV
-                size=200,  # enough for numerical errors <0.1%
+                max=5e7,  # 3 PeV
+                size=300,  # enough for numerical errors <0.1%
             )
             R_out_grid = LogGrid(
                 min=5,  # GV
-                max=1e6,  # PV
-                size=150,
+                max=1e7,  # PV
+                size=200,
             )
         else:
             T_sim_grid = CRAMS_DEFAULT_T_SIM_GRID
@@ -252,17 +253,35 @@ class CramsModelConfig(pydantic.BaseModel):
             case "none":
                 feature = None
 
-        return CramsModelConfig(
-            crams=CramsRunner(T_sim_grid=T_sim_grid, R_out_grid=R_out_grid),
-            frozen_injection=InjectionParams(
-                abundances=[
-                    (np.nan if element in fit_abundances else DEFAULT_ABUNDANCES[element])
-                    for element in CRAMS_ELEMENTS
-                ],
-                slopes=[np.nan] * 3,
-                feature=(feature),
-            ),
-            frozen_propagation=PropagationParams(
+        if freeze_low_energy_params:
+            # best-fit params from CRAMS-only fit
+            frozen_abundances = {
+                Element.H: 0.0465,
+                Element.He: 0.0223,
+                Element.C: 0.00465,
+                Element.N: 0.000452,
+                Element.O: 0.00843,
+                Element.Ne: 0.00161,
+                Element.Mg: 0.00284,
+                Element.Si: 0.00333,
+                Element.S: 0.00061,
+                Element.Fe: 0.00906,
+            }
+            slopes = [4.41, 4.33, 4.39]
+            frozen_propagation = PropagationParams(
+                H_kpc=7.0,
+                v_A_km_sec=0.000101,
+                R_b_GV=10**2.58,
+                delta=0.469,
+                ddelta=0.319,
+                D_0_cm2_sec=3.55e28,
+                X_src=-1.0,
+                phi=0.631,
+            )
+        else:
+            frozen_abundances = {}
+            slopes = [np.nan] * 3
+            frozen_propagation = PropagationParams(
                 H_kpc=7.0,
                 v_A_km_sec=np.nan,
                 R_b_GV=np.nan,
@@ -271,7 +290,23 @@ class CramsModelConfig(pydantic.BaseModel):
                 D_0_cm2_sec=np.nan,
                 X_src=-1.0,
                 phi=np.nan,
+            )
+
+        return CramsModelConfig(
+            crams=CramsRunner(T_sim_grid=T_sim_grid, R_out_grid=R_out_grid),
+            frozen_injection=InjectionParams(
+                abundances=[
+                    (
+                        frozen_abundances.get(element, np.nan)
+                        if element in fit_abundances
+                        else DEFAULT_ABUNDANCES[element]
+                    )
+                    for element in CRAMS_ELEMENTS
+                ],
+                slopes=slopes,
+                feature=(feature),
             ),
+            frozen_propagation=frozen_propagation,
             population_meta=PopulationMetadata(name="CRAMS", linestyle="-"),
         )
 
@@ -304,7 +339,9 @@ class CramsModel(Packable[CramsModelConfig]):
         assert type(self.injection.feature) == type(self.config.frozen_injection.feature)
 
     @staticmethod
-    def default(up2PeV: bool, source_feature: SourceFeatureSpec) -> "CramsModel":
+    def make(
+        up2PeV: bool, source_feature: SourceFeatureSpec, freeze_low_energy_params: bool = False
+    ) -> "CramsModel":
         init_fitted_abundances = {
             Element.H: 4.14e-2,
             Element.He: 2.04e-2,
@@ -317,6 +354,7 @@ class CramsModel(Packable[CramsModelConfig]):
             Element.S: 5.06e-4,
             Element.Fe: 7.53e-3,
         }
+        init_fitted_slopes = [4.37, 4.30, 4.36]
 
         match source_feature:
             case "break":
@@ -328,29 +366,47 @@ class CramsModel(Packable[CramsModelConfig]):
             case "none":
                 feature = None
 
+        config = CramsModelConfig.make(
+            up2PeV=up2PeV,
+            fit_abundances=list(init_fitted_abundances.keys()),
+            source_feature=source_feature,
+            freeze_low_energy_params=freeze_low_energy_params,
+        )
+
+        def _if_not_frozen(v: float, default: float) -> float:
+            if np.isnan(default):
+                return v
+            else:
+                return default
+
         return CramsModel(
             propagation=PropagationParams(
-                H_kpc=7.0,
-                D_0_cm2_sec=2.376e28,
-                v_A_km_sec=3.32,
-                R_b_GV=316.9,
-                delta=0.54,
-                ddelta=0.27,
-                phi=0.47,
+                H_kpc=_if_not_frozen(7.0, config.frozen_propagation.H_kpc),
+                D_0_cm2_sec=_if_not_frozen(2.376e28, config.frozen_propagation.D_0_cm2_sec),
+                v_A_km_sec=_if_not_frozen(3.32, config.frozen_propagation.v_A_km_sec),
+                R_b_GV=_if_not_frozen(316.9, config.frozen_propagation.R_b_GV),
+                delta=_if_not_frozen(0.54, config.frozen_propagation.delta),
+                ddelta=_if_not_frozen(0.27, config.frozen_propagation.ddelta),
+                phi=_if_not_frozen(0.47, config.frozen_propagation.phi),
+                X_src=_if_not_frozen(-1.0, config.frozen_propagation.X_src),
             ),
             injection=InjectionParams(
                 abundances=[
-                    init_fitted_abundances.get(element, DEFAULT_ABUNDANCES[element])
-                    for element in CRAMS_ELEMENTS
+                    _if_not_frozen(
+                        init_fitted_abundances.get(element, DEFAULT_ABUNDANCES[element]),
+                        frozen_abundance,
+                    )
+                    for element, frozen_abundance in zip(
+                        CRAMS_ELEMENTS, config.frozen_injection.abundances, strict=True
+                    )
                 ],
-                slopes=[4.37, 4.30, 4.36],
+                slopes=[
+                    _if_not_frozen(sl, frozen)
+                    for sl, frozen in zip(init_fitted_slopes, config.frozen_injection.slopes)
+                ],
                 feature=feature,
             ),
-            config=CramsModelConfig.default(
-                up2PeV=up2PeV,
-                fit_abundances=list(init_fitted_abundances.keys()),
-                source_feature=source_feature,
-            ),
+            config=config,
         )
 
     def __eq__(self, other: object) -> bool:
@@ -382,19 +438,22 @@ class CramsModel(Packable[CramsModelConfig]):
                     and np.isclose(d1.beta, d2.beta)
                 )
 
-        return bool(
-            np.isclose(self.propagation.H_kpc, other.propagation.H_kpc)
-            and np.isclose(self.propagation.v_A_km_sec, other.propagation.v_A_km_sec)
-            and np.isclose(self.propagation.R_b_GV, other.propagation.R_b_GV)
-            and np.isclose(self.propagation.delta, other.propagation.delta)
-            and np.isclose(self.propagation.ddelta, other.propagation.ddelta)
-            and np.isclose(self.propagation.D_0_cm2_sec, other.propagation.D_0_cm2_sec)
-            and np.isclose(self.propagation.X_src, other.propagation.X_src)
-            and np.isclose(self.propagation.phi, other.propagation.phi)
-            and np.allclose(self.injection.abundances, other.injection.abundances)
-            and np.allclose(self.injection.slopes, other.injection.slopes)
-            and is_feature_same
-        )
+        flags = [
+            np.isclose(self.propagation.H_kpc, other.propagation.H_kpc),
+            np.isclose(self.propagation.v_A_km_sec, other.propagation.v_A_km_sec),
+            np.isclose(self.propagation.R_b_GV, other.propagation.R_b_GV),
+            np.isclose(self.propagation.delta, other.propagation.delta),
+            np.isclose(self.propagation.ddelta, other.propagation.ddelta),
+            np.isclose(self.propagation.D_0_cm2_sec, other.propagation.D_0_cm2_sec),
+            np.isclose(self.propagation.X_src, other.propagation.X_src),
+            np.isclose(self.propagation.phi, other.propagation.phi),
+            np.allclose(self.injection.abundances, other.injection.abundances),
+            np.allclose(self.injection.slopes, other.injection.slopes),
+            is_feature_same,
+        ]
+        # print(flags)
+
+        return bool(np.all(flags))  # type: ignore
 
     @property
     def crams(self) -> CramsRunner:
@@ -409,10 +468,13 @@ class CramsModel(Packable[CramsModelConfig]):
         return self._crams_lg_output[:, 0]
 
     def crams_lg_spectrum(self, element: Element) -> np.ndarray:
-        return self._crams_lg_output[:, round(element.Z)]
+        Z = round(element.Z)
+        return self._crams_lg_output[:, Z]
 
     def _lg_spectrum_spline(self, element: Element) -> scipy.interpolate.BSpline | None:
         # TODO: add instance-level caching
+        if element.Z > 28:
+            return None
         lg_flux = self.crams_lg_spectrum(element)
         mask = np.isfinite(lg_flux)
         if np.count_nonzero(mask) < 3:
@@ -434,8 +496,9 @@ class CramsModel(Packable[CramsModelConfig]):
                     right=np.nan,
                 )
             case "scipy_linear" | "scipy_cubic":
+                lgR = np.log10(R)
                 if spline := self._lg_spectrum_spline(element):
-                    lg_res = spline(np.log10(R))
+                    lg_res = spline(lgR)
                 else:
                     return np.zeros_like(R)
         return 10**lg_res
@@ -481,6 +544,7 @@ class CramsModel(Packable[CramsModelConfig]):
         all_particle: bool = False,
         elements: list[Element] | None = None,
         grid_size: int = 100,
+        caption_elements: bool = True,
     ) -> Axes:
         if axes is not None:
             ax = axes
@@ -501,7 +565,11 @@ class CramsModel(Packable[CramsModelConfig]):
             ax.plot(
                 E_grid,
                 E_factor * self.compute_spectrum(E_grid, element, quantity="E"),
-                label=with_prefix(element.name, preserve_capitalization=True),
+                label=(
+                    with_prefix(element.name, preserve_capitalization=True)
+                    if caption_elements
+                    else None
+                ),
                 color=element.color,
                 linestyle=self.linestyle,
             )
@@ -589,8 +657,8 @@ class CramsModel(Packable[CramsModelConfig]):
                 case LognormalRmaxDistribution():
                     all_inj_labels.extend(
                         [
-                            r"< lg R_max >",
-                            r"sigma( lg R_max)",
+                            r"<lg R_max>",
+                            r"sigma(lg R_max)",
                             r"beta",
                         ]
                     )
@@ -660,9 +728,14 @@ class CramsModel(Packable[CramsModelConfig]):
 if __name__ == "__main__":
     for up2PeV in (False, True):
         for source_feature in ("break", "none", "erfc-cutoff"):
-            print("\n===\n")
-            cm = CramsModel.default(up2PeV=up2PeV, source_feature=source_feature)
-            print(cm.print_params())
-            print(cm.pack())
-            cm.validate_packing()
-            print(cm.ml_bounds())
+            for freeze_low_energy in (False, True):
+                print("\n===\n")
+                cm = CramsModel.make(
+                    up2PeV=up2PeV,
+                    source_feature=source_feature,
+                    freeze_low_energy_params=freeze_low_energy,
+                )
+                cm.print_params()
+                print(cm.pack())
+                cm.validate_packing()
+                print(cm.ml_bounds())

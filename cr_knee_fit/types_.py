@@ -54,6 +54,8 @@ class Packable[LayoutInfo](abc.ABC):
 
     def format_param_lines(self) -> list[str]:
         labels = self.labels(latex=False)
+        if not labels:
+            return []
         longest_label = max(len(lbl) for lbl in labels)
         lines: list[str] = []
         for i, (label, value) in enumerate(zip(labels, self.pack())):
@@ -61,7 +63,8 @@ class Packable[LayoutInfo](abc.ABC):
         return lines
 
     def format_params(self) -> str:
-        return "\n".join(self.format_param_lines())
+        lines = self.format_param_lines()
+        return "\n".join(lines) if lines else "<no params>"
 
     def print_params(self):
         print(self.format_params())

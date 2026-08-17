@@ -146,6 +146,16 @@ def quantity_unit(q: CharacteristicQuantity) -> str:
     return "GV" if q == "R" else "GeV"
 
 
+def quantity_symbol(q: CharacteristicQuantity) -> str:
+    match q:
+        case "R":
+            return "$\\mathcal{R}$"
+        case "E":
+            return "$E$"
+        case "E_n":
+            return "$E_n$"
+
+
 def quantity_label(q: CharacteristicQuantity) -> str:
     match q:
         case "R":

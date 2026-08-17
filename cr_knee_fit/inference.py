@@ -6,6 +6,7 @@ import numpy as np
 from scipy import stats  # type: ignore
 
 from cr_knee_fit import experiments
+from cr_knee_fit.cr_model import ExpCutoff, LognormalSourceMaxAcceleration
 from cr_knee_fit.fit_data import Data
 from cr_knee_fit.model import Model, ModelConfig
 
@@ -95,10 +96,15 @@ def logprior(model: Model) -> float:
                 < cutoff.config.lg_cut_prior_limits[1]
             ):
                 return -np.inf
-            if cutoff.config.fixed_lg_sharpness is None:
-                b = 10**cutoff.lg_sharpness
-                if not (0.1 < b < 20):
-                    return -np.inf
+            match cutoff:
+                case ExpCutoff() as c:
+                    if c.config.fixed_lg_sharpness is None:
+                        b = 10**cutoff.lg_sharpness
+                        if not (0.1 < b < 20):
+                            return -np.inf
+                case LognormalSourceMaxAcceleration() as ln:
+                    if not 0 < ln.sigma < 10:
+                        return -np.inf
 
         for component in population.base_spectra:
             # ad hoc bound for all spectral normalizations to [10^-20; 10^6];

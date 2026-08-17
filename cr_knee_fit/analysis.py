@@ -308,28 +308,38 @@ def run_mcmc(
 
 def plot_and_print_model(
     outdir: Path,
-    prefix: str,
+    dirname: str,
     model: Model,
     fit_data: Data,
     validation_data: Data,
     scale: float,
 ):
+    dest = outdir / dirname
+    dest.mkdir(exist_ok=True)
+
     model.print_params()
     model.plot_spectra(fit_data, scale=scale, validation_data=validation_data).savefig(
-        outdir / f"{prefix}-spectra.png"
+        dest / "spectra.png"
     )
 
     if fig := model.plot_lnA(fit_data, validation_data):
-        fig.savefig(outdir / f"{prefix}-lnA.png")
+        fig.savefig(dest / "lnA.png")
     if fig := model.plot_flux_ratios(fit_data, validation_data):
-        fig.savefig(outdir / f"{prefix}-flux-ratios.png")
+        fig.savefig(dest / "flux-ratios.png")
 
-    detailed_dir = outdir / prefix
-    detailed_dir.mkdir(exist_ok=True)
-    for (exp, observable), fig in model.plot_individual_observables(
+    datasetes_dir = dest / "datasets"
+    datasetes_dir.mkdir(exist_ok=True)
+    for (exp, observable), fig in model.plot_all_datasets(
         fit_data, spectra_scale=scale, validation_data=validation_data
     ).items():
-        fig.savefig(detailed_dir / f"{exp.filename_prefix}_{observable}.png")
+        fig.savefig(datasetes_dir / f"{exp.filename_prefix}_{observable}.png")
+
+    observables_dir = dest / "observables"
+    observables_dir.mkdir(exist_ok=True)
+    for (observable), fig in model.plot_all_observables(
+        fit_data, spectra_scale=scale, validation_data=validation_data
+    ).items():
+        fig.savefig(observables_dir / f"{observable}.png")
 
 
 def run_analysis(config: FitConfig, outdir: Path) -> None:
@@ -347,6 +357,7 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
     print_delim()
     print("Loading fit data...")
     fit_data = Data.load(config.fit_data_config)
+    assert not fit_data.is_empty(), "Fit data cannot be empty"
     set_global_fit_data(fit_data)
     scale = 2.75 if fit_data.E_max() > 2e6 else 2.6
     if fig := fit_data.plot(scale=scale, describe=True):
@@ -380,7 +391,7 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
 
     print_delim()
     print("Running preliminary ML analysis...")
-    mle_model_dump = outdir / "preliminary-ml.txt"
+    mle_model_dump = outdir / "mle-prelim.txt"
 
     if loaded := load_saved(mle_model_dump):
         mle_model = loaded
@@ -395,7 +406,7 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
 
     plot_and_print_model(
         outdir=outdir,
-        prefix="mle-prelim",
+        dirname="mle-prelim",
         model=mle_model,
         fit_data=fit_data,
         validation_data=validation_data,
@@ -460,7 +471,7 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
 
     print_delim()
     print("Running ML analysis from the best-fitting posterior point")
-    posterior_ml_dump = outdir / "posterior-ml.txt"
+    posterior_ml_dump = outdir / "mle-map.txt"
     if loaded := load_saved(posterior_ml_dump):
         posterior_ml_best = loaded
     else:
@@ -474,7 +485,7 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
 
     plot_and_print_model(
         outdir=outdir,
-        prefix="mle-map",
+        dirname="mle-map",
         model=posterior_ml_best,
         fit_data=fit_data,
         validation_data=validation_data,

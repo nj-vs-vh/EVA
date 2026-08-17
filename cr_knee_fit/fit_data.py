@@ -197,6 +197,15 @@ type ElementSum = tuple[Element, ...]
 type SpectrumDataSpec = Element | ElementSum | AllparticleSpectrum
 
 
+def spectrum_data_spec_label(spec: SpectrumDataSpec) -> str:
+    if spec is None:
+        return "all"
+    elif isinstance(spec, tuple):
+        return "+".join(p.name for p in spec)
+    else:
+        return spec.name
+
+
 @dataclass(frozen=True)
 class CRSpectrumData:
     d: GenericExperimentData
@@ -314,12 +323,7 @@ class CRSpectrumData:
         )
 
     def element_label(self) -> str:
-        if self.spec is None:
-            return "all"
-        elif isinstance(self.spec, tuple):
-            return "+".join(p.name for p in self.spec)
-        else:
-            return self.spec.name
+        return spectrum_data_spec_label(self.spec)
 
     def plot_label(self) -> str:
         if (self.spec, self.d.experiment) in {
@@ -533,11 +537,38 @@ class DataConfig:
         return sorted(all)
 
     def excluding(self, other: "DataConfig") -> "DataConfig":
+        other_spectra_specs = {(sp.experiment, sp.spec): sp for sp in other.spectra}
+
         return DataConfig(
-            spectra=list(set(self.spectra).difference(other.spectra)),
+            spectra=[
+                sp for sp in self.spectra if (sp.experiment, sp.spec) not in other_spectra_specs
+            ],
             lnA=list(set(self.lnA).difference(other.lnA)),
             flux_ratios=list(set(self.flux_ratios).difference(other.flux_ratios)),
         )
+
+    def remove_subdominant_spectra_constrained_by_flux_ratios(self):
+        flux_ordering_100GeV = (
+            [1, 2, 8, 6, 26, 12, 14, 10, 7, 5, 16, 20, 13, 24]
+            + [22, 18, 11, 25, 4, 19, 23, 9, 15, 17, 21]
+            + [28, 27, 29, 3]
+        )  # as computed by CRAMS, roughly accurate
+
+        for fr in self.flux_ratios:
+            dom, sub = fr.ratio.num, fr.ratio.denom
+            if flux_ordering_100GeV.index(dom) > flux_ordering_100GeV.index(sub):
+                sub, dom = dom, sub
+
+            experiment_elements = {sp.spec for sp in self.spectra if sp.experiment == fr.experiment}
+            if not (dom in experiment_elements and sub in experiment_elements):
+                continue
+
+            print(
+                f"Removing {fr.experiment.name} {sub.name} as it is constrained by {fr.ratio} ratio and {dom.name} is dominant..."
+            )
+            self.spectra = [
+                sp for sp in self.spectra if not (sp.experiment == fr.experiment and sp.spec == sub)
+            ]
 
 
 @dataclass
@@ -584,7 +615,7 @@ class Data:
         return sorted(all)
 
     def is_empty(self) -> bool:
-        return len(self.experiments()) > 0
+        return len(self.experiments()) == 0
 
     def all_spectra(self) -> Iterable[CRSpectrumData]:
         yield from self.spectra  # legacy iterator

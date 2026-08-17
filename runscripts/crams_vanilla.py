@@ -22,14 +22,14 @@ if __name__ == "__main__":
 
     # this is the exact setup from CRAMS fit, with the same elements, ratios, and R bounds
 
-    ratios_of_interest = [
+    ratios = [
         FluxRatio(Element.B, Element.C),
         FluxRatio(Element.B, Element.O),
         FluxRatio(Element.C, Element.O),
         FluxRatio(Element.H, Element.He),
         FluxRatio(Element.He, Element.O),
     ]
-    elements_fitted = [
+    elements = [
         Element.Fe,
         Element.H,
         Element.Mg,
@@ -38,11 +38,9 @@ if __name__ == "__main__":
         Element.O,
         Element.S,
         Element.Si,
-    ]
-    elements_constrained_through_ratios = [
-        Element.B,  # constrained through B/O
-        Element.C,  # constrained through C/O
-        Element.He,  # constrained through H/He
+        Element.B,
+        Element.C,
+        Element.He,
     ]
 
     fit_data_config = DataConfig(
@@ -60,35 +58,25 @@ if __name__ == "__main__":
                     np.inf,
                 ),
             )
-            for element in elements_fitted
+            for element in elements
         ],
         flux_ratios=(
             [
                 FluxRatioDataConfig(experiments.ams02, ratio, Q_bounds=(10.0, np.inf))
-                for ratio in ratios_of_interest
-            ]
-            + [
-                FluxRatioDataConfig(experiments.dampe, ratio, Q_bounds=(0.0, np.inf))
-                for ratio in ratios_of_interest
+                for ratio in ratios
             ]
         ),
     )
+    fit_data_config.remove_subdominant_spectra_constrained_by_flux_ratios()
 
     validation_data_config = DataConfig(
-        spectra=[
-            SpectrumDataConfig.allparticle(experiments.hawc),
-        ]
-        + [
-            SpectrumDataConfig(experiments.dampe, element)
-            for element in elements_constrained_through_ratios + elements_fitted
-        ]
-        + [
-            SpectrumDataConfig(experiments.ams02, element)
-            for element in elements_constrained_through_ratios
-        ],
+        spectra=[SpectrumDataConfig.allparticle(experiments.hawc)]
+        + [SpectrumDataConfig(experiments.dampe, element) for element in elements]
+        + [SpectrumDataConfig(experiments.calet, element) for element in elements]
+        + [SpectrumDataConfig(experiments.ams02, element) for element in elements],
         flux_ratios=[
             FluxRatioDataConfig(exp, ratio)
-            for ratio, exp in itertools.product(ratios_of_interest, [experiments.calet])
+            for ratio, exp in itertools.product(ratios, [experiments.calet, experiments.dampe])
         ],
     ).excluding(fit_data_config)
 
@@ -99,7 +87,7 @@ if __name__ == "__main__":
                 fit_data_config.experiments_spectra,
                 fixed=experiments.ams02,
             ),
-            crams=CramsModel.default(up2PeV=False, source_feature="none"),
+            crams=CramsModel.make(up2PeV=False, source_feature="none"),
         )
 
     # m = generate_guess()

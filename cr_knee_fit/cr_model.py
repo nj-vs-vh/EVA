@@ -1,4 +1,4 @@
-import functools
+import dataclasses
 import itertools
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy  # type: ignore
+import scipy.special  # type: ignore
 from matplotlib.axes import Axes
 from num2tex import num2tex  # type: ignore
 
@@ -14,7 +15,7 @@ from cr_knee_fit.elements import (
     isotope_average_A,
 )
 from cr_knee_fit.types_ import Packable
-from cr_knee_fit.utils import CharacteristicQuantity, q2R_factor, quantity_unit
+from cr_knee_fit.utils import CharacteristicQuantity, q2R_factor, quantity_symbol, quantity_unit
 
 # region: shared power law
 
@@ -191,7 +192,7 @@ class SpectralBreak(Packable[SpectralBreakConfig]):
 
         # calculation in different form for numerical stability
         below_break = quantity <= break_
-        result[below_break] = (1 + (quantity[below_break] / break_) ** s) ** (-self.d_alpha / s)
+        result[below_break] = (1.0 + (quantity[below_break] / break_) ** s) ** (-self.d_alpha / s)
 
         above_break = quantity > break_
         R_b_to_R = break_ / quantity[above_break]
@@ -217,8 +218,7 @@ class SpectralBreak(Packable[SpectralBreakConfig]):
 
 
 @dataclass
-class SpectralCutoffConfig:
-    fixed_lg_sharpness: float | None = None
+class AnyCutoffConfig:
     lg_cut_prior_limits: tuple[float, float] = (-np.inf, np.inf)
     quantity: CharacteristicQuantity = "R"
     lg_cut_hint: float | None = None
@@ -236,11 +236,18 @@ class SpectralCutoffConfig:
 
 
 @dataclass
-class SpectralCutoff(Packable[SpectralCutoffConfig]):
+class ExpCutoffConfig(AnyCutoffConfig):
+    fixed_lg_sharpness: float | None = None
+
+
+@dataclass
+class ExpCutoff(Packable[ExpCutoffConfig]):
+    """Cutoff in the spectrum with generalized exponential shape exp((Q/Q_cut)^b)"""
+
     lg_cut: float  # cut position, in units of quantity
     lg_sharpness: float  # 0 is very smooth, 10+ is very sharp
 
-    config: SpectralCutoffConfig
+    config: ExpCutoffConfig
 
     def ndim(self) -> int:
         return 1 if self.config.fixed_lg_sharpness else 2
@@ -255,13 +262,13 @@ class SpectralCutoff(Packable[SpectralCutoffConfig]):
             labels = [f"lg {self.config.quantity}^cut", "lg b"]
         return labels[: self.ndim()]
 
-    def layout_info(self) -> SpectralCutoffConfig:
+    def layout_info(self) -> ExpCutoffConfig:
         return self.config
 
     @classmethod
-    def unpack(cls, theta: np.ndarray, layout_info: SpectralCutoffConfig) -> "SpectralCutoff":
+    def unpack(cls, theta: np.ndarray, layout_info: ExpCutoffConfig) -> "ExpCutoff":
         lg_R = theta[0]
-        return SpectralCutoff(
+        return ExpCutoff(
             lg_cut=lg_R,
             lg_sharpness=layout_info.fixed_lg_sharpness or theta[1],
             config=layout_info,
@@ -286,6 +293,72 @@ class SpectralCutoff(Packable[SpectralCutoffConfig]):
         return ", ".join(parts)
 
 
+@dataclass
+class LognormalSourceMaxAccelerationConfig(AnyCutoffConfig):
+    fixed_beta: float | None = None
+
+
+@dataclass
+class LognormalSourceMaxAcceleration(Packable[LognormalSourceMaxAccelerationConfig]):
+    """Erfc cutoff parametrized explicitly in terms of source' maximum acceleration R"""
+
+    lg_cut: float  # cut position, in lg(quantity)
+    sigma: float  # log-scale standard deviation of source max R
+
+    # PL index in the dependence of CR accelerator luminocity on the maximum energy.
+    # when convolving the individual cut-offs with population weight, we have
+    # W(Emax) \propto Emax^beta, beta~1 for standard models of SNR acceleration
+    beta: float
+
+    config: LognormalSourceMaxAccelerationConfig
+
+    def ndim(self) -> int:
+        return 2 if self.config.fixed_beta else 3
+
+    def pack(self) -> np.ndarray:
+        return np.array([self.lg_cut, self.sigma, self.beta][: self.ndim()])
+
+    def labels(self, latex: bool) -> list[str]:
+        if latex:
+            labels = [
+                rf"\langle \lg {quantity_symbol(self.config.quantity)}_{{max}} \; / \; \text{quantity_unit(self.config.quantity)} \rangle",
+                rf"\sigma(\lg \mathcal{{R}}_{{max}} \; / \; \text{quantity_unit(self.config.quantity)})",
+                r"\beta",
+            ]
+        else:
+            labels = [
+                rf"<lg {self.config.quantity}_max>",
+                rf"sigma(lg {self.config.quantity}_max)",
+                r"beta",
+            ]
+        return labels[: self.ndim()]
+
+    def layout_info(self) -> LognormalSourceMaxAccelerationConfig:
+        return self.config
+
+    @classmethod
+    def unpack(
+        cls, theta: np.ndarray, layout_info: LognormalSourceMaxAccelerationConfig
+    ) -> "LognormalSourceMaxAcceleration":
+        return LognormalSourceMaxAcceleration(
+            lg_cut=theta[0],
+            sigma=theta[1],
+            beta=layout_info.fixed_beta or theta[2],
+            config=layout_info,
+        )
+
+    def compute(self, R: np.ndarray, Z: int, A: float, is_lower: bool) -> np.ndarray:
+        #   spectrumModifier = 0.5 * std::erfc((std::log10(T) - m_featureLgT - pow2(m_lognormSigma) * m_lognormBeta) /
+        #                              (M_SQRT2 * m_lognormSigma));
+        lg_Q = np.log10(R / q2R_factor(Z, A, self.config.quantity))
+        return 0.5 * scipy.special.erfc(
+            (lg_Q - self.lg_cut - self.beta * self.sigma**2) / (np.sqrt(2) * self.sigma)
+        )
+
+    def description(self, is_lower: bool) -> str:
+        return ", ".join(self.format_param_lines())
+
+
 # endregion
 
 
@@ -307,8 +380,8 @@ class PopulationMetadata:
 class CosmicRaysModelConfig:
     components: Sequence[list[Element] | SpectralComponentConfig]
     breaks: Sequence[SpectralBreakConfig]
-    cutoff: SpectralCutoffConfig | None = None
-    cutoff_lower: SpectralCutoffConfig | None = None
+    cutoff: ExpCutoffConfig | LognormalSourceMaxAccelerationConfig | None = None
+    cutoff_lower: ExpCutoffConfig | None = None
 
     rescale_all_particle: bool = False
 
@@ -346,9 +419,9 @@ class CosmicRaysModelConfig:
 @dataclass
 class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
     base_spectra: list[SharedPowerLawSpectrum]
-    breaks: list[SpectralBreak]
-    cutoff: SpectralCutoff | None = None
-    cutoff_lower: SpectralCutoff | None = None
+    breaks: list[SpectralBreak] = dataclasses.field(default_factory=list)
+    cutoff: ExpCutoff | LognormalSourceMaxAcceleration | None = None
+    cutoff_lower: ExpCutoff | None = None
 
     all_particle_lg_shift: float | None = None  # sum of elements* 10^shift = all particle spectrum
     free_Z: float | None = None
@@ -368,6 +441,14 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
                 "FreeZ element must be present as a element if it's effective Z is used as a param"
             )
 
+        self._components: dict[Element, SharedPowerLawSpectrum] = {}
+        for element in self.resolved_elements:
+            matches = [comp for comp in self.base_spectra if element in comp.elements]
+            assert len(matches) == 1, (
+                f"Element {element} has to match exactly one component, found: {matches}"
+            )
+            self._components[element] = matches[0]
+
     @property
     def resolved_elements(self) -> list[Element]:
         return self.layout_info().resolved_elements  # legacy from when we had "unresolved elements"
@@ -386,14 +467,8 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             )
         )
 
-    @functools.lru_cache(maxsize=28, typed=True)  # noqa: B019
     def _get_component(self, element: Element) -> SharedPowerLawSpectrum | None:
-        matches = [comp for comp in self.base_spectra if element in comp.elements]
-        if not matches:
-            return None
-        if len(matches) > 1:
-            raise RuntimeError(f"Element {element} matches more than one component: {matches}")
-        return matches[0]
+        return self._components.get(element)
 
     def has_element(self, element: Element) -> bool:
         return self._get_component(element) is not None
@@ -507,6 +582,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         all_particle: bool = False,
         elements: list[Element] | None = None,
         grid_size: int = 100,
+        caption_elements: bool = True,
     ) -> Axes:
         if axes is not None:
             ax = axes
@@ -527,7 +603,11 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             ax.plot(
                 E_grid,
                 E_factor * self.compute_spectrum(E_grid, element, quantity="E"),
-                label=with_prefix(self.element_name(element), preserve_capitalization=True),
+                label=(
+                    with_prefix(self.element_name(element), preserve_capitalization=True)
+                    if caption_elements
+                    else None
+                ),
                 color=element.color,
                 linestyle=self.linestyle,
             )
@@ -630,13 +710,18 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             b = SpectralBreak.unpack(theta[offset:], break_config)
             breaks.append(b)
             offset += b.ndim()
-        cutoff: SpectralCutoff | None = None
-        if layout_info.cutoff is not None:
-            cutoff = SpectralCutoff.unpack(theta[offset:], layout_info.cutoff)
-            offset += cutoff.ndim()
-        cutoff_lower: SpectralCutoff | None = None
+        match layout_info.cutoff:
+            case None:
+                cutoff: ExpCutoff | LognormalSourceMaxAcceleration | None = None
+            case ExpCutoffConfig() as c:
+                cutoff = ExpCutoff.unpack(theta[offset:], c)
+                offset += cutoff.ndim()
+            case LognormalSourceMaxAccelerationConfig() as c:
+                cutoff = LognormalSourceMaxAcceleration.unpack(theta[offset:], c)
+                offset += cutoff.ndim()
+        cutoff_lower: ExpCutoff | None = None
         if layout_info.cutoff_lower is not None:
-            cutoff_lower = SpectralCutoff.unpack(theta[offset:], layout_info.cutoff_lower)
+            cutoff_lower = ExpCutoff.unpack(theta[offset:], layout_info.cutoff_lower)
             offset += cutoff_lower.ndim()
 
         if layout_info.rescale_all_particle:
@@ -719,18 +804,18 @@ if __name__ == "__main__":
                 ),
             ),
         ],
-        cutoff=SpectralCutoff(
+        cutoff=ExpCutoff(
             lg_cut=9.0,
             lg_sharpness=5,
-            config=SpectralCutoffConfig(
+            config=ExpCutoffConfig(
                 fixed_lg_sharpness=None,
                 lg_cut_prior_limits=(7, 10),
             ),
         ),
-        cutoff_lower=SpectralCutoff(
+        cutoff_lower=ExpCutoff(
             lg_cut=3.0,
             lg_sharpness=5,
-            config=SpectralCutoffConfig(
+            config=ExpCutoffConfig(
                 fixed_lg_sharpness=None,
                 lg_cut_prior_limits=(7, 10),
             ),

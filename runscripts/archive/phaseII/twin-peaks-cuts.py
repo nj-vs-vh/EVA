@@ -11,7 +11,7 @@ from cr_knee_fit.cr_model import (
     CosmicRaysModel,
     PopulationMetadata,
     SharedPowerLawSpectrum,
-    SpectralCutoffConfig,
+    ExpCutoffConfig,
 )
 from cr_knee_fit.elements import Element
 from cr_knee_fit.fit_data import DataConfig
@@ -88,7 +88,7 @@ if __name__ == "__main__":
                 # )
             ],
             cutoff=initial_guess_cutoff(
-                SpectralCutoffConfig(lg_cut_hint=4.3, lg_cut_prior_limits=(3.0, 5.5))
+                ExpCutoffConfig(lg_cut_hint=4.3, lg_cut_prior_limits=(3.0, 5.5))
             ),
             population_meta=PopulationMetadata(name="LE", linestyle=":"),
         )
@@ -115,7 +115,7 @@ if __name__ == "__main__":
                 # )
             ],
             cutoff=initial_guess_cutoff(
-                SpectralCutoffConfig(lg_cut_hint=6.5, lg_cut_prior_limits=(5.0, 7.5))
+                ExpCutoffConfig(lg_cut_hint=6.5, lg_cut_prior_limits=(5.0, 7.5))
             ),
             # cutoff_lower=initial_guess_cutoff(SpectralCutoffConfig(lg_cut_hint=5.0)),
             population_meta=PopulationMetadata(name="HE", linestyle="--"),

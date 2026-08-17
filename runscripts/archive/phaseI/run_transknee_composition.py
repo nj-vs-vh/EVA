@@ -11,7 +11,7 @@ from cr_knee_fit.cr_model import (
     SharedPowerLawSpectrum,
     SpectralBreakConfig,
     SpectralComponentConfig,
-    SpectralCutoffConfig,
+    ExpCutoffConfig,
 )
 from cr_knee_fit.elements import Element
 from cr_knee_fit.fit_data import DataConfig
@@ -104,7 +104,7 @@ if __name__ == "__main__":
                     #     lg_break_hint=6.2,
                     # ),
                 ],
-                cutoff=SpectralCutoffConfig(
+                cutoff=ExpCutoffConfig(
                     fixed_lg_sharpness=None,
                     lg_cut_prior_limits=(3, 5),
                 ),
@@ -158,7 +158,7 @@ if __name__ == "__main__":
             ],
             breaks=[],
             cutoff=initial_guess_cutoff(
-                SpectralCutoffConfig(
+                ExpCutoffConfig(
                     fixed_lg_sharpness=None,
                     lg_cut_prior_limits=(5.0, 7.0),
                     lg_cut_hint=7.0,
