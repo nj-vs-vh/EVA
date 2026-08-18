@@ -25,6 +25,7 @@ from scipy import optimize  # type: ignore
 from cr_knee_fit.fit_data import Data, DataConfig
 from cr_knee_fit.inference import (
     DEFAULT_CHI2_METHOD,
+    DEFAULT_LOGNORMAL_CHI2,
     loglikelihood,
     logposterior,
     set_global_fit_data,
@@ -346,6 +347,7 @@ def plot_and_print_model(
 def run_analysis(config: FitConfig, outdir: Path) -> None:
     print(f"Output dir: {outdir}")
     print(f"Default chi2 method: {DEFAULT_CHI2_METHOD}")
+    print(f"Default lognormal chi2: {DEFAULT_LOGNORMAL_CHI2}")
 
     Path(outdir / "config-dump.json").write_text(config.model_dump_json(indent=2))
 

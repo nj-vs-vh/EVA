@@ -15,18 +15,18 @@ from cr_knee_fit.cr_model import (
 )
 from cr_knee_fit.crams_model import FREE, CramsModel
 from cr_knee_fit.elements import Element
-from cr_knee_fit.fit_data import DataConfig, SpectrumDataConfig
+from cr_knee_fit.fit_data import DataConfig, FluxRatioDataConfig, SpectrumDataConfig
 from cr_knee_fit.guesses import (
     initial_guess_cutoff,
     initial_guess_energy_shifts,
     initial_guess_pl_index,
 )
-from cr_knee_fit.local import LocalRunOptions, guess_analysis_name, run_local
+from cr_knee_fit.local import LocalRunOptions, get_analysis_name, run_local
 from cr_knee_fit.model import Model
 
 if __name__ == "__main__":
     opts = LocalRunOptions.parse()
-    analysis_name = guess_analysis_name(__file__)
+    analysis_name = get_analysis_name(__file__, opts)
 
     elements = [
         Element.Fe,
@@ -64,8 +64,18 @@ if __name__ == "__main__":
         + [
             SpectrumDataConfig(experiments.kascade_re_qgsjet, element)
             for element in [Element.C, Element.Si, Element.Fe]
-        ]
+        ],
+        flux_ratios=[
+            FluxRatioDataConfig(experiments.dampe, Element.B / Element.C),
+            FluxRatioDataConfig(experiments.dampe, Element.B / Element.O),
+            FluxRatioDataConfig(experiments.ams02, Element.B / Element.C),
+            FluxRatioDataConfig(experiments.ams02, Element.B / Element.O),
+            FluxRatioDataConfig(experiments.ams02, Element.C / Element.O),
+            FluxRatioDataConfig(experiments.ams02, Element.H / Element.He),
+            FluxRatioDataConfig(experiments.ams02, Element.He / Element.O),
+        ],
     )
+    fit_data_config.remove_subdominant_spectra_constrained_by_flux_ratios()
 
     validation_data_config = DataConfig(
         spectra=[

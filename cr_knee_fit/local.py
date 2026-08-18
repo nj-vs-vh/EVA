@@ -13,13 +13,6 @@ OUT_DIR = ROOT_DIR / "out"
 PHASE = 6
 
 
-def guess_analysis_name(filename: str) -> str:
-    file_stem = Path(filename).stem
-    res = f"phase-{PHASE}/{file_stem.removeprefix('run_')}"
-    print(f"Run name: {res} (from {filename})")
-    return res
-
-
 class FileStdoutTee(TextIO):
     def __init__(self, file: TextIO, write_to_stdout: bool):
         self.file = file
@@ -53,6 +46,8 @@ class LocalRunOptions:
     plots_only: bool
     no_stdout: bool
 
+    custom_run_name: str | None
+
     args_raw: Any
 
     @staticmethod
@@ -63,6 +58,7 @@ class LocalRunOptions:
         parser.add_argument("--force", "-f", action="store_true")
         parser.add_argument("--plots-only", action="store_true")
         parser.add_argument("--no-stdout", action="store_true")
+        parser.add_argument("--name")
         args = parser.parse_args()
         return LocalRunOptions(
             mcmc=args.mcmc,
@@ -71,7 +67,22 @@ class LocalRunOptions:
             plots_only=args.plots_only,
             no_stdout=args.no_stdout,
             args_raw=args,
+            custom_run_name=args.name,
         )
+
+
+def get_analysis_name(filename: str, opts: LocalRunOptions | None = None) -> str:
+    file_stem = Path(filename).stem
+    if opts is not None and opts.custom_run_name is not None:
+        run_name = opts.custom_run_name
+    else:
+        run_name = file_stem.removeprefix("run_")
+    res = f"phase-{PHASE}/{run_name}"
+    print(f"Run name: {res} (from {filename})")
+    return res
+
+
+guess_analysis_name = get_analysis_name
 
 
 def run_local(config: FitConfig, opts: LocalRunOptions) -> None:

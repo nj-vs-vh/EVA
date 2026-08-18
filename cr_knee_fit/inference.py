@@ -205,7 +205,7 @@ def chi_squared_loglikelihood(
             )
 
 
-DEFAULT_LOGNORMAL_CHI2 = os.environ.get("CRKNEE_LOGNORMAL_CHI2 ", "1") == "1"
+DEFAULT_LOGNORMAL_CHI2 = os.environ.get("CRKNEE_LOGNORMAL_CHI2", "1") == "1"
 
 
 def loglikelihood(
