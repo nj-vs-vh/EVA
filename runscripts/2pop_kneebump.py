@@ -4,6 +4,7 @@ from scipy import stats  # type: ignore
 from cr_knee_fit import experiments
 from cr_knee_fit.analysis import (
     FitConfig,
+    McmcConfig,
     PlotsConfig,
 )
 from cr_knee_fit.cr_model import (
@@ -12,9 +13,9 @@ from cr_knee_fit.cr_model import (
     PopulationMetadata,
     SharedPowerLawSpectrum,
 )
-from cr_knee_fit.crams_model import CramsModel
+from cr_knee_fit.crams_model import FREE, CramsModel
 from cr_knee_fit.elements import Element
-from cr_knee_fit.fit_data import DataConfig, SpectrumDataConfig
+from cr_knee_fit.fit_data import DataConfig, FluxRatioDataConfig, SpectrumDataConfig
 from cr_knee_fit.guesses import (
     initial_guess_cutoff,
     initial_guess_energy_shifts,
@@ -34,7 +35,19 @@ if __name__ == "__main__":
         Element.H / Element.He,
         Element.He / Element.O,
     ]
-    elements = [Element.H, Element.He]
+    elements = [
+        Element.H,
+        Element.He,
+        Element.B,
+        Element.C,
+        Element.N,
+        Element.O,
+        Element.Ne,
+        Element.Mg,
+        Element.Si,
+        Element.S,
+        Element.Fe,
+    ]
 
     fit_data_config = DataConfig(
         spectra=[
@@ -54,7 +67,14 @@ if __name__ == "__main__":
             for element in elements
         ]
         + [SpectrumDataConfig(experiments.dampe, element) for element in elements]
-        + [SpectrumDataConfig(experiments.lhaaso_qgsjet, element) for element in elements]
+        # + [SpectrumDataConfig.allparticle(experiments.lhaaso_qgsjet)]
+        + [SpectrumDataConfig(experiments.lhaaso_qgsjet, element) for element in elements],
+        flux_ratios=[
+            FluxRatioDataConfig(experiments.ams02, ratio, Q_bounds=(10.0, np.inf))
+            for ratio in ratios
+        ]
+        + [FluxRatioDataConfig(experiments.dampe, ratio) for ratio in ratios],
+        lnA=[experiments.lhaaso_qgsjet],
     )
 
     validation_data_config = DataConfig(
@@ -62,6 +82,8 @@ if __name__ == "__main__":
             SpectrumDataConfig.allparticle(experiments.hawc),
             SpectrumDataConfig.allparticle(experiments.lhaaso_qgsjet),
         ]
+        + [SpectrumDataConfig(experiments.ams02, element) for element in elements]
+        + [SpectrumDataConfig(experiments.dampe, element) for element in elements]
         + [SpectrumDataConfig(experiments.calet, element) for element in elements]
         + [
             SpectrumDataConfig(experiments.kascade_re_qgsjet, element)
@@ -75,9 +97,13 @@ if __name__ == "__main__":
             up2PeV=True,
             source_feature="erfc-cutoff",
             freeze_propagation=True,
-            freeze_injection=True,
         )
         crams.config.population_meta = PopulationMetadata(name="LE", linestyle="--")
+        crams.config.frozen_propagation.D_0_cm2_sec = FREE
+        crams.config.frozen_propagation.ddelta = FREE
+        # crams.config.frozen_propagation.smoothness = FREE
+        # crams.config.frozen_propagation.R_b_GV = FREE
+
         return Model(
             populations=[
                 CosmicRaysModel(
@@ -94,7 +120,7 @@ if __name__ == "__main__":
                     ],
                     cutoff=initial_guess_cutoff(
                         LognormalSourceMaxAccelerationConfig(
-                            lg_cut_hint=6.5,
+                            lg_cut_hint=6.65,
                             lg_cut_prior_limits=(5, 8),
                             fixed_beta=1.0,
                         )
@@ -112,8 +138,7 @@ if __name__ == "__main__":
             ],
             crams=crams,
             energy_shifts=initial_guess_energy_shifts(
-                # fit_data_config.experiments_spectra,
-                [],
+                fit_data_config.experiments_spectra,
                 fixed=experiments.ams02,
             ),
         )
@@ -121,7 +146,12 @@ if __name__ == "__main__":
     config = FitConfig.from_guessing_func(
         name=analysis_name,
         fit_data=fit_data_config,
-        mcmc=None,
+        mcmc=McmcConfig(
+            n_steps=300_000,
+            n_walkers=256,
+            processes=11,
+            reuse_saved=True,
+        ),
         generate_guess=generate_guess,
         plots=PlotsConfig(
             validation_data_config=validation_data_config,

@@ -276,14 +276,13 @@ class CRSpectrumData:
         )
 
     def data_for_normal_chi2(self, f: float) -> "GenericExperimentData":
-        d = self.d
         return GenericExperimentData(
-            x=d.x * f,
-            y=d.y / f,
-            err_stat=d.err_stat / f,
-            err_syst=d.err_syst / f,
-            experiment=d.experiment,
-            precomputed_standard_inv_err_cov=d.standard_inv_err_cov * f**2,
+            x=self.d.x * f,
+            y=self.d.y / f,
+            err_stat=self.d.err_stat / f,
+            err_syst=self.d.err_syst / f,
+            experiment=self.d.experiment,
+            precomputed_standard_inv_err_cov=self.d.standard_inv_err_cov * f**2,
         )
 
     def data_for_lognormal_chi2(self, f: float) -> "GenericExperimentData":
@@ -542,6 +541,9 @@ class DataConfig:
     spectra: Sequence[SpectrumDataConfig] = dataclasses.field(default_factory=list)
     lnA: Sequence[Experiment] = dataclasses.field(default_factory=list)
     flux_ratios: Sequence[FluxRatioDataConfig] = dataclasses.field(default_factory=list)
+
+    def __post_init__(self):
+        self.remove_subdominant_spectra_constrained_by_flux_ratios()
 
     @property
     def experiments_spectra(self) -> list[Experiment]:

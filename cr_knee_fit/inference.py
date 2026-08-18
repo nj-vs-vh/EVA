@@ -39,7 +39,6 @@ energy_scale_uncertainties = {
     # 10.1103/PhysRevD.104.062007 and 10.1051/epjconf/202328302002
     # > The uncertainty of 30% is statistics dominant in the measurement of the shift.
     # however, we tentatively set the uncertainty to ~10 to roughly match other indirect experiments
-    # TEMP
     experiments.lhaaso_epos: 10.0,
     experiments.lhaaso_qgsjet: 10.0,
     experiments.lhaaso_sibyll: 10.0,
@@ -220,12 +219,12 @@ def loglikelihood(
 
     for spectrum in fit_data.spectra:
         f = model.energy_shifts.f(spectrum.experiment)
-        prediction = model.compute_spectrum(spectrum.E, element=spectrum.spec, quantity="E")
         if lognormal:
             d = spectrum.data_for_lognormal_chi2(f)
-            prediction = np.log10(prediction)
+            prediction = np.log10(model.compute_spectrum(d.x, element=spectrum.spec, quantity="E"))
         else:
             d = spectrum.data_for_normal_chi2(f)
+            prediction = model.compute_spectrum(d.x, element=spectrum.spec, quantity="E")
 
         res += chi_squared_loglikelihood(
             prediction=prediction,
