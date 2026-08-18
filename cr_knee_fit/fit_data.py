@@ -270,15 +270,20 @@ class CRSpectrumData:
 
     def with_shifted_energy_scale(self, f: float) -> "CRSpectrumData":
         return CRSpectrumData(
-            d=GenericExperimentData(
-                x=self.d.x * f,
-                y=self.d.y / f,
-                err_stat=self.d.err_stat / f,
-                err_syst=self.d.err_syst / f,
-                experiment=self.d.experiment,
-            ),
+            d=self.data_for_normal_chi2(f),
             spec=self.spec,
             energy_scale_shift=self.energy_scale_shift * f,
+        )
+
+    def data_for_normal_chi2(self, f: float) -> "GenericExperimentData":
+        d = self.d
+        return GenericExperimentData(
+            x=d.x * f,
+            y=d.y / f,
+            err_stat=d.err_stat / f,
+            err_syst=d.err_syst / f,
+            experiment=d.experiment,
+            precomputed_standard_inv_err_cov=d.standard_inv_err_cov * f**2,
         )
 
     def data_for_lognormal_chi2(self, f: float) -> "GenericExperimentData":

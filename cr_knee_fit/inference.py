@@ -205,53 +205,65 @@ def chi_squared_loglikelihood(
             )
 
 
+DEFAULT_LOGNORMAL_CHI2 = os.environ.get("CRKNEE_LOGNORMAL_CHI2 ", "1") == "1"
+
+
 def loglikelihood(
     model_or_theta: Model | np.ndarray,
     fit_data: Data,
     config: ModelConfig,
     chi2_method: Chi2Method | None = None,
+    lognormal: bool = DEFAULT_LOGNORMAL_CHI2,
 ) -> float:
     model = ensure_model(model_or_theta, config)
     res = 0.0
 
     for spectrum in fit_data.spectra:
-        lg_spec = spectrum.data_for_lognormal_chi2(f=model.energy_shifts.f(spectrum.experiment))
+        f = model.energy_shifts.f(spectrum.experiment)
+        prediction = model.compute_spectrum(spectrum.E, element=spectrum.spec, quantity="E")
+        if lognormal:
+            d = spectrum.data_for_lognormal_chi2(f)
+            prediction = np.log10(prediction)
+        else:
+            d = spectrum.data_for_normal_chi2(f)
+
         res += chi_squared_loglikelihood(
-            prediction=np.log10(
-                model.compute_spectrum(spectrum.E, element=spectrum.spec, quantity="E")
-            ),
-            y=lg_spec.y,
-            err_stat=lg_spec.err_stat,
-            err_syst=lg_spec.err_syst,
-            err_cov_inv=lg_spec.standard_inv_err_cov,
+            prediction=prediction,
+            y=d.y,
+            err_stat=d.err_stat,
+            err_syst=d.err_syst,
+            err_cov_inv=d.standard_inv_err_cov,
             method=chi2_method,
         )
+
     for lnA_data in fit_data.lnA:
         f = model.energy_shifts.f(lnA_data.experiment)
-        E_exp = lnA_data.x
         # for lnA, the energy scale shift does not affect values as it includes dE in both numerator and denominator
-        E_true = E_exp * f
+        lnA_data = lnA_data.with_shifted_grid(f)
         res += chi_squared_loglikelihood(
-            prediction=model.compute_lnA(E_true),
+            prediction=model.compute_lnA(lnA_data.x),
             y=lnA_data.y,
             err_stat=lnA_data.err_stat,
             err_syst=lnA_data.err_syst,
             err_cov_inv=lnA_data.standard_inv_err_cov,
             method=chi2_method,
         )
+
     for flux_ratio in fit_data.flux_ratios:
         # flux ratios are used at low energies, where energy scale is very well constrained, hence no shift is applied
-        lg_ratio = flux_ratio.d.log10_ed
+        prediction = model.compute_flux_ratio(
+            flux_ratio.Q, fr=flux_ratio.ratio, quantity=flux_ratio.quantity
+        )
+        d = flux_ratio.d
+        if lognormal:
+            prediction = np.log10(prediction)
+            d = d.log10_ed
         res += chi_squared_loglikelihood(
-            prediction=np.log10(
-                model.compute_flux_ratio(
-                    flux_ratio.Q, fr=flux_ratio.ratio, quantity=flux_ratio.quantity
-                )
-            ),
-            y=lg_ratio.y,
-            err_stat=lg_ratio.err_stat,
-            err_syst=lg_ratio.err_syst,
-            err_cov_inv=lg_ratio.standard_inv_err_cov,
+            prediction=prediction,
+            y=d.y,
+            err_stat=d.err_stat,
+            err_syst=d.err_syst,
+            err_cov_inv=d.standard_inv_err_cov,
             method=chi2_method,
         )
 
