@@ -426,6 +426,9 @@ class Model(Packable[ModelConfig]):
                 ax.plot(E, prediction, color="k", linewidth=2)
                 ax.set_title(self._chi2_label(lnA))
                 ax.set_xlim(Emin, Emax)
+                ax.set_xlabel(E_GEV_LABEL)
+                ax.set_ylabel(LN_A_LABEL)
+                add_elements_lnA_secondary_axis(ax)
                 ax.figure.tight_layout()  # type: ignore
                 res[(lnA.experiment, "lnA")] = ax.figure  # type: ignore
 

@@ -8,11 +8,12 @@ from cr_knee_fit.analysis import (
 )
 from cr_knee_fit.cr_model import (
     CosmicRaysModel,
+    ExpCutoffConfig,
     LognormalSourceMaxAccelerationConfig,
     PopulationMetadata,
     SharedPowerLawSpectrum,
 )
-from cr_knee_fit.crams_model import CramsModel
+from cr_knee_fit.crams_model import FREE, CramsModel
 from cr_knee_fit.elements import Element
 from cr_knee_fit.fit_data import DataConfig, SpectrumDataConfig
 from cr_knee_fit.guesses import (
@@ -27,14 +28,19 @@ if __name__ == "__main__":
     opts = LocalRunOptions.parse()
     analysis_name = guess_analysis_name(__file__)
 
-    ratios = [
-        Element.B / Element.C,
-        Element.B / Element.O,
-        Element.C / Element.O,
-        Element.H / Element.He,
-        Element.He / Element.O,
+    elements = [
+        Element.Fe,
+        Element.H,
+        Element.Mg,
+        Element.N,
+        Element.Ne,
+        Element.O,
+        Element.S,
+        Element.Si,
+        Element.B,
+        Element.C,
+        Element.He,
     ]
-    elements = [Element.H, Element.He]
 
     fit_data_config = DataConfig(
         spectra=[
@@ -55,6 +61,10 @@ if __name__ == "__main__":
         ]
         + [SpectrumDataConfig(experiments.dampe, element) for element in elements]
         + [SpectrumDataConfig(experiments.lhaaso_qgsjet, element) for element in elements]
+        + [
+            SpectrumDataConfig(experiments.kascade_re_qgsjet, element)
+            for element in [Element.C, Element.Si, Element.Fe]
+        ]
     )
 
     validation_data_config = DataConfig(
@@ -75,9 +85,11 @@ if __name__ == "__main__":
             up2PeV=True,
             source_feature="erfc-cutoff",
             freeze_propagation=True,
-            freeze_injection=True,
         )
         crams.config.population_meta = PopulationMetadata(name="LE", linestyle="--")
+        crams.config.frozen_propagation.D_0_cm2_sec = FREE
+        crams.config.frozen_propagation.ddelta = FREE
+
         return Model(
             populations=[
                 CosmicRaysModel(
@@ -85,28 +97,31 @@ if __name__ == "__main__":
                         (
                             SharedPowerLawSpectrum(
                                 lgI_per_element={
-                                    Element.H: stats.norm.rvs(loc=-4.25, scale=0.05),
-                                    Element.He: stats.norm.rvs(loc=-4.8, scale=0.05),
+                                    Element.H: stats.norm.rvs(loc=-4.8, scale=0.05),
+                                    Element.He: stats.norm.rvs(loc=-5.4, scale=0.05),
+                                    Element.C: stats.norm.rvs(loc=-6.6, scale=0.05),
+                                    Element.Si: stats.norm.rvs(loc=-7.2, scale=0.05),
+                                    Element.Fe: stats.norm.rvs(loc=-8.0, scale=0.05),
                                 },
-                                alpha=initial_guess_pl_index(center=2.6),
+                                alpha=initial_guess_pl_index(center=2.4, width=0.00001),
                             )
                         )
                     ],
                     cutoff=initial_guess_cutoff(
                         LognormalSourceMaxAccelerationConfig(
-                            lg_cut_hint=6.5,
+                            lg_cut_hint=6.6,
                             lg_cut_prior_limits=(5, 8),
                             fixed_beta=1.0,
                         )
                     ),
-                    # cutoff_lower=(  # type: ignore
-                    #     initial_guess_cutoff(
-                    #         ExpCutoffConfig(
-                    #             lg_cut_prior_limits=(3, 6),
-                    #             lg_cut_hint=5,
-                    #         )
-                    #     )
-                    # ),
+                    cutoff_lower=(
+                        initial_guess_cutoff(
+                            ExpCutoffConfig(
+                                lg_cut_prior_limits=(2, 6),
+                                lg_cut_hint=4.5,
+                            )
+                        )
+                    ),
                     population_meta=PopulationMetadata(name="HE", linestyle=":"),
                 )
             ],

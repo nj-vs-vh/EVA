@@ -88,14 +88,16 @@ def logprior(model: Model) -> float:
                 if not (0.1 < s < 20):
                     return -np.inf
 
-        if population.cutoff is not None:
-            cutoff = population.cutoff
+        for cutoff in (population.cutoff, population.cutoff_lower):
+            if cutoff is None:
+                continue
             if not (
                 cutoff.config.lg_cut_prior_limits[0]
                 < cutoff.lg_cut
                 < cutoff.config.lg_cut_prior_limits[1]
             ):
                 return -np.inf
+
             match cutoff:
                 case ExpCutoff() as c:
                     if c.config.fixed_lg_sharpness is None:
@@ -198,7 +200,9 @@ def chi_squared_loglikelihood(
             result = -0.5 * (residual_vec.T @ err_cov_inv @ residual_vec)
             return float(np.squeeze(result))
         case unexpected:
-            raise RuntimeError(f"Unexpected chi2 method selected via env var: {unexpected}")
+            raise RuntimeError(
+                f"Unexpected chi2 method specified in {'argument' if method is None else 'env var'}: {unexpected}"
+            )
 
 
 def loglikelihood(
@@ -211,13 +215,15 @@ def loglikelihood(
     res = 0.0
 
     for spectrum in fit_data.spectra:
-        spectrum = spectrum.with_shifted_energy_scale(f=model.energy_shifts.f(spectrum.experiment))
+        lg_spec = spectrum.data_for_lognormal_chi2(f=model.energy_shifts.f(spectrum.experiment))
         res += chi_squared_loglikelihood(
-            prediction=model.compute_spectrum(spectrum.E, element=spectrum.spec, quantity="E"),
-            y=spectrum.F,
-            err_stat=spectrum.F_err_stat,
-            err_syst=spectrum.F_err_syst,
-            err_cov_inv=spectrum.err_cov_inv,
+            prediction=np.log10(
+                model.compute_spectrum(spectrum.E, element=spectrum.spec, quantity="E")
+            ),
+            y=lg_spec.y,
+            err_stat=lg_spec.err_stat,
+            err_syst=lg_spec.err_syst,
+            err_cov_inv=lg_spec.standard_inv_err_cov,
             method=chi2_method,
         )
     for lnA_data in fit_data.lnA:
@@ -230,19 +236,22 @@ def loglikelihood(
             y=lnA_data.y,
             err_stat=lnA_data.err_stat,
             err_syst=lnA_data.err_syst,
-            err_cov_inv=lnA_data.log_space_err_cov_inv,
+            err_cov_inv=lnA_data.standard_inv_err_cov,
             method=chi2_method,
         )
     for flux_ratio in fit_data.flux_ratios:
         # flux ratios are used at low energies, where energy scale is very well constrained, hence no shift is applied
+        lg_ratio = flux_ratio.d.log10_ed
         res += chi_squared_loglikelihood(
-            prediction=model.compute_flux_ratio(
-                flux_ratio.Q, fr=flux_ratio.ratio, quantity=flux_ratio.quantity
+            prediction=np.log10(
+                model.compute_flux_ratio(
+                    flux_ratio.Q, fr=flux_ratio.ratio, quantity=flux_ratio.quantity
+                )
             ),
-            y=flux_ratio.value,
-            err_stat=flux_ratio.d.err_stat,
-            err_syst=flux_ratio.d.err_syst,
-            err_cov_inv=flux_ratio.d.log_space_err_cov_inv,
+            y=lg_ratio.y,
+            err_stat=lg_ratio.err_stat,
+            err_syst=lg_ratio.err_syst,
+            err_cov_inv=lg_ratio.standard_inv_err_cov,
             method=chi2_method,
         )
 

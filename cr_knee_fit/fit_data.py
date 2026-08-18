@@ -66,6 +66,9 @@ class GenericExperimentData:
 
     custom_label: str | None = None
 
+    # used to avoid re-inverting matrix on energy shifts
+    precomputed_standard_inv_err_cov: np.ndarray | None = None
+
     def __post_init__(self) -> None:
         assert self.x.ndim == 1, "X must be 1-dimensional"
         assert self.y.ndim == 1, "Y must be 1-dimensional"
@@ -76,6 +79,25 @@ class GenericExperimentData:
         )
         assert self.err_syst.shape == (self.size(), 2), (
             f"Bad syst error size: {self.err_syst.shape} =/= {(self.size(), 2)}"
+        )
+
+    @staticmethod
+    def _lg_error(y: np.ndarray, lgy: np.ndarray, err: np.ndarray) -> np.ndarray:
+        lower = y - err[:, 0]
+        upper = y + err[:, 1]
+        return np.stack((lgy - np.log10(lower), np.log10(upper) - lgy), axis=1)
+
+    @functools.cached_property
+    def log10_ed(self) -> "GenericExperimentData":
+        """Same dataset, but in log(y) instead of y. Useful for computing chi^2 under the assumption of lognormal instead of normal errors."""
+        lgy = np.log10(self.y)
+        return GenericExperimentData(
+            x=self.x,
+            y=lgy,
+            err_stat=self._lg_error(self.y, lgy, self.err_stat),
+            err_syst=self._lg_error(self.y, lgy, self.err_syst),
+            experiment=self.experiment,
+            custom_label=self.custom_label,
         )
 
     def with_shifted_grid(self, f: float) -> "GenericExperimentData":
@@ -120,7 +142,7 @@ class GenericExperimentData:
         )
 
     @functools.cached_property
-    def log_space_err_cov_inv(self) -> np.ndarray:
+    def standard_inv_err_cov(self) -> np.ndarray:
         # TODO: does 1.0 correlation length make sense in all cases?
         return np.linalg.inv(self.err_cov(corr_length=1.0, log_space_correlation=True))
 
@@ -212,10 +234,6 @@ class CRSpectrumData:
     spec: SpectrumDataSpec
     energy_scale_shift: float = 1.0
 
-    # to avoid recomputing on energy scale shifts
-    precomputed_err_cov: np.ndarray | None = None
-    precomputed_err_cov_inv: np.ndarray | None = None
-
     def __post_init__(self) -> None:
         assert self.E.size > 0, "Empty spectrum data"
 
@@ -247,25 +265,6 @@ class CRSpectrumData:
     def summary(self) -> str:
         return self.d.summary(self.element_label(), "GeV")
 
-    @functools.cached_property
-    def err_cov(self) -> np.ndarray:
-        if self.precomputed_err_cov is not None:
-            return self.precomputed_err_cov
-
-        # 1 decade rougly follows the use in DAMPE's paper of 4 nuisance parameter shifts per 4 decades of spectrum
-        corr_length = 1.0 if self.d.experiment == experiments.dampe else 1.0  # noqa: RUF034
-
-        return self.d.err_cov(
-            corr_length=corr_length,
-            log_space_correlation=True,
-        )
-
-    @functools.cached_property
-    def err_cov_inv(self) -> np.ndarray:
-        if self.precomputed_err_cov_inv is not None:
-            return self.precomputed_err_cov_inv
-        return np.linalg.inv(self.err_cov)
-
     def scaled_flux(self, scale: float) -> np.ndarray:
         return self.F * (self.E**scale)
 
@@ -280,8 +279,20 @@ class CRSpectrumData:
             ),
             spec=self.spec,
             energy_scale_shift=self.energy_scale_shift * f,
-            precomputed_err_cov=self.err_cov / (f**2),
-            precomputed_err_cov_inv=self.err_cov_inv * (f**2),
+        )
+
+    def data_for_lognormal_chi2(self, f: float) -> "GenericExperimentData":
+        lg_d = self.d.log10_ed
+        lg_f = np.log10(f)
+        return GenericExperimentData(
+            x=lg_d.x * f,
+            y=lg_d.y - lg_f,
+            # since the energy shift is additive at log(y), it's error doesn't change (?)
+            err_stat=lg_d.err_stat,
+            err_syst=lg_d.err_syst,
+            experiment=lg_d.experiment,
+            # for the same reason, energy scale shift doesn't affect error covariance matrix
+            precomputed_standard_inv_err_cov=lg_d.standard_inv_err_cov,
         )
 
     @classmethod

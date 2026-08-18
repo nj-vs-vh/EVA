@@ -186,6 +186,9 @@ DEFAULT_ABUNDANCES = {
 SourceFeatureSpec = Literal["break", "erfc-cutoff", "none"]
 
 
+FREE = np.nan  # used to signify non-frozen parameter within the config
+
+
 class CramsModelConfig(pydantic.BaseModel):
     crams: Annotated[
         CramsRunner,
@@ -226,13 +229,14 @@ class CramsModelConfig(pydantic.BaseModel):
             [Element.H, Element.He, Element.C, Element.N, Element.O]
             + [Element.Ne, Element.Mg, Element.Si, Element.S, Element.Fe]
         ),
-        freeze_low_energy_params: bool = False,
+        freeze_propagation: bool = False,
+        freeze_injection: bool = False,
     ) -> "CramsModelConfig":
         if up2PeV:
             T_sim_grid = LogGrid(
                 min=0.1,  # 0.1 GeV
                 max=5e7,  # 3 PeV
-                size=300,  # enough for numerical errors <0.1%
+                size=200,  # enough for numerical errors <0.1%
             )
             R_out_grid = LogGrid(
                 min=5,  # GV
@@ -246,14 +250,16 @@ class CramsModelConfig(pydantic.BaseModel):
         match source_feature:
             case "break":
                 feature: InjectionBreak | LognormalRmaxDistribution | None = InjectionBreak(
-                    R_GV=np.nan, delta_slope=np.nan, omega=np.nan
+                    R_GV=FREE,
+                    delta_slope=FREE,
+                    omega=FREE,
                 )
             case "erfc-cutoff":
-                feature = LognormalRmaxDistribution(np.nan, np.nan, 1.0)
+                feature = LognormalRmaxDistribution(FREE, FREE, 1.0)
             case "none":
                 feature = None
 
-        if freeze_low_energy_params:
+        if freeze_injection:
             # best-fit params from CRAMS-only fit
             frozen_abundances = {
                 Element.H: 0.0465,
@@ -268,6 +274,11 @@ class CramsModelConfig(pydantic.BaseModel):
                 Element.Fe: 0.00906,
             }
             slopes = [4.41, 4.33, 4.39]
+        else:
+            frozen_abundances = {}
+            slopes = [FREE] * 3
+
+        if freeze_propagation:
             frozen_propagation = PropagationParams(
                 H_kpc=7.0,
                 v_A_km_sec=0.000101,
@@ -279,17 +290,15 @@ class CramsModelConfig(pydantic.BaseModel):
                 phi=0.631,
             )
         else:
-            frozen_abundances = {}
-            slopes = [np.nan] * 3
             frozen_propagation = PropagationParams(
                 H_kpc=7.0,
-                v_A_km_sec=np.nan,
-                R_b_GV=np.nan,
-                delta=np.nan,
-                ddelta=np.nan,
-                D_0_cm2_sec=np.nan,
+                v_A_km_sec=FREE,
+                R_b_GV=FREE,
+                delta=FREE,
+                ddelta=FREE,
+                D_0_cm2_sec=FREE,
                 X_src=-1.0,
-                phi=np.nan,
+                phi=FREE,
             )
 
         return CramsModelConfig(
@@ -297,7 +306,7 @@ class CramsModelConfig(pydantic.BaseModel):
             frozen_injection=InjectionParams(
                 abundances=[
                     (
-                        frozen_abundances.get(element, np.nan)
+                        frozen_abundances.get(element, FREE)
                         if element in fit_abundances
                         else DEFAULT_ABUNDANCES[element]
                     )
@@ -340,7 +349,10 @@ class CramsModel(Packable[CramsModelConfig]):
 
     @staticmethod
     def make(
-        up2PeV: bool, source_feature: SourceFeatureSpec, freeze_low_energy_params: bool = False
+        up2PeV: bool,
+        source_feature: SourceFeatureSpec,
+        freeze_propagation: bool = False,
+        freeze_injection: bool = False,
     ) -> "CramsModel":
         init_fitted_abundances = {
             Element.H: 4.14e-2,
@@ -370,7 +382,8 @@ class CramsModel(Packable[CramsModelConfig]):
             up2PeV=up2PeV,
             fit_abundances=list(init_fitted_abundances.keys()),
             source_feature=source_feature,
-            freeze_low_energy_params=freeze_low_energy_params,
+            freeze_propagation=freeze_propagation,
+            freeze_injection=freeze_injection,
         )
 
         def _if_not_frozen(v: float, default: float) -> float:
@@ -730,14 +743,16 @@ class CramsModel(Packable[CramsModelConfig]):
 if __name__ == "__main__":
     for up2PeV in (False, True):
         for source_feature in ("break", "none", "erfc-cutoff"):
-            for freeze_low_energy in (False, True):
-                print("\n===\n")
-                cm = CramsModel.make(
-                    up2PeV=up2PeV,
-                    source_feature=source_feature,
-                    freeze_low_energy_params=freeze_low_energy,
-                )
-                cm.print_params()
-                print(cm.pack())
-                cm.validate_packing()
-                print(cm.ml_bounds())
+            for freeze_prop in (False, True):
+                for freeze_inj in (False, True):
+                    print("\n===\n")
+                    cm = CramsModel.make(
+                        up2PeV=up2PeV,
+                        source_feature=source_feature,
+                        freeze_propagation=freeze_prop,
+                        freeze_injection=freeze_inj,
+                    )
+                    cm.print_params()
+                    print(cm.pack())
+                    cm.validate_packing()
+                    print(cm.ml_bounds())

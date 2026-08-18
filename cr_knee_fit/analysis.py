@@ -171,6 +171,7 @@ def run_ml_analysis(
                 to_minimize,
                 x0=initial_model.pack(),
                 bounds=initial_model.ml_bounds(),
+                options={"disp": True, "param_names": initial_model.labels(latex=False)},
             )
     total = time.time() - start
     print(f"Optimization done in {total:.2g} sec = {total / 60:.2g} min")
@@ -390,12 +391,15 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
     )
 
     print_delim()
-    print("Running preliminary ML analysis...")
     mle_model_dump = outdir / "mle-prelim.txt"
 
     if loaded := load_saved(mle_model_dump):
+        print(f"Loaded ML analysis result from {mle_model_dump}")
         mle_model = loaded
+        loglike = loglikelihood(mle_model, fit_data, mle_model.layout_info())
+        print(f"Loglike: {loglike}")
     else:
+        print("Running preliminary ML analysis...")
         mle_model, gof = run_ml_analysis(
             config=config,
             fit_data=fit_data,

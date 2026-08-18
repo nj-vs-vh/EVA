@@ -1,3 +1,5 @@
+from typing import overload
+
 import numpy as np
 from scipy import stats  # type: ignore
 
@@ -40,6 +42,16 @@ def initial_guess_break(bc: SpectralBreakConfig, abs_d_alpha_guess: float = 0.5)
     )
 
 
+@overload
+def initial_guess_cutoff(c: ExpCutoffConfig) -> ExpCutoff:
+    pass
+
+
+@overload
+def initial_guess_cutoff(c: LognormalSourceMaxAccelerationConfig) -> LognormalSourceMaxAcceleration:
+    pass
+
+
 def initial_guess_cutoff(
     c: ExpCutoffConfig | LognormalSourceMaxAccelerationConfig,
 ) -> ExpCutoff | LognormalSourceMaxAcceleration:
@@ -54,7 +66,7 @@ def initial_guess_cutoff(
         case ExpCutoffConfig():
             return ExpCutoff(
                 lg_cut=lg_cut,
-                lg_sharpness=c.fixed_lg_sharpness or stats.norm.rvs(loc=np.log10(2), scale=0.05),
+                lg_sharpness=c.fixed_lg_sharpness or np.log10(stats.norm.rvs(loc=1.0, scale=0.05)),
                 config=c,
             )
         case LognormalSourceMaxAccelerationConfig():
@@ -66,8 +78,8 @@ def initial_guess_cutoff(
             )
 
 
-def initial_guess_pl_index(center: float = 2.6) -> float:
-    return stats.norm.rvs(loc=center, scale=0.05)
+def initial_guess_pl_index(center: float = 2.6, width: float = 0.05) -> float:
+    return stats.norm.rvs(loc=center, scale=width)
 
 
 def initial_guess_main_population(
@@ -105,7 +117,7 @@ def initial_guess_main_population(
         ],
         breaks=[initial_guess_break(bc) for bc in pop_config.breaks],
         cutoff=initial_guess_cutoff(pop_config.cutoff) if pop_config.cutoff is not None else None,
-        cutoff_lower=(  # type: ignore
+        cutoff_lower=(
             initial_guess_cutoff(pop_config.cutoff_lower)
             if pop_config.cutoff_lower is not None
             else None
