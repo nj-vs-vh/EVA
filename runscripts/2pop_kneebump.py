@@ -96,13 +96,18 @@ if __name__ == "__main__":
         crams = CramsModel.make(
             up2PeV=True,
             source_feature="erfc-cutoff",
+            randomize_init=True,
             freeze_propagation=True,
         )
         crams.config.population_meta = PopulationMetadata(name="LE", linestyle="--")
+
+        # TODO: proper way to specify frozen/free params in CramsModel initializer directly
+
         crams.config.frozen_propagation.D_0_cm2_sec = FREE
+        crams.propagation.D_0_cm2_sec = stats.norm.rvs(2.376e28, 1e27)
+
         crams.config.frozen_propagation.ddelta = FREE
-        # crams.config.frozen_propagation.smoothness = FREE
-        # crams.config.frozen_propagation.R_b_GV = FREE
+        crams.propagation.ddelta = stats.norm.rvs(0.27, 0.05)
 
         return Model(
             populations=[
@@ -148,8 +153,8 @@ if __name__ == "__main__":
         fit_data=fit_data_config,
         mcmc=McmcConfig(
             n_steps=300_000,
-            n_walkers=256,
-            processes=11,
+            n_walkers=128,
+            processes=1,
             reuse_saved=True,
         ),
         generate_guess=generate_guess,

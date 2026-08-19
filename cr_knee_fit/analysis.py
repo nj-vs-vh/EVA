@@ -18,6 +18,7 @@ import emcee  # type: ignore
 import iminuit  # type: ignore
 import numpy as np
 import pydantic
+from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 from pydantic_numpy.typing import Np2DArrayFp64  # type: ignore
 from scipy import optimize  # type: ignore
@@ -71,6 +72,9 @@ class FitConfig(pydantic.BaseModel):
     # useful to regenerate plots without rerunning the actual analysis
     reuse_saved_models: bool = False
 
+    # nan/inf values are written to JSON properly as Infinity/NaN
+    model_config = pydantic.ConfigDict(ser_json_inf_nan="constants")
+
     def __post_init__(self) -> None:
         model_elements = set(self.model.elements(only_fixed_Z=True))
         data_elements = set(self.fit_data_config.elements)
@@ -105,7 +109,7 @@ class FitConfig(pydantic.BaseModel):
             initial_guesses=np.array([guess.pack() for guess in guesses]),
         )
 
-    def generate_initial_guess(self, data: Data, ensure_finite_logpost: bool = True) -> Model:
+    def generate_initial_guess(self, ensure_finite_on_data: Data | None) -> Model:
         n_try = 1000
         for _ in range(n_try):
             # initial guess are not supposed to sample a specific distribution,
@@ -116,7 +120,9 @@ class FitConfig(pydantic.BaseModel):
             b = self.initial_guesses[np.random.choice(n_sample), :]
             guess = a + np.random.random() * (b - a)
             m = Model.unpack(guess, layout_info=self.model)
-            if not ensure_finite_logpost or np.isfinite(logposterior(m, data, self.model)):
+            if ensure_finite_on_data is None or np.isfinite(
+                logposterior(m, ensure_finite_on_data, self.model)
+            ):
                 return m
         raise ValueError(f"Failed to generate valid model in {n_try} tries")
 
@@ -195,7 +201,11 @@ def run_ml_analysis(
 
 
 def run_mcmc(
-    config: FitConfig, mcmc_conf: McmcConfig, fit_data: Data, outdir: Path, sample_path: Path
+    config: FitConfig,
+    mcmc_conf: McmcConfig,
+    fit_data: Data,
+    outdir: Path,
+    sample_path: Path,
 ) -> np.ndarray:
     ndim = config.generate_initial_guess(fit_data).ndim()
 
@@ -237,7 +247,7 @@ def run_mcmc(
             )  # NOTE: this assumes thin_by doesn change across sampling runs, which might not be true
             print(f"Continuing previously started sampling saved in {backend.filename}")
         except AttributeError:
-            print("Saved state not found, initializing sampler near ML solution")
+            print("Saved state not found, initializing sampler from initial guesses")
             initial_state = np.array(
                 [config.generate_initial_guess(fit_data).pack() for _ in range(mcmc_conf.n_walkers)]
             )
@@ -343,6 +353,8 @@ def plot_and_print_model(
     ).items():
         fig.savefig(observables_dir / f"{observable}.png")
 
+    plt.close("all")
+
 
 def run_analysis(config: FitConfig, outdir: Path) -> None:
     print(f"Output dir: {outdir}")
@@ -378,7 +390,7 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
 
     print_delim()
     print("Initial guess model:")
-    initial_guess = config.generate_initial_guess(fit_data, ensure_finite_logpost=False)
+    initial_guess = config.generate_initial_guess(ensure_finite_on_data=None)
     initial_guess.plot_spectra(fit_data, scale=scale, validation_data=validation_data).savefig(
         outdir / "initial_guess.png"
     )

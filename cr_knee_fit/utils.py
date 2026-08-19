@@ -85,6 +85,10 @@ def add_elements_lnA_secondary_axis(ax: Axes) -> Axes:
     return ax_element_ticks
 
 
+def wrap_latex_labels(lbls: list[str]) -> list[str]:
+    return ["$ " + lbl + " $" for lbl in lbls]
+
+
 def energy_shift_suffix(f: float) -> str:
     if np.isclose(f, 1.0):
         return ""
@@ -147,14 +151,14 @@ def quantity_unit(q: CharacteristicQuantity) -> str:
     return "GV" if q == "R" else "GeV"
 
 
-def quantity_symbol(q: CharacteristicQuantity) -> str:
+def quantity_symbol_latex(q: CharacteristicQuantity) -> str:
     match q:
         case "R":
-            return "$\\mathcal{R}$"
+            return "\\mathcal{R}"
         case "E":
-            return "$E$"
+            return "E"
         case "E_n":
-            return "$E_n$"
+            return "E_n"
 
 
 def quantity_label(q: CharacteristicQuantity) -> str:

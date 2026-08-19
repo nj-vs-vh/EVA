@@ -289,4 +289,7 @@ def logposterior(
     fit_data_ = fit_data or fit_data_global
     if fit_data_ is None:
         raise ValueError("fit data must be either passed directly or through a global variable")
-    return logpi + loglikelihood(model, fit_data_, config)
+    res = logpi + loglikelihood(model, fit_data_, config)
+    if not np.isfinite(res):
+        return -np.inf
+    return res

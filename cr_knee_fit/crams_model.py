@@ -12,6 +12,7 @@ import scipy.interpolate  # type: ignore
 from crams import (
     CRAMS_DEFAULT_R_OUT_GRID,
     CRAMS_DEFAULT_T_SIM_GRID,
+    CramsError,
     CramsRunner,
     InjectionBreak,
     InjectionParams,
@@ -23,6 +24,7 @@ from crams import (
     ELEMENT_NAMES as CRAMS_ELEMENT_NAMES,
 )
 from matplotlib.axes import Axes
+from scipy import stats
 
 from cr_knee_fit.cr_model import (
     CharacteristicQuantity,
@@ -353,28 +355,57 @@ class CramsModel(Packable[CramsModelConfig]):
         source_feature: SourceFeatureSpec,
         freeze_propagation: bool = False,
         freeze_injection: bool = False,
+        randomize_init: bool = False,
     ) -> "CramsModel":
-        init_fitted_abundances = {
-            Element.H: 4.14e-2,
-            Element.He: 2.04e-2,
-            Element.C: 4.00e-3,
-            Element.N: 3.83e-4,
-            Element.O: 7.21e-3,
-            Element.Ne: 1.35e-3,
-            Element.Mg: 2.38e-3,
-            Element.Si: 2.83e-3,
-            Element.S: 5.06e-4,
-            Element.Fe: 7.53e-3,
-        }
-        init_fitted_slopes = [4.37, 4.30, 4.36]
 
+        def _maybe_randomized(v: float, sigma: float) -> float:
+            if randomize_init:
+                return stats.norm.rvs(v, sigma)
+            else:
+                return v
+
+        init_fitted_abundances = {
+            Element.H: _maybe_randomized(4.14e-2, 1e-4),
+            Element.He: _maybe_randomized(2.04e-2, 1e-4),
+            Element.C: _maybe_randomized(4.00e-3, 1e-4),
+            Element.N: _maybe_randomized(3.83e-4, 1e-4),
+            Element.O: _maybe_randomized(7.21e-3, 1e-4),
+            Element.Ne: _maybe_randomized(1.35e-3, 1e-4),
+            Element.Mg: _maybe_randomized(2.38e-3, 1e-4),
+            Element.Si: _maybe_randomized(2.83e-3, 1e-4),
+            Element.S: _maybe_randomized(5.06e-4, 1e-4),
+            Element.Fe: _maybe_randomized(7.53e-3, 1e-4),
+        }
+        init_fitted_slopes = [
+            _maybe_randomized(4.37, 0.05),
+            _maybe_randomized(4.30, 0.05),
+            _maybe_randomized(4.36, 0.05),
+        ]
+        init_prop = PropagationParams(
+            H_kpc=_maybe_randomized(7.0, 0.1),
+            D_0_cm2_sec=_maybe_randomized(2.376e28, 1e27),
+            v_A_km_sec=_maybe_randomized(3.32, 0.1),
+            R_b_GV=_maybe_randomized(316.9, 10),
+            delta=_maybe_randomized(0.54, 0.05),
+            ddelta=_maybe_randomized(0.27, 0.05),
+            phi=_maybe_randomized(0.47, 0.05),
+            X_src=-1.0,
+        )
+
+        feature: InjectionBreak | LognormalRmaxDistribution | None
         match source_feature:
             case "break":
-                feature: InjectionBreak | LognormalRmaxDistribution | None = InjectionBreak(
-                    R_GV=15e3, delta_slope=0.2, omega=0.2
+                feature = InjectionBreak(
+                    R_GV=_maybe_randomized(15e3, 1e3),
+                    delta_slope=_maybe_randomized(0.2, 0.05),
+                    omega=_maybe_randomized(0.2, 0.05),
                 )
             case "erfc-cutoff":
-                feature = LognormalRmaxDistribution(R_mean_GV=15e3, sigma=0.5, beta=1.0)
+                feature = LognormalRmaxDistribution(
+                    R_mean_GV=_maybe_randomized(15e3, 1e3),
+                    sigma=_maybe_randomized(0.5, 0.05),
+                    beta=1.0,
+                )
             case "none":
                 feature = None
 
@@ -394,14 +425,18 @@ class CramsModel(Packable[CramsModelConfig]):
 
         return CramsModel(
             propagation=PropagationParams(
-                H_kpc=_if_not_frozen(7.0, config.frozen_propagation.H_kpc),
-                D_0_cm2_sec=_if_not_frozen(2.376e28, config.frozen_propagation.D_0_cm2_sec),
-                v_A_km_sec=_if_not_frozen(3.32, config.frozen_propagation.v_A_km_sec),
-                R_b_GV=_if_not_frozen(316.9, config.frozen_propagation.R_b_GV),
-                delta=_if_not_frozen(0.54, config.frozen_propagation.delta),
-                ddelta=_if_not_frozen(0.27, config.frozen_propagation.ddelta),
-                phi=_if_not_frozen(0.47, config.frozen_propagation.phi),
-                X_src=_if_not_frozen(-1.0, config.frozen_propagation.X_src),
+                H_kpc=_if_not_frozen(init_prop.H_kpc, config.frozen_propagation.H_kpc),
+                D_0_cm2_sec=_if_not_frozen(
+                    init_prop.D_0_cm2_sec, config.frozen_propagation.D_0_cm2_sec
+                ),
+                v_A_km_sec=_if_not_frozen(
+                    init_prop.v_A_km_sec, config.frozen_propagation.v_A_km_sec
+                ),
+                R_b_GV=_if_not_frozen(init_prop.R_b_GV, config.frozen_propagation.R_b_GV),
+                delta=_if_not_frozen(init_prop.delta, config.frozen_propagation.delta),
+                ddelta=_if_not_frozen(init_prop.ddelta, config.frozen_propagation.ddelta),
+                phi=_if_not_frozen(init_prop.phi, config.frozen_propagation.phi),
+                X_src=_if_not_frozen(init_prop.X_src, config.frozen_propagation.X_src),
             ),
             injection=InjectionParams(
                 abundances=[
@@ -499,22 +534,25 @@ class CramsModel(Packable[CramsModelConfig]):
         )
 
     def _compute_rigidity_spectrum(self, R: np.ndarray, element: Element) -> np.ndarray:
-        match self.config.interpolation_method:
-            case "numpy_linear":
-                lg_res = np.interp(
-                    x=np.log10(R),
-                    xp=self.crams_lgR_grid,
-                    fp=self.crams_lg_spectrum(element),
-                    left=np.nan,  # explicitly invalid for points out of computed bound
-                    right=np.nan,
-                )
-            case "scipy_linear" | "scipy_cubic":
-                lgR = np.log10(R)
-                if spline := self._lg_spectrum_spline(element):
-                    lg_res = spline(lgR)
-                else:
-                    return np.zeros_like(R)
-        return 10**lg_res
+        try:
+            match self.config.interpolation_method:
+                case "numpy_linear":
+                    lg_res = np.interp(
+                        x=np.log10(R),
+                        xp=self.crams_lgR_grid,
+                        fp=self.crams_lg_spectrum(element),
+                        left=np.nan,  # explicitly invalid for points out of computed bound
+                        right=np.nan,
+                    )
+                case "scipy_linear" | "scipy_cubic":
+                    lgR = np.log10(R)
+                    if spline := self._lg_spectrum_spline(element):
+                        lg_res = spline(lgR)
+                    else:
+                        return np.zeros_like(R)
+            return 10**lg_res
+        except CramsError:
+            return np.zeros_like(R) * np.nan
 
     def compute_spectrum(
         self, Q: np.ndarray, element: Element, quantity: CharacteristicQuantity
@@ -612,14 +650,14 @@ class CramsModel(Packable[CramsModelConfig]):
             ]
         else:
             all_prop_labels = [
-                r"$H \; / \; \text{kpc}$",
-                r"$v_A \; / \; \text{km} \; \text{s}^{-1}$",
-                r"$\lg ( \mathcal{R}_b \; / \; \text{GV} )$",
-                r"$\delta$",
-                r"$\Delta \delta$",
-                r"$D_0 \; / \; \text{cm}^2 \; \text{s}^{-1}$",
-                r"$X_{\text{src}} \; / \; \text{g} \text{cm}^{-2}$",
-                r"$\phi \; / \; \text{GV}$",
+                r"H \; / \; \text{kpc}",
+                r"v_A \; / \; \text{km} \; \text{s}^{-1}",
+                r"\lg ( \mathcal{R}_b \; / \; \text{GV} )",
+                r"\delta",
+                r"\Delta \delta",
+                r"D_0 \; / \; \text{cm}^2 \; \text{s}^{-1}",
+                r"X_{\text{src}} \; / \; \text{g} \text{cm}^{-2}",
+                r"\phi \; / \; \text{GV}",
             ]
 
         if latex:

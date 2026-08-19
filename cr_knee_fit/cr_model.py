@@ -15,7 +15,12 @@ from cr_knee_fit.elements import (
     isotope_average_A,
 )
 from cr_knee_fit.types_ import Packable
-from cr_knee_fit.utils import CharacteristicQuantity, q2R_factor, quantity_symbol, quantity_unit
+from cr_knee_fit.utils import (
+    CharacteristicQuantity,
+    q2R_factor,
+    quantity_symbol_latex,
+    quantity_unit,
+)
 
 # region: shared power law
 
@@ -321,8 +326,8 @@ class LognormalSourceMaxAcceleration(Packable[LognormalSourceMaxAccelerationConf
     def labels(self, latex: bool) -> list[str]:
         if latex:
             labels = [
-                rf"\langle \lg {quantity_symbol(self.config.quantity)}_{{max}} \; / \; \text{quantity_unit(self.config.quantity)} \rangle",
-                rf"\sigma(\lg \mathcal{{R}}_{{max}} \; / \; \text{quantity_unit(self.config.quantity)})",
+                rf"\langle \lg {quantity_symbol_latex(self.config.quantity)}_{{max}} \; / \; \text{{{quantity_unit(self.config.quantity)}}} \rangle",
+                rf"\sigma(\lg {quantity_symbol_latex(self.config.quantity)}_{{max}} \; / \; \text{{{quantity_unit(self.config.quantity)}}})",
                 r"\beta",
             ]
         else:
@@ -371,7 +376,7 @@ class PopulationMetadata:
 
     def plot_prefix(self, latex: bool) -> str:
         if self.name:
-            return f"\\text{{{self.name}}}\\;" if latex else self.name + " "
+            return f"\\text{{{self.name}}} \\; " if latex else self.name + " "
         else:
             return ""
 
