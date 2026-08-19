@@ -20,9 +20,7 @@ from crams import (
     LognormalRmaxDistribution,
     PropagationParams,
 )
-from crams import (
-    ELEMENT_NAMES as CRAMS_ELEMENT_NAMES,
-)
+from crams import ELEMENT_NAMES as CRAMS_ELEMENT_NAMES
 from matplotlib.axes import Axes
 from scipy import stats
 
@@ -78,7 +76,7 @@ def pack_propagation(pp: PropagationParams) -> np.ndarray:
             np.log10(pp.R_b_GV),
             pp.delta,
             pp.ddelta,
-            pp.D_0_cm2_sec,
+            pp.D_0_cm2_sec / 1e28,
             pp.X_src,
             pp.phi,
         ]
@@ -91,20 +89,26 @@ PROPAGATION_BOUNDS = [
     (np.log10(100), np.log10(1000)),
     (0.0, 1.5),
     (0.0, 1.0),
-    (1e26, 1e30),
+    (1e-2, 1e2),
     None,
     (0.1, 1.0),
 ]
 
 
 def unpack_propagation(v: np.ndarray) -> PropagationParams:
+    D_0_1e28_cm2_sec = v[5]
+    # backwards compatibility with the old format, using plain D0, not divided by 10^28
+    if D_0_1e28_cm2_sec > 1e20:
+        D_0_cm2_sec = D_0_1e28_cm2_sec
+    else:
+        D_0_cm2_sec = D_0_1e28_cm2_sec * 1e28
     return PropagationParams(
         H_kpc=v[0],
         v_A_km_sec=v[1],
         R_b_GV=10 ** v[2],
         delta=v[3],
         ddelta=v[4],
-        D_0_cm2_sec=v[5],
+        D_0_cm2_sec=D_0_cm2_sec,
         X_src=v[6],
         phi=v[7],
     )
@@ -655,7 +659,7 @@ class CramsModel(Packable[CramsModelConfig]):
                 r"\lg ( \mathcal{R}_b \; / \; \text{GV} )",
                 r"\delta",
                 r"\Delta \delta",
-                r"D_0 \; / \; \text{cm}^2 \; \text{s}^{-1}",
+                r"D_0 \; / \; 10^{28} \text{cm}^2 \; \text{s}^{-1}",
                 r"X_{\text{src}} \; / \; \text{g} \text{cm}^{-2}",
                 r"\phi \; / \; \text{GV}",
             ]

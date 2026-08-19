@@ -1,5 +1,6 @@
 import dataclasses
 import itertools
+import random
 from collections.abc import Callable
 from typing import Any, cast
 
@@ -33,15 +34,21 @@ from cr_knee_fit.utils import (
 Observable = Callable[[Model, np.ndarray], np.ndarray]
 
 
+def _to_model_sample(theta_sample: np.ndarray | list[Model], model_config: ModelConfig):
+    if isinstance(theta_sample, list):
+        return theta_sample
+    else:
+        return [Model.unpack(theta, layout_info=model_config) for theta in theta_sample]
+
+
 def plot_credible_band(
     ax: Axes,
     scale: float,
     bounds: tuple[float, float],
-    theta_sample: np.ndarray,
+    theta_sample: np.ndarray | list[Model],
     model_config: ModelConfig,
     observable: Observable,
     color: str,
-    add_median: bool = False,
     label: str | None = None,
     cl: float = 0.9,
     alpha: float = 0.3,
@@ -55,7 +62,8 @@ def plot_credible_band(
     )
     scale_factor = x_grid**scale
 
-    model_sample = [Model.unpack(theta, layout_info=model_config) for theta in theta_sample]
+    model_sample = _to_model_sample(theta_sample, model_config)
+
     observable_sample = np.vstack([observable(model, x_grid) for model in model_sample])
     quantile = (1 - cl) / 2
     lower = np.quantile(observable_sample, q=quantile, axis=0)
@@ -71,15 +79,11 @@ def plot_credible_band(
         label=label,
     )
 
-    if add_median:
-        median_model = Model.unpack(np.median(theta_sample, axis=0), layout_info=model_config)
-        ax.plot(x_grid, scale_factor * observable(median_model, x_grid), color=color)
-
 
 def plot_posterior_contours(
     ax: Axes,
     scale: float,
-    theta_sample: np.ndarray,
+    theta_sample: np.ndarray | list[Model],
     model_config: ModelConfig,
     observable: Observable,
     bounds: tuple[float, float] | None = None,
@@ -95,7 +99,9 @@ def plot_posterior_contours(
         raise ValueError("bounds or x_grid must be specified")
 
     scale_factor = x_grid**scale
-    model_sample = [Model.unpack(theta, layout_info=model_config) for theta in theta_sample]
+
+    model_sample = _to_model_sample(theta_sample, model_config)
+
     observable_sample = np.vstack(
         [scale_factor * observable(model, x_grid) for model in model_sample]
     )
@@ -161,22 +167,23 @@ def plot_ghostly_lines(
     ax: Axes,
     scale: float,
     bounds: tuple[float, float],
-    theta_sample: np.ndarray,
+    theta_sample: np.ndarray | list[Model],
     model_config: ModelConfig,
     observable: Observable,
     n_samples: int,
     color: str,
     label: str | None = None,
+    randomized: bool = False,
 ) -> None:
     x_min, x_max = bounds
     x_grid = np.logspace(np.log10(x_min), np.log10(x_max), 100)
     scale_factor = x_grid**scale
 
-    n_total = theta_sample.shape[0]
-    fraction = n_samples / n_total
-    mask = np.random.random(size=theta_sample.shape[0]) < fraction
-    for i, theta in enumerate(theta_sample[mask, :]):
-        model = Model.unpack(theta, layout_info=model_config)
+    model_sample = _to_model_sample(theta_sample, model_config).copy()
+    if randomized:
+        random.shuffle(model_sample)
+
+    for i, model in enumerate(model_sample[:n_samples]):
         obs = observable(model, x_grid)
         ax.plot(
             x_grid,
@@ -246,6 +253,7 @@ def plot_everything(
     else:
         fig = cast(Figure, next(iter(axes.values())).figure)
 
+    model_sample = _to_model_sample(theta_sample, model_config)
     ax_el = axes["Elements"]
     ax_all = axes["All particle"]
     ax_lnA = axes["lnA"]
@@ -271,7 +279,7 @@ def plot_everything(
             plot_posterior_contours(
                 ax,
                 scale=scale_,
-                theta_sample=theta_sample,
+                theta_sample=model_sample,
                 model_config=model_config,
                 observable=observable,
                 bounds=E_bounds,
@@ -281,7 +289,7 @@ def plot_everything(
             plot_credible_band(
                 ax,
                 scale=scale_,
-                theta_sample=theta_sample,
+                theta_sample=model_sample,
                 model_config=model_config,
                 observable=observable,
                 bounds=E_bounds,
@@ -298,6 +306,7 @@ def plot_everything(
     element_legend_items: list[LegendItem] = []
     experiment_legend_item_by_label: dict[str, LegendItem] = {}
     plotted_elem_spectra: list[CRSpectrumData] = []
+    elements_to_plot = set[Element]()
     for data, is_fitted in ((fit_data, True), (validation_data, False)):
         for exp, data_by_particle in data.element_spectra.items():
             f_exp = best_fit_model.energy_shifts.f(exp)
@@ -307,14 +316,19 @@ def plot_everything(
                 spec_data.plot(
                     scale=spectra_scale, ax=ax_el, add_legend_label=False, is_fitted=is_fitted
                 )
+                if isinstance(spec_data.spec, Element):
+                    elements_to_plot.add(spec_data.spec)
             experiment_legend_item_by_label.setdefault(
                 exp.name, (exp.legend_artist(True), exp.name)
             )
-    elements = best_fit_model.layout_info().elements(only_fixed_Z=False)
+
+    # FIXME:
+    # - plot only dataset element
+    # - cache models for sample points to benefit from cached CRAMS runs
     comp_data_ylim = merged_lims([sp.scaled_flux(spectra_scale) for sp in plotted_elem_spectra])
     comp_data_Elim = merged_lims([sp.E for sp in plotted_elem_spectra])
     comp_Elim = add_log_margin(*comp_data_Elim)
-    for element in elements:
+    for element in sorted(elements_to_plot):
         plot_model_predictions(
             ax=ax_el,
             observable=lambda model, E: model.compute_spectrum(E, element=element, quantity="E"),  # noqa: B023
@@ -380,7 +394,7 @@ def plot_everything(
         element_legend_items.append((legend_artist_line(ALL_PARTICLE_COLOR), "All particle"))
 
         if plots_config.all_particle_elements_contribution is not None:
-            for element in elements:
+            for element in elements_to_plot:
                 plot_model_predictions(
                     ax=ax_all,
                     observable=lambda model, E: model.compute_spectrum(
