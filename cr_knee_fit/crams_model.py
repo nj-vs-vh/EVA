@@ -3,7 +3,7 @@ import functools
 import json
 from collections.abc import Collection
 from dataclasses import dataclass
-from typing import Annotated, Any, Literal
+from typing import ClassVar, Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -128,34 +128,6 @@ LOGNORMAL_RMAX_DISTRIBUTION_BOUNDS = [
 ]
 
 
-def _serialize_crams(cr: CramsRunner) -> str:
-    assert isinstance(cr, CramsRunner)
-    return json.dumps(
-        {
-            "inelastic_model": cr._inelastic_model,
-            "fragmentation_model": cr._fragmentation_model,
-            "verbose": cr._verbose,
-            "file_output": cr._file_output,
-            "T_sim_grid": dataclasses.asdict(cr._T_sim_grid),
-            "R_out_grid": dataclasses.asdict(cr._R_out_grid),
-        }
-    )
-
-
-def _validate_crams(input: Any) -> CramsRunner:
-    if isinstance(input, CramsRunner):
-        return input
-    raw = json.loads(input)
-    return CramsRunner(
-        inelastic_model=raw["inelastic_model"],
-        fragmentation_model=raw["fragmentation_model"],
-        verbose=raw["verbose"],
-        file_output=raw["file_output"],
-        T_sim_grid=LogGrid(**raw["T_sim_grid"]),
-        R_out_grid=LogGrid(**raw["R_out_grid"]),
-    )
-
-
 # copied from CRAMS source code
 DEFAULT_ABUNDANCES = {
     Element.H: 5.06605e-02,
@@ -195,12 +167,34 @@ SourceFeatureSpec = Literal["break", "erfc-cutoff", "none"]
 FREE = np.nan  # used to signify non-frozen parameter within the config
 
 
+@dataclass
+class CramsRunnerConfig:
+    """
+    A small config class with all the data needed to create runners. The actual runners are stored as singletons
+    in a class-level cache. This way we support multiprocessing, because each subprocess will have it's own
+    CramsRunner object with no need to pass them between.
+    """
+
+    T_sim_grid: LogGrid
+    R_out_grid: LogGrid
+
+    _runner_cache: ClassVar[dict[str, CramsRunner]] = {}
+
+    @functools.cached_property
+    def cache_key(self) -> str:
+        return json.dumps(dataclasses.asdict(self))
+
+    def implement(self) -> CramsRunner:
+        if self.cache_key not in self._runner_cache:
+            self._runner_cache[self.cache_key] = CramsRunner(
+                T_sim_grid=self.T_sim_grid,
+                R_out_grid=self.R_out_grid,
+            )
+        return self._runner_cache[self.cache_key]
+
+
 class CramsModelConfig(pydantic.BaseModel):
-    crams: Annotated[
-        CramsRunner,
-        pydantic.PlainValidator(_validate_crams),
-        pydantic.PlainSerializer(_serialize_crams, return_type=str),
-    ]
+    runner: CramsRunnerConfig
 
     # fitted params are set to nan in these
     frozen_propagation: PropagationParams
@@ -308,7 +302,7 @@ class CramsModelConfig(pydantic.BaseModel):
             )
 
         return CramsModelConfig(
-            crams=CramsRunner(T_sim_grid=T_sim_grid, R_out_grid=R_out_grid),
+            runner=CramsRunnerConfig(T_sim_grid=T_sim_grid, R_out_grid=R_out_grid),
             frozen_injection=InjectionParams(
                 abundances=[
                     (
@@ -509,7 +503,7 @@ class CramsModel(Packable[CramsModelConfig]):
 
     @property
     def crams(self) -> CramsRunner:
-        return self.config.crams
+        return self.config.runner.implement()
 
     @functools.cached_property
     def _crams_lg_output(self) -> np.ndarray:

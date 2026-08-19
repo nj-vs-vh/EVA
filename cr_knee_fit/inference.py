@@ -271,7 +271,7 @@ def loglikelihood(
 
 # to optimize logposterior evaluation in a multiprocessing setup
 # see https://emcee.readthedocs.io/en/stable/tutorials/parallel/#pickling-data-transfer-arguments
-fit_data_global: Data | None = None
+fit_data_global: Data | None
 
 
 def set_global_fit_data(fit_data: Data):

@@ -218,7 +218,11 @@ def run_mcmc(
     backend = emcee.backends.HDFBackend(filename=str(chain_path))
 
     sampler_pool_ctx = (
-        multiprocessing.Pool(processes=mcmc_conf.processes)
+        multiprocessing.Pool(
+            processes=mcmc_conf.processes,
+            initializer=set_global_fit_data,
+            initargs=(fit_data,),
+        )
         if mcmc_conf.processes > 1
         else contextlib.nullcontext(enter_result=None)
     )

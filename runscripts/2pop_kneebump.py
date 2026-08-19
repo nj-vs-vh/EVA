@@ -152,10 +152,11 @@ if __name__ == "__main__":
         name=analysis_name,
         fit_data=fit_data_config,
         mcmc=McmcConfig(
-            n_steps=16425,
-            n_walkers=128,
-            processes=1,
+            n_steps=30000,
+            n_walkers=256,
+            processes=10,
             reuse_saved=True,
+            runtime_thinning=100,
         ),
         generate_guess=generate_guess,
         plots=PlotsConfig(
