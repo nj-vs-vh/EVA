@@ -29,9 +29,7 @@ from cr_knee_fit.utils import (
 class SpectralComponentConfig:
     elements: list[Element]
     scale_contrib_to_allpart: bool = False
-
-
-R0 = 1e3  # GV; reference rigidity
+    R0: float = 1e3
 
 
 @dataclass
@@ -42,17 +40,18 @@ class SharedPowerLawSpectrum(Packable[SpectralComponentConfig]):
 
     lgI_per_element: dict[Element, float]  # log10(I / (GV m^2 s sr)^-1) at R0
     alpha: float  # power law index
+    R0: float = 1e3  # reference rigidity
 
     lg_scale_contrib_to_all: None | float = None
 
     @classmethod
     def single_element(cls, p: Element, lgI: float, alpha: float) -> "SharedPowerLawSpectrum":
-        return SharedPowerLawSpectrum(lgI_per_element={p: lgI}, alpha=alpha)
+        return SharedPowerLawSpectrum(lgI_per_element={p: lgI}, alpha=alpha, R0=1e3)
 
     def compute(self, R: np.ndarray, element: Element) -> np.ndarray:
         lgI = self.lgI_per_element[element]
         I = 10.0**lgI
-        return I * (R / R0) ** -self.alpha
+        return I * (R / self.R0) ** -self.alpha
 
     @property
     def elements(self) -> list[Element]:
@@ -89,6 +88,7 @@ class SharedPowerLawSpectrum(Packable[SpectralComponentConfig]):
         return SpectralComponentConfig(
             elements=self.elements,
             scale_contrib_to_allpart=self.lg_scale_contrib_to_all is not None,
+            R0=self.R0,
         )
 
     @classmethod
@@ -107,6 +107,7 @@ class SharedPowerLawSpectrum(Packable[SpectralComponentConfig]):
             lgI_per_element=lgI_per_el,
             alpha=alpha,
             lg_scale_contrib_to_all=lg_scale_contrib_to_all,
+            R0=layout_info.R0,
         )
 
 

@@ -113,15 +113,20 @@ if __name__ == "__main__":
             populations=[
                 CosmicRaysModel(
                     base_spectra=[
-                        (
-                            SharedPowerLawSpectrum(
-                                lgI_per_element={
-                                    Element.H: stats.norm.rvs(loc=-4.25, scale=0.05),
-                                    Element.He: stats.norm.rvs(loc=-4.8, scale=0.05),
-                                },
-                                alpha=initial_guess_pl_index(center=2.6),
-                            )
-                        )
+                        SharedPowerLawSpectrum(
+                            lgI_per_element={
+                                Element.H: stats.norm.rvs(loc=-4.25 - 7.8, scale=0.05),
+                            },
+                            alpha=initial_guess_pl_index(center=2.6),
+                            R0=1e6,
+                        ),
+                        SharedPowerLawSpectrum(
+                            lgI_per_element={
+                                Element.He: stats.norm.rvs(loc=-4.8 - 7.8, scale=0.05),
+                            },
+                            alpha=initial_guess_pl_index(center=2.6),
+                            R0=1e6,
+                        ),
                     ],
                     cutoff=initial_guess_cutoff(
                         LognormalSourceMaxAccelerationConfig(
