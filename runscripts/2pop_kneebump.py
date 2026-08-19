@@ -28,7 +28,7 @@ if __name__ == "__main__":
     opts = LocalRunOptions.parse()
     analysis_name = guess_analysis_name(__file__)
 
-    ratios = [
+    ams02_ratios = [
         Element.B / Element.C,
         Element.B / Element.O,
         Element.C / Element.O,
@@ -71,9 +71,15 @@ if __name__ == "__main__":
         + [SpectrumDataConfig(experiments.lhaaso_qgsjet, element) for element in elements],
         flux_ratios=[
             FluxRatioDataConfig(experiments.ams02, ratio, Q_bounds=(10.0, np.inf))
-            for ratio in ratios
+            for ratio in ams02_ratios
         ]
-        + [FluxRatioDataConfig(experiments.dampe, ratio) for ratio in ratios],
+        + [
+            FluxRatioDataConfig(experiments.dampe, ratio)
+            for ratio in [
+                Element.B / Element.C,
+                Element.B / Element.O,
+            ]
+        ],
         lnA=[experiments.lhaaso_qgsjet],
     )
 
@@ -117,14 +123,14 @@ if __name__ == "__main__":
                             lgI_per_element={
                                 Element.H: stats.norm.rvs(loc=-4.25 - 7.8, scale=0.05),
                             },
-                            alpha=initial_guess_pl_index(center=2.6),
+                            alpha=initial_guess_pl_index(center=2.3),
                             R0=1e6,
                         ),
                         SharedPowerLawSpectrum(
                             lgI_per_element={
                                 Element.He: stats.norm.rvs(loc=-4.8 - 7.8, scale=0.05),
                             },
-                            alpha=initial_guess_pl_index(center=2.6),
+                            alpha=initial_guess_pl_index(center=2.3),
                             R0=1e6,
                         ),
                     ],
