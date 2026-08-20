@@ -1,3 +1,5 @@
+from argparse import ArgumentParser
+
 import numpy as np
 from scipy import stats  # type: ignore
 
@@ -9,6 +11,7 @@ from cr_knee_fit.analysis import (
 )
 from cr_knee_fit.cr_model import (
     CosmicRaysModel,
+    ExpCutoffConfig,
     LognormalSourceMaxAccelerationConfig,
     PopulationMetadata,
     SharedPowerLawSpectrum,
@@ -23,10 +26,17 @@ from cr_knee_fit.guesses import (
 )
 from cr_knee_fit.local import LocalRunOptions, guess_analysis_name, run_local
 from cr_knee_fit.model import Model
+from cr_knee_fit.plotting import PosteriorPlotConfig
 
 if __name__ == "__main__":
-    opts = LocalRunOptions.parse()
-    analysis_name = guess_analysis_name(__file__)
+    p = ArgumentParser()
+    p.add_argument("--low-cut", action="store_true")
+    opts = LocalRunOptions.parse(p)
+    low_cut: bool = opts.args_raw.low_cut
+    analysis_name = guess_analysis_name(__file__, opts)
+
+    if low_cut:
+        analysis_name += "_lowcut"
 
     ams02_ratios = [
         Element.B / Element.C,
@@ -90,11 +100,7 @@ if __name__ == "__main__":
         ]
         + [SpectrumDataConfig(experiments.ams02, element) for element in elements]
         + [SpectrumDataConfig(experiments.dampe, element) for element in elements]
-        + [SpectrumDataConfig(experiments.calet, element) for element in elements]
-        + [
-            SpectrumDataConfig(experiments.kascade_re_qgsjet, element)
-            for element in Element.regular()
-        ],
+        + [SpectrumDataConfig(experiments.calet, element) for element in elements],
         lnA=[experiments.lhaaso_qgsjet],
     ).excluding(fit_data_config)
 
@@ -141,14 +147,16 @@ if __name__ == "__main__":
                             fixed_beta=1.0,
                         )
                     ),
-                    # cutoff_lower=(  # type: ignore
-                    #     initial_guess_cutoff(
-                    #         ExpCutoffConfig(
-                    #             lg_cut_prior_limits=(3, 6),
-                    #             lg_cut_hint=5,
-                    #         )
-                    #     )
-                    # ),
+                    cutoff_lower=(
+                        initial_guess_cutoff(
+                            ExpCutoffConfig(
+                                lg_cut_prior_limits=(3, 6),
+                                lg_cut_hint=5,
+                            )
+                        )
+                        if low_cut
+                        else None
+                    ),
                     population_meta=PopulationMetadata(name="HE", linestyle=":"),
                 )
             ],
@@ -163,15 +171,20 @@ if __name__ == "__main__":
         name=analysis_name,
         fit_data=fit_data_config,
         mcmc=McmcConfig(
-            n_steps=30000,
+            n_steps=20000,
             n_walkers=256,
-            processes=10,
+            processes=11,
             reuse_saved=True,
             runtime_thinning=100,
         ),
         generate_guess=generate_guess,
         plots=PlotsConfig(
             validation_data_config=validation_data_config,
+            elements=PosteriorPlotConfig(
+                ylim_override=(3e3, 5e4),
+                population_contribs_best_fit=True,
+            ),
+            corner=False,
         ),
     )
     config.optimizer = "minuit"

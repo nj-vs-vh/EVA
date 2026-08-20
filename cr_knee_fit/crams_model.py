@@ -546,6 +546,8 @@ class CramsModel(Packable[CramsModelConfig]):
                     lgR = np.log10(R)
                     if spline := self._lg_spectrum_spline(element):
                         lg_res = spline(lgR)
+                        # we explicitly set extrapolation to low R to NaN
+                        lg_res[lgR < self.crams_lgR_grid[0]] = np.nan
                     else:
                         return np.zeros_like(R)
             return 10**lg_res

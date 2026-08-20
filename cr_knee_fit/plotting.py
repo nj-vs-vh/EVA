@@ -205,6 +205,22 @@ class PosteriorPlotConfig:
 
     population_contribs_best_fit: bool = False
 
+    ylim_override: tuple[float | None, float | None] | None = None
+    xlim_override: tuple[float | None, float | None] | None = None
+
+    def apply_limits(
+        self, ax: Axes, data_ylim: tuple[float, float], data_xlim: tuple[float, float]
+    ) -> None:
+        if self.ylim_override is not None:
+            ax.set_ylim(*self.ylim_override)
+        elif self.max_margin_around_data is not None:
+            clamp_log_margin(ax, data_ylim, self.max_margin_around_data)
+
+        if self.xlim_override:
+            ax.set_xlim(*self.xlim_override)
+        else:
+            ax.set_xlim(data_xlim)
+
 
 @dataclasses.dataclass
 class PlotExportOpts:
@@ -214,6 +230,9 @@ class PlotExportOpts:
 @dataclasses.dataclass
 class PlotsConfig:
     validation_data_config: DataConfig | None = None
+
+    corner: bool = True
+
     elements: PosteriorPlotConfig = PosteriorPlotConfig()
     all_particle: PosteriorPlotConfig = PosteriorPlotConfig()
     all_particle_elements_contribution: PosteriorPlotConfig | None = PosteriorPlotConfig()
@@ -229,7 +248,7 @@ class PlotsConfig:
 
 def plot_everything(
     plots_config: PlotsConfig,
-    theta_sample: np.ndarray,
+    theta_sample: np.ndarray | list[Model],
     theta_bestfit: np.ndarray,
     model_config: ModelConfig,
     spectra_scale: float,
@@ -322,29 +341,27 @@ def plot_everything(
                 exp.name, (exp.legend_artist(True), exp.name)
             )
 
-    # FIXME:
-    # - plot only dataset element
-    # - cache models for sample points to benefit from cached CRAMS runs
-    comp_data_ylim = merged_lims([sp.scaled_flux(spectra_scale) for sp in plotted_elem_spectra])
-    comp_data_Elim = merged_lims([sp.E for sp in plotted_elem_spectra])
-    comp_Elim = add_log_margin(*comp_data_Elim)
+    elem_data_ylim = merged_lims([sp.scaled_flux(spectra_scale) for sp in plotted_elem_spectra])
+    elem_data_Elim = merged_lims([sp.E for sp in plotted_elem_spectra])
+    elem_Elim = add_log_margin(*elem_data_Elim)
     for element in sorted(elements_to_plot):
         plot_model_predictions(
             ax=ax_el,
             observable=lambda model, E: model.compute_spectrum(E, element=element, quantity="E"),  # noqa: B023
-            E_bounds=comp_Elim,
+            E_bounds=elem_Elim,
             plot_config=plots_config.elements,
             color=element.color,
         )
         element_legend_items.append((legend_artist_line(element.color), element.name))
 
+    # FIXME: include CRAMS here
     if plots_config.elements.population_contribs_best_fit and len(best_fit_model.populations) > 1:
         multipop_elements = [
             element
             for element in Element.regular()
             if len([pop for pop in best_fit_model.populations if element in pop.all_elements]) > 1
         ]
-        E_grid = np.geomspace(*comp_Elim, 300)
+        E_grid = np.geomspace(*elem_Elim, 300)
         E_factor = E_grid**spectra_scale
         for pop in best_fit_model.populations:
             for element in pop.resolved_elements:
@@ -358,9 +375,7 @@ def plot_everything(
                     linestyle=pop.linestyle,
                 )
 
-    if plots_config.elements.max_margin_around_data is not None:
-        clamp_log_margin(ax_el, comp_data_ylim, plots_config.elements.max_margin_around_data)
-    ax_el.set_xlim(*comp_Elim)
+    plots_config.elements.apply_limits(ax_el, data_ylim=elem_data_ylim, data_xlim=elem_Elim)
 
     # all-particle spectra
     if fit_data.all_particle_spectra or validation_data.all_particle_spectra:
@@ -439,11 +454,7 @@ def plot_everything(
                     linestyle=pop.linestyle,
                 )
 
-        if plots_config.all_particle.max_margin_around_data is not None:
-            clamp_log_margin(
-                ax_all, all_data_ylim, plots_config.all_particle.max_margin_around_data
-            )
-        ax_all.set_xlim(*all_Elim)
+        plots_config.all_particle.apply_limits(ax_all, data_ylim=all_data_ylim, data_xlim=all_Elim)
 
     # <lnA>
     if fit_data.lnA or validation_data.lnA:
@@ -480,9 +491,7 @@ def plot_everything(
         ax_lnA.set_xlabel(E_GEV_LABEL)
         ax_lnA.set_ylabel(LN_A_LABEL)
         add_elements_lnA_secondary_axis(ax_lnA)
-        if plots_config.lnA.max_margin_around_data is not None:
-            clamp_log_margin(ax_lnA, lnA_data_ylim, plots_config.lnA.max_margin_around_data)
-        ax_lnA.set_xlim(*lnA_Elim)
+        plots_config.lnA.apply_limits(ax_lnA, data_ylim=lnA_data_ylim, data_xlim=lnA_Elim)
 
     # experimental energy scale shifts
     exp_indices = np.arange(len(model_config.shifted_experiments))

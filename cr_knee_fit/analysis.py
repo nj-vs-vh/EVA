@@ -6,7 +6,6 @@ import math
 import multiprocessing
 import os
 import shutil
-import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -127,8 +126,14 @@ class FitConfig(pydantic.BaseModel):
         raise ValueError(f"Failed to generate valid model in {n_try} tries")
 
 
+startup_time = time.time()
+
+
 def print_delim():
-    print("\n" + "=" * 15 + "\n" + datetime.datetime.now().isoformat(sep=" ", timespec="seconds"))  # noqa: DTZ005
+    dt = datetime.datetime.now().isoformat(sep=" ", timespec="seconds")  # noqa: DTZ005
+    elapsed_min = (time.time() - startup_time) / 60
+    elapsed_hrs = elapsed_min / 60
+    print("\n" + "=" * 15 + "\n" + f"{dt}; runtime: {elapsed_min:.2g} min = {elapsed_hrs:.2g} hrs")
 
 
 @dataclasses.dataclass
@@ -232,9 +237,7 @@ def run_mcmc(
             ndim=ndim,
             log_prob_fn=logposterior,
             args=(
-                # on macos passing fit data through a global variable doesn't work
-                # probably because it's using "spawn" multiprocessing method
-                fit_data if sys.platform == "darwin" else None,
+                None,  # fit data is set in the global variable by the initializer
                 config.model,
             ),
             pool=pool,
@@ -246,19 +249,23 @@ def run_mcmc(
         try:
             sampler.get_log_prob()
             initial_state = None
-            steps_to_run = (
-                mcmc_conf.n_steps - sampler.iteration * thin_by
-            )  # NOTE: this assumes thin_by doesn change across sampling runs, which might not be true
+            steps_already_run = sampler.iteration * thin_by
+            # NOTE: this assumes thin_by doesn change across sampling runs, which might not be true
+            steps_to_run = mcmc_conf.n_steps - steps_already_run
             print(f"Continuing previously started sampling saved in {backend.filename}")
         except AttributeError:
             print("Saved state not found, initializing sampler from initial guesses")
             initial_state = np.array(
                 [config.generate_initial_guess(fit_data).pack() for _ in range(mcmc_conf.n_walkers)]
             )
+            steps_already_run = 0
             steps_to_run = mcmc_conf.n_steps
 
         if steps_to_run <= 0:
-            print(f"Seems like enough samples has been drawn (>={mcmc_conf.n_steps})")
+            print(
+                "Seems like enough samples has been drawn: "
+                + f"{steps_already_run} >= {mcmc_conf.n_steps}"
+            )
             sampling_time_msg = "Existing chain reused"
         else:
             thinned_steps = math.ceil(steps_to_run / thin_by)
@@ -286,7 +293,8 @@ def run_mcmc(
             print("Computing autocorr time...")
             tau = sampler.get_autocorr_time(quiet=True)
             print(f"{tau = }")
-            tau_eff = float(np.quantile(tau[np.isfinite(tau)], q=0.95))
+            # tau_eff = float(np.quantile(tau[np.isfinite(tau)], q=0.95))
+            tau_eff = np.median(tau)
 
         print(f"Effective tau = {tau_eff}...")
         burn_in = int(5 * tau_eff)
@@ -465,38 +473,46 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
     print("Median model:")
     median_model.print_params()
 
-    model_sample = [Model.unpack(theta, layout_info=config.model) for theta in theta_sample]
-    loglike_values = [loglikelihood(model, fit_data, config=config.model) for model in model_sample]
+    samples_to_search_for_best = 1000
+    print(f"Computing loglikelihood for the first {samples_to_search_for_best} samples")
+    model_sample = [
+        Model.unpack(theta, layout_info=config.model)
+        for theta in theta_sample[:samples_to_search_for_best, :]
+    ]
+    loglike_values = [logposterior(model, fit_data, config=config.model) for model in model_sample]
     best_fit_idx = np.argmax(loglike_values)
     print(f"Best-fitting model idx: {best_fit_idx}; loglike = {loglike_values[best_fit_idx]}")
     posterior_best_model = model_sample[best_fit_idx]
 
-    print_delim()
-    print("Plotting corner plot of the posterior")
-    sample_to_plot = theta_sample
-    sample_labels = ["$" + label + "$" for label in initial_guess.labels(latex=True)]
-    fig_corner: Figure = corner.corner(
-        sample_to_plot,
-        labels=sample_labels,
-        show_titles=True,
-        quantiles=[0.05, 0.5, 0.95],
-    )
-    fig_corner.savefig(outdir / "corner.png")
+    if config.plots.corner:
+        print_delim()
+        print("Plotting corner plot of the posterior")
+        sample_to_plot = theta_sample
+        sample_labels = ["$" + label + "$" for label in initial_guess.labels(latex=True)]
+        fig_corner: Figure = corner.corner(
+            sample_to_plot,
+            labels=sample_labels,
+            show_titles=True,
+            quantiles=[0.05, 0.5, 0.95],
+        )
+        fig_corner.savefig(outdir / "corner.png")
 
     print_delim()
     print("Plotting best-fitting model from the posterior sample")
-
     posterior_best_model.plot_spectra(
         fit_data, scale=scale, validation_data=validation_data
     ).savefig(outdir / "best-fitting-posterior-point.png")
     posterior_best_model.plot_abundances().savefig(outdir / "abundances.png")
 
     print_delim()
-    print("Running ML analysis from the best-fitting posterior point")
     posterior_ml_dump = outdir / "mle-map.txt"
     if loaded := load_saved(posterior_ml_dump):
+        print(f"Loaded ML analysis result from {posterior_ml_dump}")
         posterior_ml_best = loaded
+        loglike = loglikelihood(posterior_ml_best, fit_data, posterior_ml_best.layout_info())
+        print(f"Loglike: {loglike}")
     else:
+        print("Running ML analysis from the best-fitting posterior point")
         posterior_ml_best, gof = run_ml_analysis(
             config=config,
             fit_data=fit_data,
@@ -520,7 +536,7 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
     best_fit_model = posterior_ml_best or posterior_best_model
     fig = plot_everything(
         plots_config=config.plots,
-        theta_sample=theta_sample,
+        theta_sample=model_sample,
         theta_bestfit=best_fit_model.pack(),
         model_config=config.model,
         spectra_scale=scale,
@@ -531,6 +547,9 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
     if config.plots.export_opts.main is not None:
         export_fig(fig, filename=config.plots.export_opts.main)
     fig.savefig(outdir / "model.png")
+
+    print_delim()
+    print("Bye!")
 
 
 if __name__ == "__main__":
