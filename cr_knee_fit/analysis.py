@@ -460,23 +460,14 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
         )
         mle_model.save(mle_model_dump, header=[f"GoF: {gof}"])
 
-    # plot_and_print_model(
-    #     outdir=outdir,
-    #     dirname="errcov-sampled",
-    #     model=Model.unpack(mle_model.sample_errcov(), mle_model.layout_info()),
-    #     fit_data=fit_data,
-    #     validation_data=validation_data,
-    #     scale=scale,
-    # )
-
-    # plot_and_print_model(
-    #     outdir=outdir,
-    #     dirname="mle-prelim",
-    #     model=mle_model,
-    #     fit_data=fit_data,
-    #     validation_data=validation_data,
-    #     scale=scale,
-    # )
+    plot_and_print_model(
+        outdir=outdir,
+        dirname="mle-prelim",
+        model=mle_model,
+        fit_data=fit_data,
+        validation_data=validation_data,
+        scale=scale,
+    )
 
     print_delim()
     print("Running bayesian analysis...")

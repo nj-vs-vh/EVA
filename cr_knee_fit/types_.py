@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Self, TypeVar
 
 import numpy as np
-from scipy import stats
+from scipy import stats  # type: ignore
 
 LayoutInfo = TypeVar("LayoutInfo")
 

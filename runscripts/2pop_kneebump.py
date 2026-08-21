@@ -1,3 +1,4 @@
+import argparse
 
 import numpy as np
 from crams import LognormalRmaxDistribution, PropagationParams
@@ -25,13 +26,20 @@ from cr_knee_fit.guesses import (
     initial_guess_energy_shifts,
     initial_guess_pl_index,
 )
-from cr_knee_fit.local import LocalRunOptions, guess_analysis_name, run_local
+from cr_knee_fit.local import LocalRunOptions, get_analysis_name, run_local
 from cr_knee_fit.model import Model
 from cr_knee_fit.plotting import PosteriorPlotConfig
 
 if __name__ == "__main__":
-    opts = LocalRunOptions.parse()
-    analysis_name = guess_analysis_name(__file__, opts)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--three-pop", action="store_true")
+    opts = LocalRunOptions.parse(parser)
+    analysis_name = get_analysis_name(__file__, opts)
+    is_3pop = opts.args_raw.three_pop
+    if is_3pop:
+        analysis_name = analysis_name.replace("2", "3")
+
+    print(f"Analysis name: {analysis_name}")
 
     ams02_ratios = [
         Element.B / Element.C,
@@ -134,51 +142,79 @@ if __name__ == "__main__":
 
         crams.propagation.D_0_cm2_sec += 1e28  # init value compensation for HE population tail
 
-        return Model(
-            populations=[
+        populations = [
+            CosmicRaysModel(
+                base_spectra=[
+                    SharedPowerLawSpectrum(
+                        lgI_per_element={
+                            Element.H: stats.norm.rvs(loc=-12, scale=0.05),
+                            Element.He: stats.norm.rvs(loc=-12.6, scale=0.05),
+                            Element.C: stats.norm.rvs(loc=-14, scale=0.05),
+                            Element.O: stats.norm.rvs(loc=-14.1, scale=0.05),
+                            Element.Fe: stats.norm.rvs(loc=-15, scale=0.05),
+                        },
+                        alpha=initial_guess_pl_index(center=2.24),
+                        R0=1e6,
+                    ),
+                    # SharedPowerLawSpectrum(
+                    #     lgI_per_element={
+                    #         Element.He: stats.norm.rvs(loc=-4.8 - 7.8, scale=0.05),
+                    #     },
+                    #     alpha=initial_guess_pl_index(center=2.3),
+                    #     R0=1e6,
+                    # ),
+                ],
+                cutoff=initial_guess_cutoff(
+                    LognormalSourceMaxAccelerationConfig(
+                        lg_cut_hint=6.4,
+                        lg_cut_prior_limits=(5.5, 8),
+                        fixed_beta=1.0,
+                    )
+                ),
+                cutoff_lower=(
+                    initial_guess_cutoff(
+                        ExpCutoffConfig(
+                            lg_cut_prior_limits=(3, 6),
+                            lg_cut_hint=5,
+                            lg_sharpness_prior_limits=(
+                                omega2lg_sharpness(3),
+                                omega2lg_sharpness(1.0),
+                            ),
+                        )
+                    )
+                ),
+                population_meta=PopulationMetadata(name="HE", linestyle=":"),
+            )
+        ]
+
+        if is_3pop:
+            populations.append(
                 CosmicRaysModel(
                     base_spectra=[
                         SharedPowerLawSpectrum(
                             lgI_per_element={
-                                Element.H: stats.norm.rvs(loc=-12, scale=0.05),
-                                Element.He: stats.norm.rvs(loc=-12.6, scale=0.05),
-                                Element.C: stats.norm.rvs(loc=-14, scale=0.05),
-                                Element.O: stats.norm.rvs(loc=-17, scale=0.05),
-                                Element.Fe: stats.norm.rvs(loc=-15, scale=0.05),
+                                Element.H: stats.norm.rvs(loc=-10.5, scale=0.05),
+                                Element.He: stats.norm.rvs(loc=-10.8, scale=0.05),
+                                # Element.C: stats.norm.rvs(loc=-12.5, scale=0.05),
+                                # Element.O: stats.norm.rvs(loc=-12.5, scale=0.05),
+                                # Element.Fe: stats.norm.rvs(loc=-14.0, scale=0.05),
                             },
-                            alpha=initial_guess_pl_index(center=2.24),
+                            alpha=initial_guess_pl_index(center=2.0),
                             R0=1e6,
                         ),
-                        # SharedPowerLawSpectrum(
-                        #     lgI_per_element={
-                        #         Element.He: stats.norm.rvs(loc=-4.8 - 7.8, scale=0.05),
-                        #     },
-                        #     alpha=initial_guess_pl_index(center=2.3),
-                        #     R0=1e6,
-                        # ),
                     ],
                     cutoff=initial_guess_cutoff(
-                        LognormalSourceMaxAccelerationConfig(
-                            lg_cut_hint=6.4,
-                            lg_cut_prior_limits=(5, 8),
-                            fixed_beta=1.0,
+                        ExpCutoffConfig(
+                            lg_cut_prior_limits=(3, 5.5),
+                            lg_cut_hint=4.5,
                         )
                     ),
-                    cutoff_lower=(
-                        initial_guess_cutoff(
-                            ExpCutoffConfig(
-                                lg_cut_prior_limits=(3, 6),
-                                lg_cut_hint=5,
-                                lg_sharpness_prior_limits=(
-                                    omega2lg_sharpness(3),
-                                    omega2lg_sharpness(1.0),
-                                ),
-                            )
-                        )
-                    ),
-                    population_meta=PopulationMetadata(name="HE", linestyle=":"),
+                    population_meta=PopulationMetadata(name="LS", linestyle="-."),
                 )
-            ],
+            )
+
+        return Model(
+            populations=populations,
             crams=crams,
             energy_shifts=initial_guess_energy_shifts(
                 fit_data_config.experiments_spectra,
