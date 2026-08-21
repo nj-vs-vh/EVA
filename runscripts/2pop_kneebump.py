@@ -1,4 +1,3 @@
-from argparse import ArgumentParser
 
 import numpy as np
 from crams import LognormalRmaxDistribution, PropagationParams
@@ -31,14 +30,8 @@ from cr_knee_fit.model import Model
 from cr_knee_fit.plotting import PosteriorPlotConfig
 
 if __name__ == "__main__":
-    p = ArgumentParser()
-    p.add_argument("--low-cut", action="store_true")
-    opts = LocalRunOptions.parse(p)
-    low_cut: bool = opts.args_raw.low_cut
+    opts = LocalRunOptions.parse()
     analysis_name = guess_analysis_name(__file__, opts)
-
-    if low_cut:
-        analysis_name += "_lowcut"
 
     ams02_ratios = [
         Element.B / Element.C,
@@ -81,8 +74,11 @@ if __name__ == "__main__":
             for element in elements
         ]
         + [SpectrumDataConfig(experiments.dampe, element) for element in elements]
-        # + [SpectrumDataConfig.allparticle(lhaaso)]
-        + [SpectrumDataConfig(lhaaso, element) for element in elements],
+        + [SpectrumDataConfig(experiments.calet, element) for element in elements]
+        + [
+            SpectrumDataConfig(lhaaso, Element.H),  # , bounds=(3e5, np.inf)),
+            SpectrumDataConfig(lhaaso, Element.He),
+        ],
         flux_ratios=[
             FluxRatioDataConfig(experiments.ams02, ratio, Q_bounds=(10.0, np.inf))
             for ratio in ams02_ratios
@@ -95,7 +91,6 @@ if __name__ == "__main__":
             ]
         ],
         lnA=[lhaaso],
-        # mask_out_elements={Element.He: (1e5, 1e6)},
     )
 
     validation_data_config = DataConfig(
@@ -108,6 +103,10 @@ if __name__ == "__main__":
         + [SpectrumDataConfig(experiments.ams02, element) for element in elements]
         + [SpectrumDataConfig(experiments.dampe, element) for element in elements]
         + [SpectrumDataConfig(experiments.calet, element) for element in elements],
+        flux_ratios=[
+            FluxRatioDataConfig(experiments.calet, ratio)
+            for ratio in [Element.B / Element.C, Element.C / Element.O, Element.H / Element.He]
+        ],
         lnA=[lhaaso],
     ).excluding(fit_data_config)
 
@@ -141,13 +140,13 @@ if __name__ == "__main__":
                     base_spectra=[
                         SharedPowerLawSpectrum(
                             lgI_per_element={
-                                Element.H: stats.norm.rvs(loc=-4.25 - 7.8, scale=0.05),
-                                Element.He: stats.norm.rvs(loc=-4.8 - 7.8, scale=0.05),
-                                Element.C: stats.norm.rvs(loc=-6.8 - 7.8, scale=0.05),
-                                Element.O: stats.norm.rvs(loc=-6.8 - 7.8, scale=0.05),
-                                Element.Fe: stats.norm.rvs(loc=-8.0 - 7.8, scale=0.05),
+                                Element.H: stats.norm.rvs(loc=-12, scale=0.05),
+                                Element.He: stats.norm.rvs(loc=-12.6, scale=0.05),
+                                Element.C: stats.norm.rvs(loc=-14, scale=0.05),
+                                Element.O: stats.norm.rvs(loc=-17, scale=0.05),
+                                Element.Fe: stats.norm.rvs(loc=-15, scale=0.05),
                             },
-                            alpha=initial_guess_pl_index(center=2.3),
+                            alpha=initial_guess_pl_index(center=2.24),
                             R0=1e6,
                         ),
                         # SharedPowerLawSpectrum(
@@ -160,7 +159,7 @@ if __name__ == "__main__":
                     ],
                     cutoff=initial_guess_cutoff(
                         LognormalSourceMaxAccelerationConfig(
-                            lg_cut_hint=6.65,
+                            lg_cut_hint=6.4,
                             lg_cut_prior_limits=(5, 8),
                             fixed_beta=1.0,
                         )
@@ -176,8 +175,6 @@ if __name__ == "__main__":
                                 ),
                             )
                         )
-                        if low_cut
-                        else None
                     ),
                     population_meta=PopulationMetadata(name="HE", linestyle=":"),
                 )

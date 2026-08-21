@@ -510,6 +510,8 @@ def transform_KISS() -> None:
         "AMS-02_He_O_rigidity.txt",
         "DAMPE_B_C_kineticEnergyPerNucleon.txt",
         "DAMPE_B_O_kineticEnergyPerNucleon.txt",
+        "CALET_B_C_kineticEnergyPerNucleon.txt",
+        "CALET_C_O_kineticEnergyPerNucleon.txt",
     ):
         output = input.replace("_rigidity", "_ratio_rigidity").replace(
             "_kineticEnergyPerNucleon", "_ratio_energy_per_nucleon"

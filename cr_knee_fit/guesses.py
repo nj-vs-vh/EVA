@@ -72,7 +72,7 @@ def initial_guess_cutoff(
         case LognormalSourceMaxAccelerationConfig():
             return LognormalSourceMaxAcceleration(
                 lg_cut=lg_cut,
-                sigma=stats.uniform.rvs(0.2, 0.3),
+                sigma=stats.uniform.rvs(0.3, 0.5),
                 beta=c.fixed_beta or stats.norm.rvs(loc=0.0, scale=1),
                 config=c,
             )

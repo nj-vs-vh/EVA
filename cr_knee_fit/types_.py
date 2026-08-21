@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Self, TypeVar
 
 import numpy as np
+from scipy import stats
 
 LayoutInfo = TypeVar("LayoutInfo")
 
@@ -94,13 +95,33 @@ class Packable[LayoutInfo](abc.ABC):
     def print_params(self):
         print(self.format_params())
 
+    def set_errcov(self, errcov: np.ndarray) -> None:
+        assert errcov.shape == (self.size, self.size), (
+            f"Errcov matrix set with incorrect shape, expected {self.size}x{self.size}, found {errcov.shape}"
+        )
+        self._errcov = errcov
+
+    @property
+    def errcov(self) -> np.ndarray | None:
+        try:
+            return self._errcov
+        except AttributeError:
+            return None
+
+    def sample_errcov(self) -> np.ndarray | None:
+        cov = self.errcov
+        if cov is None:
+            return None
+        return stats.multivariate_normal.rvs(mean=self.pack(), cov=cov)  # type: ignore
+
     def save(self, path: Path, header: list[str] | None = None) -> None:
+        dumped_on = f"Dumped on: {datetime.datetime.now()}"  # noqa: DTZ005
         np.savetxt(
             path,
             self.pack(),
             header="\n".join(
                 [
-                    f"Dumped on: {datetime.datetime.now()}",  # noqa: DTZ005
+                    dumped_on,
                     f"Layout info: {self.layout_info()}",
                     *(header or []),
                     "Human readable:",
@@ -108,11 +129,30 @@ class Packable[LayoutInfo](abc.ABC):
                 ]
             ),
         )
+        if self.errcov is not None:
+            np.savetxt(
+                _errcov_path(path),
+                self.errcov,
+                header="\n".join(
+                    [
+                        dumped_on,
+                        f"Error covariance for the model stored in {path.resolve()}",
+                    ]
+                ),
+            )
 
     @classmethod
     def load(cls: type[Self], path: Path, layout_info: LayoutInfo) -> Self | None:
         try:
             theta = np.loadtxt(path)
-            return cls.unpack(theta, layout_info=layout_info)
+            res = cls.unpack(theta, layout_info=layout_info)
+            errcov_path = _errcov_path(path)
+            if errcov_path.exists():
+                res.set_errcov(np.loadtxt(errcov_path))
+            return res
         except FileNotFoundError:
             return None
+
+
+def _errcov_path(path: Path) -> Path:
+    return path.with_stem(path.stem + ".errcov")

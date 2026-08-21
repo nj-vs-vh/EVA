@@ -190,6 +190,7 @@ def run_ml_analysis(
     print("Optimization result:")
     print(res)
     map_model = Model.unpack(res.x, layout_info=model_config)
+    map_model.set_errcov(res.hess_inv)
 
     max_logpost = -res.fun
     gof = GoodnessOfFit(
@@ -211,6 +212,7 @@ def run_mcmc(
     fit_data: Data,
     outdir: Path,
     sample_path: Path,
+    mle_model: Model | None,
 ) -> np.ndarray:
     ndim = config.generate_initial_guess(fit_data).ndim()
 
@@ -254,10 +256,34 @@ def run_mcmc(
             steps_to_run = mcmc_conf.n_steps - steps_already_run
             print(f"Continuing previously started sampling saved in {backend.filename}")
         except AttributeError:
-            print("Saved state not found, initializing sampler from initial guesses")
-            initial_state = np.array(
-                [config.generate_initial_guess(fit_data).pack() for _ in range(mcmc_conf.n_walkers)]
-            )
+            print("Saved state not found, starting run from scratch")
+            initial_state_samples: list[np.ndarray] = []
+            if mle_model is not None and mle_model.sample_errcov() is not None:
+                print("Initializing sampler around MLE model...")
+                for _i_walker in range(mcmc_conf.n_walkers):
+                    print(_i_walker)
+                    n_try = 1_000
+                    for _i_try in range(n_try):
+                        theta = mle_model.sample_errcov()
+                        if theta is None:
+                            continue
+                        if np.isfinite(logposterior(theta, fit_data, config.model)):
+                            initial_state_samples.append(theta)
+                            break
+                    else:
+                        print(
+                            f"Couldn't sample a valid model from errcov in {n_try} tries :( Initializing this walker with initial guess..."
+                        )
+                        initial_state_samples.append(config.generate_initial_guess(fit_data).pack())
+            else:
+                print("Initializing sampler initial guesses...")
+                initial_state_samples = [
+                    config.generate_initial_guess(fit_data).pack()
+                    for _ in range(mcmc_conf.n_walkers)
+                ]
+
+            initial_state = np.array(initial_state_samples)
+
             steps_already_run = 0
             steps_to_run = mcmc_conf.n_steps
 
@@ -434,14 +460,23 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
         )
         mle_model.save(mle_model_dump, header=[f"GoF: {gof}"])
 
-    plot_and_print_model(
-        outdir=outdir,
-        dirname="mle-prelim",
-        model=mle_model,
-        fit_data=fit_data,
-        validation_data=validation_data,
-        scale=scale,
-    )
+    # plot_and_print_model(
+    #     outdir=outdir,
+    #     dirname="errcov-sampled",
+    #     model=Model.unpack(mle_model.sample_errcov(), mle_model.layout_info()),
+    #     fit_data=fit_data,
+    #     validation_data=validation_data,
+    #     scale=scale,
+    # )
+
+    # plot_and_print_model(
+    #     outdir=outdir,
+    #     dirname="mle-prelim",
+    #     model=mle_model,
+    #     fit_data=fit_data,
+    #     validation_data=validation_data,
+    #     scale=scale,
+    # )
 
     print_delim()
     print("Running bayesian analysis...")
@@ -450,7 +485,7 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
         return
     print(f"MCMC config: {config.mcmc}")
 
-    ndim = config.generate_initial_guess(fit_data).ndim()
+    ndim = config.generate_initial_guess(None).ndim()
     print(f"N dim = {ndim}")
 
     sample_path = outdir / "theta.txt"
@@ -466,6 +501,7 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
             fit_data=fit_data,
             outdir=outdir,
             sample_path=sample_path,
+            mle_model=mle_model,
         )
 
     print(f"MCMC sample ready, shape: {theta_sample.shape}")
