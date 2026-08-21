@@ -1,6 +1,7 @@
 from argparse import ArgumentParser
 
 import numpy as np
+from crams import LognormalRmaxDistribution, PropagationParams
 from scipy import stats  # type: ignore
 
 from cr_knee_fit import experiments
@@ -15,6 +16,7 @@ from cr_knee_fit.cr_model import (
     LognormalSourceMaxAccelerationConfig,
     PopulationMetadata,
     SharedPowerLawSpectrum,
+    omega2lg_sharpness,
 )
 from cr_knee_fit.crams_model import FREE, CramsModel
 from cr_knee_fit.elements import Element
@@ -97,7 +99,9 @@ if __name__ == "__main__":
         spectra=[
             SpectrumDataConfig.allparticle(experiments.hawc),
             SpectrumDataConfig.allparticle(experiments.lhaaso_qgsjet),
+            SpectrumDataConfig.allparticle(experiments.kascade_re_qgsjet),
         ]
+        + [SpectrumDataConfig(experiments.grapes, Element.H)]
         + [SpectrumDataConfig(experiments.ams02, element) for element in elements]
         + [SpectrumDataConfig(experiments.dampe, element) for element in elements]
         + [SpectrumDataConfig(experiments.calet, element) for element in elements],
@@ -107,19 +111,26 @@ if __name__ == "__main__":
     def generate_guess() -> Model:
         crams = CramsModel.make(
             up2PeV=True,
-            source_feature="erfc-cutoff",
             randomize_init=True,
-            freeze_propagation=True,
+            freeze_propagation=PropagationParams(
+                H_kpc=7.0,
+                v_A_km_sec=0.0001,
+                R_b_GV=FREE,
+                delta=0.469,
+                ddelta=FREE,
+                D_0_cm2_sec=FREE,
+                X_src=-1.0,
+                phi=0.631,
+            ),
+            source_feature=LognormalRmaxDistribution(
+                R_mean_GV=FREE,
+                sigma=FREE,
+                beta=1.0,
+            ),
         )
         crams.config.population_meta = PopulationMetadata(name="LE", linestyle="--")
 
-        # TODO: proper way to specify frozen/free params in CramsModel initializer directly
-
-        crams.config.frozen_propagation.D_0_cm2_sec = FREE
-        crams.propagation.D_0_cm2_sec = stats.norm.rvs(2.376e28, 1e27)
-
-        crams.config.frozen_propagation.ddelta = FREE
-        crams.propagation.ddelta = stats.norm.rvs(0.27, 0.05)
+        crams.propagation.D_0_cm2_sec += 1e28  # init value compensation for HE population tail
 
         return Model(
             populations=[
@@ -128,17 +139,21 @@ if __name__ == "__main__":
                         SharedPowerLawSpectrum(
                             lgI_per_element={
                                 Element.H: stats.norm.rvs(loc=-4.25 - 7.8, scale=0.05),
-                            },
-                            alpha=initial_guess_pl_index(center=2.3),
-                            R0=1e6,
-                        ),
-                        SharedPowerLawSpectrum(
-                            lgI_per_element={
                                 Element.He: stats.norm.rvs(loc=-4.8 - 7.8, scale=0.05),
+                                Element.C: stats.norm.rvs(loc=-6.8 - 7.8, scale=0.05),
+                                Element.O: stats.norm.rvs(loc=-6.8 - 7.8, scale=0.05),
+                                Element.Fe: stats.norm.rvs(loc=-8.0 - 7.8, scale=0.05),
                             },
                             alpha=initial_guess_pl_index(center=2.3),
                             R0=1e6,
                         ),
+                        # SharedPowerLawSpectrum(
+                        #     lgI_per_element={
+                        #         Element.He: stats.norm.rvs(loc=-4.8 - 7.8, scale=0.05),
+                        #     },
+                        #     alpha=initial_guess_pl_index(center=2.3),
+                        #     R0=1e6,
+                        # ),
                     ],
                     cutoff=initial_guess_cutoff(
                         LognormalSourceMaxAccelerationConfig(
@@ -152,6 +167,10 @@ if __name__ == "__main__":
                             ExpCutoffConfig(
                                 lg_cut_prior_limits=(3, 6),
                                 lg_cut_hint=5,
+                                lg_sharpness_prior_limits=(
+                                    omega2lg_sharpness(3),
+                                    omega2lg_sharpness(1.0),
+                                ),
                             )
                         )
                         if low_cut

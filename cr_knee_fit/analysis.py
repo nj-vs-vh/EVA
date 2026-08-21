@@ -133,7 +133,7 @@ def print_delim():
     dt = datetime.datetime.now().isoformat(sep=" ", timespec="seconds")  # noqa: DTZ005
     elapsed_min = (time.time() - startup_time) / 60
     elapsed_hrs = elapsed_min / 60
-    print("\n" + "=" * 15 + "\n" + f"{dt}; runtime: {elapsed_min:.2g} min = {elapsed_hrs:.2g} hrs")
+    print("\n" + "=" * 15 + "\n" + f"{dt}; runtime: {elapsed_min:.4g} min = {elapsed_hrs:.4g} hrs")
 
 
 @dataclasses.dataclass
@@ -172,7 +172,7 @@ def run_ml_analysis(
             res: optimize.OptimizeResult = optimize.minimize(
                 to_minimize,
                 x0=initial_model.pack(),
-                bounds=initial_model.ml_bounds(),
+                bounds=initial_model.bounds(),
                 method="Nelder-Mead",
                 options={
                     "maxiter": 100_000,
@@ -182,7 +182,7 @@ def run_ml_analysis(
             res = iminuit.minimize(
                 to_minimize,
                 x0=initial_model.pack(),
-                bounds=initial_model.ml_bounds(),
+                bounds=initial_model.bounds(),
                 options={"disp": True, "param_names": initial_model.labels(latex=False)},
             )
     total = time.time() - start

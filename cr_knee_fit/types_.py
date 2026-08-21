@@ -1,5 +1,8 @@
 import abc
 import datetime
+import functools
+import itertools
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Self, TypeVar
 
@@ -12,8 +15,29 @@ class Packable[LayoutInfo](abc.ABC):
     def ndim(self) -> int:
         return self.pack().size
 
+    @functools.cached_property
+    def size(self) -> int:
+        """Cached property version of ndim"""
+        return self.ndim()
+
     @abc.abstractmethod
     def pack(self) -> np.ndarray: ...
+
+    @property
+    def children(self) -> "list[Packable | None]":
+        return []
+
+    def pack_children(self) -> np.ndarray:
+        chunks = [child.pack() for child in self.children if child is not None]
+        return np.hstack(chunks)
+
+    def children_bounds(self) -> list[tuple[float, float] | None]:
+        bounds = [child.bounds() for child in self.children if child is not None]
+        return list(itertools.chain.from_iterable(bounds))
+
+    def children_labels(self, latex: bool) -> list[str]:
+        labels = [child.labels(latex) for child in self.children if child is not None]
+        return list(itertools.chain.from_iterable(labels))
 
     @abc.abstractmethod
     def labels(self, latex: bool) -> list[str]: ...
@@ -25,13 +49,13 @@ class Packable[LayoutInfo](abc.ABC):
     @abc.abstractmethod
     def unpack(cls: type[Self], theta: np.ndarray, layout_info: LayoutInfo) -> Self: ...
 
-    def ml_bounds(self) -> list[tuple[float, float] | None] | None:
-        """Bounds to be used during optimization. By default, no bounds are specified."""
-        return None
+    def bounds(self) -> Sequence[tuple[float, float] | None]:
+        """Parameter bounds to be used during inference. By default, no bounds are specified."""
+        return [None] * self.size
 
     def validate_packing(self, quiet: bool = False) -> None:
         packed = self.pack()
-        assert len(packed) == self.ndim()
+        assert len(packed) == self.size
 
         for pad_at_the_end in (0, 1, 5):
             packed_ = packed.copy()
@@ -46,11 +70,12 @@ class Packable[LayoutInfo](abc.ABC):
                     unpacked.print_params()
                 raise RuntimeError("Packing validation failed")
 
-        if bounds := self.ml_bounds():
-            assert len(bounds) == self.ndim()
+        if len(self.bounds()) != self.size:
+            print(f"Packing validation failed, wrong bounds size; expected {self.size}, found:")
+            print(self.bounds())
 
         for latex in (False, True):
-            assert len(self.labels(latex)) == self.ndim()
+            assert len(self.labels(latex)) == self.size
 
     def format_param_lines(self) -> list[str]:
         labels = self.labels(latex=False)

@@ -1,7 +1,7 @@
 import dataclasses
 import functools
 import json
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from typing import ClassVar, Literal
 
@@ -224,12 +224,12 @@ class CramsModelConfig(pydantic.BaseModel):
     @staticmethod
     def make(
         up2PeV: bool,
-        source_feature: SourceFeatureSpec,
+        source_feature: SourceFeatureSpec | InjectionBreak | LognormalRmaxDistribution,
         fit_abundances: Collection[Element] = (
             [Element.H, Element.He, Element.C, Element.N, Element.O]
             + [Element.Ne, Element.Mg, Element.Si, Element.S, Element.Fe]
         ),
-        freeze_propagation: bool = False,
+        freeze_propagation: bool | PropagationParams = False,
         freeze_injection: bool = False,
     ) -> "CramsModelConfig":
         if up2PeV:
@@ -258,6 +258,8 @@ class CramsModelConfig(pydantic.BaseModel):
                 feature = LognormalRmaxDistribution(FREE, FREE, 1.0)
             case "none":
                 feature = None
+            case InjectionBreak() | LognormalRmaxDistribution():
+                feature = source_feature
 
         if freeze_injection:
             # best-fit params from CRAMS-only fit
@@ -278,28 +280,31 @@ class CramsModelConfig(pydantic.BaseModel):
             frozen_abundances = {}
             slopes = [FREE] * 3
 
-        if freeze_propagation:
-            frozen_propagation = PropagationParams(
-                H_kpc=7.0,
-                v_A_km_sec=0.000101,
-                R_b_GV=10**2.58,
-                delta=0.469,
-                ddelta=0.319,
-                D_0_cm2_sec=3.55e28,
-                X_src=-1.0,
-                phi=0.631,
-            )
-        else:
-            frozen_propagation = PropagationParams(
-                H_kpc=7.0,
-                v_A_km_sec=FREE,
-                R_b_GV=FREE,
-                delta=FREE,
-                ddelta=FREE,
-                D_0_cm2_sec=FREE,
-                X_src=-1.0,
-                phi=FREE,
-            )
+        match freeze_propagation:
+            case PropagationParams():
+                frozen_propagation = freeze_propagation
+            case True:
+                frozen_propagation = PropagationParams(
+                    H_kpc=7.0,
+                    v_A_km_sec=0.000101,
+                    R_b_GV=10**2.58,
+                    delta=0.469,
+                    ddelta=0.319,
+                    D_0_cm2_sec=3.55e28,
+                    X_src=-1.0,
+                    phi=0.631,
+                )
+            case False:
+                frozen_propagation = PropagationParams(
+                    H_kpc=7.0,
+                    v_A_km_sec=FREE,
+                    R_b_GV=FREE,
+                    delta=FREE,
+                    ddelta=FREE,
+                    D_0_cm2_sec=FREE,
+                    X_src=-1.0,
+                    phi=FREE,
+                )
 
         return CramsModelConfig(
             runner=CramsRunnerConfig(T_sim_grid=T_sim_grid, R_out_grid=R_out_grid),
@@ -350,62 +355,45 @@ class CramsModel(Packable[CramsModelConfig]):
     @staticmethod
     def make(
         up2PeV: bool,
-        source_feature: SourceFeatureSpec,
-        freeze_propagation: bool = False,
+        source_feature: SourceFeatureSpec | InjectionBreak | LognormalRmaxDistribution,
+        freeze_propagation: bool | PropagationParams = False,
         freeze_injection: bool = False,
         randomize_init: bool = False,
     ) -> "CramsModel":
 
-        def _maybe_randomized(v: float, sigma: float) -> float:
+        def _init(v: float, sigma: float) -> float:
             if randomize_init:
                 return stats.norm.rvs(v, sigma)
             else:
                 return v
 
         init_fitted_abundances = {
-            Element.H: _maybe_randomized(4.14e-2, 1e-4),
-            Element.He: _maybe_randomized(2.04e-2, 1e-4),
-            Element.C: _maybe_randomized(4.00e-3, 1e-4),
-            Element.N: _maybe_randomized(3.83e-4, 1e-4),
-            Element.O: _maybe_randomized(7.21e-3, 1e-4),
-            Element.Ne: _maybe_randomized(1.35e-3, 1e-4),
-            Element.Mg: _maybe_randomized(2.38e-3, 1e-4),
-            Element.Si: _maybe_randomized(2.83e-3, 1e-4),
-            Element.S: _maybe_randomized(5.06e-4, 1e-4),
-            Element.Fe: _maybe_randomized(7.53e-3, 1e-4),
+            Element.H: _init(4.14e-2, 1e-4),
+            Element.He: _init(2.04e-2, 1e-4),
+            Element.C: _init(4.00e-3, 1e-4),
+            Element.N: _init(3.83e-4, 1e-4),
+            Element.O: _init(7.21e-3, 1e-4),
+            Element.Ne: _init(1.35e-3, 1e-4),
+            Element.Mg: _init(2.38e-3, 1e-4),
+            Element.Si: _init(2.83e-3, 1e-4),
+            Element.S: _init(5.06e-4, 1e-4),
+            Element.Fe: _init(7.53e-3, 1e-4),
         }
         init_fitted_slopes = [
-            _maybe_randomized(4.37, 0.05),
-            _maybe_randomized(4.30, 0.05),
-            _maybe_randomized(4.36, 0.05),
+            _init(4.37, 0.05),
+            _init(4.30, 0.05),
+            _init(4.36, 0.05),
         ]
         init_prop = PropagationParams(
-            H_kpc=_maybe_randomized(7.0, 0.1),
-            D_0_cm2_sec=_maybe_randomized(2.376e28, 1e27),
-            v_A_km_sec=_maybe_randomized(3.32, 0.1),
-            R_b_GV=_maybe_randomized(316.9, 10),
-            delta=_maybe_randomized(0.54, 0.05),
-            ddelta=_maybe_randomized(0.27, 0.05),
-            phi=_maybe_randomized(0.47, 0.05),
+            H_kpc=_init(7.0, 0.1),
+            D_0_cm2_sec=_init(2.376e28, 1e27),
+            v_A_km_sec=_init(3.32, 0.1),
+            R_b_GV=_init(316.9, 10),
+            delta=_init(0.54, 0.05),
+            ddelta=_init(0.27, 0.05),
+            phi=_init(0.47, 0.05),
             X_src=-1.0,
         )
-
-        feature: InjectionBreak | LognormalRmaxDistribution | None
-        match source_feature:
-            case "break":
-                feature = InjectionBreak(
-                    R_GV=_maybe_randomized(15e3, 1e3),
-                    delta_slope=_maybe_randomized(0.2, 0.05),
-                    omega=_maybe_randomized(0.2, 0.05),
-                )
-            case "erfc-cutoff":
-                feature = LognormalRmaxDistribution(
-                    R_mean_GV=_maybe_randomized(15e3, 1e3),
-                    sigma=_maybe_randomized(0.5, 0.05),
-                    beta=1.0,
-                )
-            case "none":
-                feature = None
 
         config = CramsModelConfig.make(
             up2PeV=up2PeV,
@@ -420,6 +408,23 @@ class CramsModel(Packable[CramsModelConfig]):
                 return v
             else:
                 return default
+
+        feature: InjectionBreak | LognormalRmaxDistribution | None
+        match config.frozen_injection.feature:
+            case InjectionBreak() as b:
+                feature = InjectionBreak(
+                    R_GV=_if_not_frozen(_init(15e3, 1e3), b.R_GV),
+                    delta_slope=_if_not_frozen(_init(0.2, 0.05), b.delta_slope),
+                    omega=_if_not_frozen(_init(0.2, 0.05), b.omega),
+                )
+            case LognormalRmaxDistribution() as ln:
+                feature = LognormalRmaxDistribution(
+                    R_mean_GV=_if_not_frozen(_init(15e3, 1e3), ln.R_mean_GV),
+                    sigma=_if_not_frozen(_init(0.5, 0.05), ln.sigma),
+                    beta=_if_not_frozen(_init(1.0, 0.05), ln.beta),
+                )
+            case None:
+                feature = None
 
         return CramsModel(
             propagation=PropagationParams(
@@ -736,7 +741,7 @@ class CramsModel(Packable[CramsModelConfig]):
             )
         )
 
-    def ml_bounds(self) -> list[tuple[float, float] | None] | None:
+    def bounds(self) -> Sequence[tuple[float, float] | None]:
         injection_bounds = [ABUNDANCE_BOUND] * len(self.injection.abundances) + [SLOPE_BOUND] * len(
             self.injection.slopes
         )
@@ -793,4 +798,4 @@ if __name__ == "__main__":
                     cm.print_params()
                     print(cm.pack())
                     cm.validate_packing()
-                    print(cm.ml_bounds())
+                    print(cm.bounds())

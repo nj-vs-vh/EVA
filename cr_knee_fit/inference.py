@@ -6,7 +6,6 @@ import numpy as np
 from scipy import stats  # type: ignore
 
 from cr_knee_fit import experiments
-from cr_knee_fit.cr_model import ExpCutoff, LognormalSourceMaxAcceleration
 from cr_knee_fit.fit_data import Data
 from cr_knee_fit.model import Model, ModelConfig
 
@@ -63,69 +62,25 @@ def get_energy_scale_lg_uncertainty(exp: experiments.Experiment) -> float:
     return energy_scale_lg_uncertainties[exp]
 
 
-def logprior(model: Model) -> float:
+def logprior(model: Model, model_packed: np.ndarray | None) -> float:
     res = 0.0
 
+    # parameter bounds check
+    for param, bound in zip(
+        (model_packed if model_packed is not None else model.pack()),
+        model.bounds(),
+        strict=True,
+    ):
+        if bound is None:
+            continue
+        min, max = bound
+        if not (min <= param <= max):
+            return -np.inf
+
+    # breaks ordering check to avoid sampling all the permutations
     for population in model.populations:
-        # breaks must be ordered to avoid ambiguity
-        breaks_lgR = [m.lg_break for m in population.breaks]
-        if breaks_lgR != sorted(breaks_lgR):
-            return -np.inf
-
-        for brk in population.breaks:
-            if not (
-                brk.config.lg_break_prior_limits[0]
-                < brk.lg_break
-                < brk.config.lg_break_prior_limits[1]
-            ):
-                return -np.inf
-            d_alpha_min, d_alpha_max = brk.config.delta_alpha_prior_limits
-            if not (d_alpha_min < brk.d_alpha < d_alpha_max):
-                return -np.inf
-            if brk.config.fixed_lg_sharpness is None:
-                s = 10**brk.lg_sharpness
-                if not (0.1 < s < 20):
-                    return -np.inf
-
-        for cutoff in (population.cutoff, population.cutoff_lower):
-            if cutoff is None:
-                continue
-            if not (
-                cutoff.config.lg_cut_prior_limits[0]
-                < cutoff.lg_cut
-                < cutoff.config.lg_cut_prior_limits[1]
-            ):
-                return -np.inf
-
-            match cutoff:
-                case ExpCutoff() as c:
-                    if c.config.fixed_lg_sharpness is None:
-                        b = 10**cutoff.lg_sharpness
-                        if not (0.1 < b < 20):
-                            return -np.inf
-                case LognormalSourceMaxAcceleration() as ln:
-                    if not 0 < ln.sigma < 10:
-                        return -np.inf
-
-        for component in population.base_spectra:
-            # ad hoc bound for all spectral normalizations to [10^-20; 10^6];
-            # this is roughly +/- 5 orders of magnitude w.r.t. values we find in the fit, so it shouldn't affect
-            # the "normal" flux estimation, but it limits the parameter space in cases where a particular spectrum
-            # is poorly or not at all constrained by data
-            if not all(-15 < lgI < 1 for lgI in component.lgI_per_element.values()):
-                return -np.inf
-
-            if (
-                component.lg_scale_contrib_to_all is not None
-                and component.lg_scale_contrib_to_all < 0
-            ):
-                return -np.inf
-
-        # other model params
-        lgK = population.all_particle_lg_shift
-        if lgK is not None and not (1 <= 10**lgK <= 2):
-            return -np.inf
-        if population.free_Z is not None and not (1 <= population.free_Z <= 26.5):
+        break_positions = [m.lg_break for m in population.breaks]
+        if break_positions != sorted(break_positions):
             return -np.inf
 
     # sigmoid prior on ratio of populations' energy densities
@@ -280,12 +235,19 @@ def set_global_fit_data(fit_data: Data):
 
 
 def logposterior(
-    model_or_theta: Model | np.ndarray, fit_data: Data | None, config: ModelConfig
+    model_or_theta: Model | np.ndarray,
+    fit_data: Data | None,
+    config: ModelConfig,
 ) -> float:
+
     model = ensure_model(model_or_theta, config)
-    logpi = logprior(model)
+    logpi = logprior(
+        model,
+        model_packed=model_or_theta if not isinstance(model_or_theta, Model) else None,
+    )
     if not np.isfinite(logpi):
         return logpi
+
     fit_data_ = fit_data or fit_data_global
     if fit_data_ is None:
         raise ValueError("fit data must be either passed directly or through a global variable")

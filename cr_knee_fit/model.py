@@ -98,28 +98,22 @@ class Model(Packable[ModelConfig]):
         default_factory=dict
     )
 
-    def pack(self) -> np.ndarray:
-        chunks: list[np.ndarray] = []
-        if self.crams is not None:
-            chunks.append(self.crams.pack())
-        chunks.extend(pop.pack() for pop in self.populations)
-        chunks.append(self.energy_shifts.pack())
-        return np.hstack(chunks)
+    @property
+    def children(self) -> list[Packable | None]:
+        return [
+            self.crams,
+            *self.populations,
+            self.energy_shifts,
+        ]
 
-    def ml_bounds(self) -> list[tuple[float, float] | None] | None:
-        if self.crams is None:
-            return None
-        crams_bounds = self.crams.ml_bounds()
-        if crams_bounds is None:
-            return None
-        return crams_bounds + [None] * (self.ndim() - self.crams.ndim())
+    def pack(self) -> np.ndarray:
+        return self.pack_children()
+
+    def bounds(self) -> list[tuple[float, float] | None]:
+        return self.children_bounds()
 
     def labels(self, latex: bool) -> list[str]:
-        return (
-            (self.crams.labels(latex) if self.crams is not None else [])
-            + list(itertools.chain.from_iterable(m.labels(latex) for m in self.populations))
-            + self.energy_shifts.labels(latex)
-        )
+        return self.children_labels(latex)
 
     def layout_info(self) -> ModelConfig:
         return ModelConfig(
@@ -385,9 +379,9 @@ class Model(Packable[ModelConfig]):
         chi2_main = chi2s[0]
         if np.isnan(chi2_main):
             return "$ \\chi^2 $ not available"
-        res = f"$\\chi^2 \\; / \\; n_\\text{{data}} = {chi2_main:.2g} \\; / \\; {data.size()}$"
+        res = f"$\\chi^2 \\; / \\; n_\\text{{data}} = {chi2_main:.4g} \\; / \\; {data.size()}$"
         if len(chi2s) > 1:
-            res += f" (uncorrelated $\\chi^2 = {chi2s[1]:.2g}$)"
+            res += f" (uncorrelated $\\chi^2 = {chi2s[1]:.4g}$)"
         return res
 
     def plot_all_datasets(

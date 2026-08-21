@@ -64,6 +64,17 @@ class SharedPowerLawSpectrum(Packable[SpectralComponentConfig]):
             packed.append(self.lg_scale_contrib_to_all)
         return np.array(packed)
 
+    def bounds(self) -> Sequence[tuple[float, float] | None]:
+        # ad hoc bound for all spectral normalizations to [10^-20; 10^6];
+        # this is roughly +/- 5 orders of magnitude w.r.t. values we find in the fit, so it shouldn't affect
+        # the "normal" flux estimation, but it limits the parameter space in cases where a particular spectrum
+        # is poorly or not at all constrained by data
+        bounds: list[tuple[float, float] | None] = [(-20, 1)] * len(self.lgI_per_element)
+        bounds.append((1, 4))
+        if self.lg_scale_contrib_to_all is not None:
+            bounds.append((0, np.inf))
+        return bounds
+
     def ndim(self) -> int:
         return len(self.lgI_per_element) + 1 + int(self.lg_scale_contrib_to_all is not None)
 
@@ -144,6 +155,10 @@ class SpectralBreakConfig:
             return (-self.max_abs_delta_alpha, 0)
 
 
+def omega2lg_sharpness(omega: float) -> float:
+    return np.log10(1 / omega)
+
+
 @dataclass
 class SpectralBreak(Packable[SpectralBreakConfig]):
     lg_break: float  # break position, in units of quantity
@@ -156,7 +171,21 @@ class SpectralBreak(Packable[SpectralBreakConfig]):
         return 2 if self.config.fixed_lg_sharpness else 3
 
     def pack(self) -> np.ndarray:
-        return np.array([self.lg_break, self.d_alpha, self.lg_sharpness][: self.ndim()])
+        return np.array([self.lg_break, self.d_alpha, self.lg_sharpness][: self.size])
+
+    def bounds(self) -> Sequence[tuple[float, float] | None]:
+        return [
+            self.config.lg_break_prior_limits,
+            self.config.delta_alpha_prior_limits,
+            (omega2lg_sharpness(1), omega2lg_sharpness(0.05)),
+        ][: self.size]
+
+    def s(self) -> float:
+        return 10**self.lg_sharpness
+
+    def omega(self) -> float:
+        """Smoothness parameter, $\\omega \\equiv 1 / s$; it gives lg-scale width of the break region"""
+        return 1 / self.s()
 
     def labels(self, latex: bool) -> list[str]:
         if latex:
@@ -173,7 +202,7 @@ class SpectralBreak(Packable[SpectralBreakConfig]):
                 f"d_alpha{name_suffix}",
                 f"lg s{name_suffix}",
             ]
-        return labels[: self.ndim()]
+        return labels[: self.size]
 
     def layout_info(self) -> SpectralBreakConfig:
         return self.config
@@ -192,7 +221,7 @@ class SpectralBreak(Packable[SpectralBreakConfig]):
         quantity = R / q2R_factor(Z, A, self.config.quantity)
 
         break_ = 10**self.lg_break
-        s = 10**self.lg_sharpness
+        s = self.s()
 
         result = np.zeros_like(quantity)
 
@@ -226,8 +255,8 @@ class SpectralBreak(Packable[SpectralBreakConfig]):
 @dataclass
 class AnyCutoffConfig:
     lg_cut_prior_limits: tuple[float, float] = (-np.inf, np.inf)
-    quantity: CharacteristicQuantity = "R"
     lg_cut_hint: float | None = None
+    quantity: CharacteristicQuantity = "R"
 
     def lg_cut_initial_guess(self) -> float:
         if (
@@ -244,6 +273,10 @@ class AnyCutoffConfig:
 @dataclass
 class ExpCutoffConfig(AnyCutoffConfig):
     fixed_lg_sharpness: float | None = None
+    lg_sharpness_prior_limits: tuple[float, float] = (
+        omega2lg_sharpness(3),
+        omega2lg_sharpness(0.5),
+    )
 
 
 @dataclass
@@ -251,7 +284,7 @@ class ExpCutoff(Packable[ExpCutoffConfig]):
     """Cutoff in the spectrum with generalized exponential shape exp((Q/Q_cut)^b)"""
 
     lg_cut: float  # cut position, in units of quantity
-    lg_sharpness: float  # 0 is very smooth, 10+ is very sharp
+    lg_sharpness: float  # 0 is very smooth, 10+ is very sharp; 1/sharpness gives a log-scale width of the cutoff
 
     config: ExpCutoffConfig
 
@@ -259,14 +292,17 @@ class ExpCutoff(Packable[ExpCutoffConfig]):
         return 1 if self.config.fixed_lg_sharpness else 2
 
     def pack(self) -> np.ndarray:
-        return np.array([self.lg_cut, self.lg_sharpness][: self.ndim()])
+        return np.array([self.lg_cut, self.lg_sharpness][: self.size])
+
+    def bounds(self) -> Sequence[tuple[float, float] | None]:
+        return [self.config.lg_cut_prior_limits, self.config.lg_sharpness_prior_limits][: self.size]
 
     def labels(self, latex: bool) -> list[str]:
         if latex:
             labels = [f"\\lg {self.config.quantity}^\\text{{cut}}", "\\lg b"]
         else:
             labels = [f"lg {self.config.quantity}^cut", "lg b"]
-        return labels[: self.ndim()]
+        return labels[: self.size]
 
     def layout_info(self) -> ExpCutoffConfig:
         return self.config
@@ -322,7 +358,14 @@ class LognormalSourceMaxAcceleration(Packable[LognormalSourceMaxAccelerationConf
         return 2 if self.config.fixed_beta else 3
 
     def pack(self) -> np.ndarray:
-        return np.array([self.lg_cut, self.sigma, self.beta][: self.ndim()])
+        return np.array([self.lg_cut, self.sigma, self.beta][: self.size])
+
+    def bounds(self) -> Sequence[tuple[float, float] | None]:
+        return [
+            self.config.lg_cut_prior_limits,
+            (0.05, 3.0),
+            (-3, 3),
+        ][: self.size]
 
     def labels(self, latex: bool) -> list[str]:
         if latex:
@@ -337,7 +380,7 @@ class LognormalSourceMaxAcceleration(Packable[LognormalSourceMaxAccelerationConf
                 rf"sigma(lg {self.config.quantity}_max)",
                 r"beta",
             ]
-        return labels[: self.ndim()]
+        return labels[: self.size]
 
     def layout_info(self) -> LognormalSourceMaxAccelerationConfig:
         return self.config
@@ -674,19 +717,30 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
 
         return labels
 
-    def pack(self) -> np.ndarray:
-        subvectors = [spectrum.pack() for spectrum in self.base_spectra] + [
-            b.pack() for b in self.breaks
+    @property
+    def children(self) -> list[Packable | None]:
+        return [
+            *self.base_spectra,
+            *self.breaks,
+            self.cutoff,
+            self.cutoff_lower,
         ]
-        if self.cutoff is not None:
-            subvectors.append(self.cutoff.pack())
-        if self.cutoff_lower is not None:
-            subvectors.append(self.cutoff_lower.pack())
+
+    def pack(self) -> np.ndarray:
+        subvectors = [self.pack_children()]
         if self.all_particle_lg_shift is not None:
             subvectors.append(np.array([self.all_particle_lg_shift]))
         if self.free_Z:
             subvectors.append(np.array([self.free_Z]))
         return np.hstack(subvectors)
+
+    def bounds(self) -> Sequence[tuple[float, float] | None]:
+        subbounds = [self.children_bounds()]
+        if self.all_particle_lg_shift is not None:
+            subbounds.append([(np.log10(1), np.log10(2))])
+        if self.free_Z:
+            subbounds.append([(1.0, 28.0)])
+        return list(itertools.chain.from_iterable(subbounds))
 
     def layout_info(self) -> CosmicRaysModelConfig:
         return CosmicRaysModelConfig(
