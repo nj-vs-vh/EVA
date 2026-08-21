@@ -1,6 +1,7 @@
 import dataclasses
 import functools
 import itertools
+import os
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from logging import warning
@@ -51,6 +52,9 @@ def load_data(
         data[mask, 2:4],  # err stat
         data[mask, 4:6],  # err syst
     )
+
+
+DEFAULT_SYSTEMATICS_CORRELATION_LENGTH = float(os.environ.get("CRKNEE_SYST_CORRLEN", "1.0"))
 
 
 @dataclass(frozen=True)
@@ -144,7 +148,12 @@ class GenericExperimentData:
     @functools.cached_property
     def standard_inv_err_cov(self) -> np.ndarray:
         # TODO: does 1.0 correlation length make sense in all cases?
-        return np.linalg.inv(self.err_cov(corr_length=1.0, log_space_correlation=True))
+        return np.linalg.inv(
+            self.err_cov(
+                corr_length=DEFAULT_SYSTEMATICS_CORRELATION_LENGTH,
+                log_space_correlation=True,
+            )
+        )
 
     @classmethod
     def load(
@@ -158,8 +167,26 @@ class GenericExperimentData:
             filename=f"{exp.filename_prefix}_{suffix}.txt", x_bounds=x_bounds
         )
         return GenericExperimentData(
-            x=x, y=y, err_stat=stat, err_syst=syst, experiment=exp, custom_label=custom_label
+            x=x,
+            y=y,
+            err_stat=stat,
+            err_syst=syst,
+            experiment=exp,
+            custom_label=custom_label,
         )
+
+    def masked(self, mask: np.ndarray) -> "GenericExperimentData":
+        return GenericExperimentData(
+            x=self.x[mask],
+            y=self.y[mask],
+            err_stat=self.err_stat[mask, :],
+            err_syst=self.err_syst[mask, :],
+            experiment=self.experiment,
+            custom_label=self.custom_label,
+        )
+
+    def masked_out(self, mask_out_x: tuple[float, float]) -> "GenericExperimentData":
+        return self.masked((self.x < mask_out_x[0]) | (self.x > mask_out_x[-1]))
 
     def scale_factor(self, scale: float) -> np.ndarray:
         return self.x**scale
@@ -542,6 +569,8 @@ class DataConfig:
     lnA: Sequence[Experiment] = dataclasses.field(default_factory=list)
     flux_ratios: Sequence[FluxRatioDataConfig] = dataclasses.field(default_factory=list)
 
+    mask_out_elements: dict[Element, tuple[float, float]] = dataclasses.field(default_factory=dict)
+
     def __post_init__(self):
         self.remove_subdominant_spectra_constrained_by_flux_ratios()
 
@@ -675,9 +704,17 @@ class Data:
                             if isinstance(spec, Element)
                             else "+".join([s.name for s in spec])
                         )
-                        spectra.append(
-                            CRSpectrumData.load(sc.experiment, element=spec, R_bounds=sc.bounds)
+                        spectrum = CRSpectrumData.load(
+                            sc.experiment, element=spec, R_bounds=sc.bounds
                         )
+                        if isinstance(spec, Element) and (
+                            mask_out_region := config.mask_out_elements.get(spec)
+                        ):
+                            spectrum = CRSpectrumData(
+                                d=spectrum.d.masked_out(mask_out_region),
+                                spec=spectrum.spec,
+                            )
+                        spectra.append(spectrum)
                     case None:
                         log_label = "all particle"
                         spectra.append(

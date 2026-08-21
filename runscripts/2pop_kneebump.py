@@ -61,6 +61,8 @@ if __name__ == "__main__":
         Element.Fe,
     ]
 
+    lhaaso = experiments.lhaaso_sibyll
+
     fit_data_config = DataConfig(
         spectra=[
             SpectrumDataConfig(
@@ -79,8 +81,8 @@ if __name__ == "__main__":
             for element in elements
         ]
         + [SpectrumDataConfig(experiments.dampe, element) for element in elements]
-        # + [SpectrumDataConfig.allparticle(experiments.lhaaso_qgsjet)]
-        + [SpectrumDataConfig(experiments.lhaaso_qgsjet, element) for element in elements],
+        # + [SpectrumDataConfig.allparticle(lhaaso)]
+        + [SpectrumDataConfig(lhaaso, element) for element in elements],
         flux_ratios=[
             FluxRatioDataConfig(experiments.ams02, ratio, Q_bounds=(10.0, np.inf))
             for ratio in ams02_ratios
@@ -92,20 +94,21 @@ if __name__ == "__main__":
                 Element.B / Element.O,
             ]
         ],
-        lnA=[experiments.lhaaso_qgsjet],
+        lnA=[lhaaso],
+        # mask_out_elements={Element.He: (1e5, 1e6)},
     )
 
     validation_data_config = DataConfig(
         spectra=[
             SpectrumDataConfig.allparticle(experiments.hawc),
-            SpectrumDataConfig.allparticle(experiments.lhaaso_qgsjet),
+            SpectrumDataConfig.allparticle(lhaaso),
             SpectrumDataConfig.allparticle(experiments.kascade_re_qgsjet),
         ]
         + [SpectrumDataConfig(experiments.grapes, Element.H)]
         + [SpectrumDataConfig(experiments.ams02, element) for element in elements]
         + [SpectrumDataConfig(experiments.dampe, element) for element in elements]
         + [SpectrumDataConfig(experiments.calet, element) for element in elements],
-        lnA=[experiments.lhaaso_qgsjet],
+        lnA=[lhaaso],
     ).excluding(fit_data_config)
 
     def generate_guess() -> Model:
