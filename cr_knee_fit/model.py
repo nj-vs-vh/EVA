@@ -481,18 +481,10 @@ class Model(Packable[ModelConfig]):
                 elements=elements,
                 caption_elements=caption_elements,
             )
-        if int(self.crams is not None) + len(self.populations) > 1:
-            per_pop_elements = [
-                element
-                for element in elements
-                if (
-                    len([pop for pop in self.populations if element in pop.all_elements])
-                    > (1 if self.crams is None else 0)
-                )
-            ]
+        if self.n_populations_eff() > 1:
             E_grid = np.geomspace(E_min, E_max, 300)
             E_factor = E_grid**scale
-            for plot_element in per_pop_elements:
+            for plot_element in self.multipopulation_elements(elements):
                 ax.plot(
                     E_grid,
                     E_factor * self.compute_spectrum(E_grid, element=plot_element, quantity="E"),
@@ -508,6 +500,20 @@ class Model(Packable[ModelConfig]):
                     color="black",
                     linewidth=2,
                 )
+
+    def n_populations_eff(self) -> int:
+        # crams is an effective extra population
+        return int(self.crams is not None) + len(self.populations)
+
+    def multipopulation_elements(self, from_elements: list[Element] | None = None) -> list[Element]:
+        return [
+            element
+            for element in (from_elements or self.layout_info().elements(True))
+            if (
+                len([pop for pop in self.populations if element in pop.all_elements])
+                > (1 if self.crams is None else 0)  # crams includes all elements in any case
+            )
+        ]
 
     def _plot_spectrum(
         self,

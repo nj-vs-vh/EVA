@@ -5,7 +5,7 @@ import os
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from logging import warning
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -72,6 +72,8 @@ class GenericExperimentData:
 
     # used to avoid re-inverting matrix on energy shifts
     precomputed_standard_inv_err_cov: np.ndarray | None = None
+
+    default_systematics_correlation_length: ClassVar[float] = DEFAULT_SYSTEMATICS_CORRELATION_LENGTH
 
     def __post_init__(self) -> None:
         assert self.x.ndim == 1, "X must be 1-dimensional"
@@ -147,10 +149,9 @@ class GenericExperimentData:
 
     @functools.cached_property
     def standard_inv_err_cov(self) -> np.ndarray:
-        # TODO: does 1.0 correlation length make sense in all cases?
         return np.linalg.inv(
             self.err_cov(
-                corr_length=DEFAULT_SYSTEMATICS_CORRELATION_LENGTH,
+                corr_length=self.default_systematics_correlation_length,
                 log_space_correlation=True,
             )
         )
@@ -635,6 +636,15 @@ class Data:
         for exp, data in itertools.groupby(self.spectra, key=lambda d: d.experiment):
             outu[exp] = {d.spec: d for d in data if isinstance(d.spec, Element)}
         return outu
+
+    def size(self) -> int:
+        return sum(
+            itertools.chain(
+                (d.size() for d in self.spectra),
+                (d.size() for d in self.lnA),
+                (d.size() for d in self.flux_ratios),
+            ),
+        )
 
     @property
     def all_particle_spectra(self) -> dict[Experiment, CRSpectrumData]:

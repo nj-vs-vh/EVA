@@ -3,7 +3,7 @@ import functools
 import json
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
-from typing import ClassVar, Literal
+from typing import Annotated, Any, ClassVar, Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -117,7 +117,7 @@ def unpack_propagation(v: np.ndarray) -> PropagationParams:
 ABUNDANCE_BOUND = (0.0, 10.0)
 SLOPE_BOUND = (4.01, 4.99)  # (4, 5) is strictly enforced by CRAMS, here we add a small margin
 SOURCE_BREAK_BOUNDS = [
-    (np.log10(5e3), np.log10(30e3)),  # DAMPE break expected at ~13 TV
+    (np.log10(5e3), np.log10(3e5)),  # DAMPE break expected at ~13 TV
     (0.0, 2.0),  # break should harden the spectrum
     (0.01, 1.0),
 ]
@@ -193,12 +193,40 @@ class CramsRunnerConfig:
         return self._runner_cache[self.cache_key]
 
 
+# HACK: pydantic sometimes dumps NaN as null, which breaks validation, so here we convert is back
+
+
+def _dict_null2nan(value: Any):
+    if isinstance(value, dict):
+        return {k: v if v is not None else np.nan for k, v in value.items()}
+    else:
+        return value
+
+
+def _list_null2nan(value: Any):
+    if isinstance(value, list):
+        return [item if item is not None else np.nan for item in value]
+    else:
+        return value
+
+
+def _inj_null2nan(value: Any):
+    if isinstance(value, dict):
+        if abundances := value.get("abundances"):
+            value["abundances"] = _list_null2nan(abundances)
+        if slopes := value.get("slopes"):
+            value["slopes"] = _list_null2nan(slopes)
+        if feature := value.get("feature"):
+            value["feature"] = _dict_null2nan(feature)
+    return value
+
+
 class CramsModelConfig(pydantic.BaseModel):
     runner: CramsRunnerConfig
 
     # fitted params are set to nan in these
-    frozen_propagation: PropagationParams
-    frozen_injection: InjectionParams
+    frozen_propagation: Annotated[PropagationParams, pydantic.BeforeValidator(_dict_null2nan)]
+    frozen_injection: Annotated[InjectionParams, pydantic.BeforeValidator(_inj_null2nan)]
 
     # NOTE: cubic spline needs work, now it's unpysical
     interpolation_method: Literal["numpy_linear", "scipy_linear", "scipy_cubic"] = "scipy_linear"

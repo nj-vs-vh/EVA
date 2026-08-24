@@ -26,6 +26,7 @@ from cr_knee_fit.fit_data import Data, DataConfig
 from cr_knee_fit.inference import (
     DEFAULT_CHI2_METHOD,
     DEFAULT_LOGNORMAL_CHI2,
+    GoodnessOfFit,
     loglikelihood,
     logposterior,
     set_global_fit_data,
@@ -136,20 +137,12 @@ def print_delim():
     print("\n" + "=" * 15 + "\n" + f"{dt}; runtime: {elapsed_min:.4g} min = {elapsed_hrs:.4g} hrs")
 
 
-@dataclasses.dataclass
-class GoodnessOfFit:
-    max_logpost: float
-    loglike_at_map: float
-    ndim: int
-    aic: float
-
-
 def run_ml_analysis(
     config: FitConfig,
     fit_data: Data,
     freeze_shifts: bool,
     initial_model: Model | None = None,
-) -> tuple[Model, GoodnessOfFit]:
+) -> Model:
     model_config = config.model
     initial_model = initial_model or config.generate_initial_guess(fit_data)
     if freeze_shifts:
@@ -191,19 +184,7 @@ def run_ml_analysis(
     print(res)
     map_model = Model.unpack(res.x, layout_info=model_config)
     map_model.set_errcov(res.hess_inv)
-
-    max_logpost = -res.fun
-    gof = GoodnessOfFit(
-        max_logpost=max_logpost,
-        loglike_at_map=loglikelihood(map_model, fit_data, model_config),
-        ndim=map_model.ndim(),
-        # we're actually maximizing posterior not likelihood, so this is not strictly AIC
-        # but as mentioned above, this shouldn't matter too much due to our choice of mostly
-        # trivial flat priors
-        aic=2 * initial_model.ndim() - 2 * max_logpost,
-    )
-    print(f"Goodness of fit: {gof}")
-    return map_model, gof
+    return map_model
 
 
 def run_mcmc(
@@ -261,7 +242,6 @@ def run_mcmc(
             if mle_model is not None and mle_model.sample_errcov() is not None:
                 print("Initializing sampler around MLE model...")
                 for _i_walker in range(mcmc_conf.n_walkers):
-                    print(_i_walker)
                     n_try = 1_000
                     for _i_try in range(n_try):
                         theta = mle_model.sample_errcov()
@@ -363,6 +343,7 @@ def plot_and_print_model(
     fit_data: Data,
     validation_data: Data,
     scale: float,
+    plots_config: PlotsConfig,
 ):
     dest = outdir / dirname
     dest.mkdir(exist_ok=True)
@@ -377,19 +358,21 @@ def plot_and_print_model(
     if fig := model.plot_flux_ratios(fit_data, validation_data):
         fig.savefig(dest / "flux-ratios.png")
 
-    datasetes_dir = dest / "datasets"
-    datasetes_dir.mkdir(exist_ok=True)
-    for (exp, observable), fig in model.plot_all_datasets(
-        fit_data, spectra_scale=scale, validation_data=validation_data
-    ).items():
-        fig.savefig(datasetes_dir / f"{exp.filename_prefix}_{observable}.png")
+    if plots_config.datasets:
+        datasetes_dir = dest / "datasets"
+        datasetes_dir.mkdir(exist_ok=True)
+        for (exp, observable), fig in model.plot_all_datasets(
+            fit_data, spectra_scale=scale, validation_data=validation_data
+        ).items():
+            fig.savefig(datasetes_dir / f"{exp.filename_prefix}_{observable}.png")
 
-    observables_dir = dest / "observables"
-    observables_dir.mkdir(exist_ok=True)
-    for (observable), fig in model.plot_all_observables(
-        fit_data, spectra_scale=scale, validation_data=validation_data
-    ).items():
-        fig.savefig(observables_dir / f"{observable}.png")
+    if plots_config.observables:
+        observables_dir = dest / "observables"
+        observables_dir.mkdir(exist_ok=True)
+        for (observable), fig in model.plot_all_observables(
+            fit_data, spectra_scale=scale, validation_data=validation_data
+        ).items():
+            fig.savefig(observables_dir / f"{observable}.png")
 
     plt.close("all")
 
@@ -452,13 +435,20 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
         print(f"Loglike: {loglike}")
     else:
         print("Running preliminary ML analysis...")
-        mle_model, gof = run_ml_analysis(
+        mle_model = run_ml_analysis(
             config=config,
             fit_data=fit_data,
             freeze_shifts=False,
             initial_model=None,
         )
-        mle_model.save(mle_model_dump, header=[f"GoF: {gof}"])
+        mle_model.save(
+            mle_model_dump, header=[f"GoF: {GoodnessOfFit.compute(mle_model, fit_data)}"]
+        )
+
+    # TODO: remove after 3pop significance tests are done
+    gof_dump = mle_model_dump.with_name(mle_model_dump.stem + ".gof.json")
+    if not gof_dump.exists():
+        GoodnessOfFit.compute(mle_model, fit_data).save(gof_dump)
 
     plot_and_print_model(
         outdir=outdir,
@@ -467,6 +457,7 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
         fit_data=fit_data,
         validation_data=validation_data,
         scale=scale,
+        plots_config=config.plots,
     )
 
     print_delim()
@@ -540,13 +531,15 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
         print(f"Loglike: {loglike}")
     else:
         print("Running ML analysis from the best-fitting posterior point")
-        posterior_ml_best, gof = run_ml_analysis(
+        posterior_ml_best = run_ml_analysis(
             config=config,
             fit_data=fit_data,
             freeze_shifts=False,
             initial_model=posterior_best_model,
         )
-        posterior_ml_best.save(posterior_ml_dump, header=[f"GoF: {gof}"])
+        posterior_ml_best.save(
+            posterior_ml_dump, header=[f"GoF: {GoodnessOfFit.compute(posterior_ml_best, fit_data)}"]
+        )
 
     plot_and_print_model(
         outdir=outdir,
@@ -555,6 +548,7 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
         fit_data=fit_data,
         validation_data=validation_data,
         scale=scale,
+        plots_config=config.plots,
     )
 
     print_delim()

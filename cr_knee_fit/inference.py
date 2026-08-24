@@ -1,5 +1,8 @@
+import dataclasses
 import itertools
+import json
 import os
+from pathlib import Path
 from typing import Literal
 
 import numpy as np
@@ -113,6 +116,16 @@ def logprior(model: Model, model_packed: np.ndarray | None) -> float:
     return res  # type: ignore
 
 
+def saturated_logprior(model: Model) -> float:
+    res = 0.0
+    for exp in model.energy_shifts.lg_shifts:
+        lg_sigma = model.energy_scale_lg_uncertainty_override.get(
+            exp
+        ) or get_energy_scale_lg_uncertainty(exp)
+        res += stats.norm.logpdf(0.0, loc=0, scale=lg_sigma)
+    return res  # type: ignore
+
+
 def ensure_model(model_or_theta: Model | np.ndarray, config: ModelConfig) -> Model:
     if isinstance(model_or_theta, Model):
         return model_or_theta
@@ -124,12 +137,17 @@ Chi2Method = Literal["correlated", "dimidated"]
 DEFAULT_CHI2_METHOD = os.environ.get("CRKNEE_CHI2_METHOD", "correlated")
 
 
+def set_default_chi2_method(new: Chi2Method) -> None:
+    global DEFAULT_CHI2_METHOD
+    DEFAULT_CHI2_METHOD = new
+
+
 def chi_squared_loglikelihood(
     prediction: np.ndarray,
     y: np.ndarray,
     err_stat: np.ndarray,
     err_syst: np.ndarray,
-    err_cov_inv: np.ndarray,
+    inv_err_cov: np.ndarray,
     method: Chi2Method | None = None,
 ) -> float:
     residual = prediction - y
@@ -151,7 +169,7 @@ def chi_squared_loglikelihood(
         case "correlated":
             # Chi2 accounting for error correlation, see err_cov method. Note that errors are symmetrized in this case.
             residual_vec = residual.reshape((-1, 1))
-            result = -0.5 * (residual_vec.T @ err_cov_inv @ residual_vec)
+            result = -0.5 * (residual_vec.T @ inv_err_cov @ residual_vec)
             return float(np.squeeze(result))
         case unexpected:
             raise RuntimeError(
@@ -162,19 +180,26 @@ def chi_squared_loglikelihood(
 DEFAULT_LOGNORMAL_CHI2 = os.environ.get("CRKNEE_LOGNORMAL_CHI2", "1") == "1"
 
 
+def set_default_lognormal_chi2(new: bool) -> None:
+    global DEFAULT_LOGNORMAL_CHI2
+    DEFAULT_LOGNORMAL_CHI2 = new
+
+
 def loglikelihood(
     model_or_theta: Model | np.ndarray,
     fit_data: Data,
     config: ModelConfig,
     chi2_method: Chi2Method | None = None,
-    lognormal: bool = DEFAULT_LOGNORMAL_CHI2,
+    lognormal: bool | None = None,
 ) -> float:
     model = ensure_model(model_or_theta, config)
     res = 0.0
 
+    use_lognormal_chi2 = lognormal or DEFAULT_LOGNORMAL_CHI2
+
     for spectrum in fit_data.spectra:
         f = model.energy_shifts.f(spectrum.experiment)
-        if lognormal:
+        if use_lognormal_chi2:
             d = spectrum.data_for_lognormal_chi2(f)
             prediction = np.log10(model.compute_spectrum(d.x, element=spectrum.spec, quantity="E"))
         else:
@@ -186,7 +211,7 @@ def loglikelihood(
             y=d.y,
             err_stat=d.err_stat,
             err_syst=d.err_syst,
-            err_cov_inv=d.standard_inv_err_cov,
+            inv_err_cov=d.standard_inv_err_cov,
             method=chi2_method,
         )
 
@@ -199,7 +224,7 @@ def loglikelihood(
             y=lnA_data.y,
             err_stat=lnA_data.err_stat,
             err_syst=lnA_data.err_syst,
-            err_cov_inv=lnA_data.standard_inv_err_cov,
+            inv_err_cov=lnA_data.standard_inv_err_cov,
             method=chi2_method,
         )
 
@@ -209,7 +234,7 @@ def loglikelihood(
             flux_ratio.Q, fr=flux_ratio.ratio, quantity=flux_ratio.quantity
         )
         d = flux_ratio.d
-        if lognormal:
+        if use_lognormal_chi2:
             prediction = np.log10(prediction)
             d = d.log10_ed
         res += chi_squared_loglikelihood(
@@ -217,7 +242,56 @@ def loglikelihood(
             y=d.y,
             err_stat=d.err_stat,
             err_syst=d.err_syst,
-            err_cov_inv=d.standard_inv_err_cov,
+            inv_err_cov=d.standard_inv_err_cov,
+            method=chi2_method,
+        )
+
+    return res
+
+
+def saturated_loglikelihood(
+    fit_data: Data,
+    chi2_method: Chi2Method | None = None,
+    lognormal: bool | None = None,
+) -> float:
+    res = 0.0
+    f = 1.0  # energy scale shifts do not impact the saturated likelihood computation
+    use_lognormal_chi2 = lognormal or DEFAULT_LOGNORMAL_CHI2
+
+    for spectrum in fit_data.spectra:
+        if use_lognormal_chi2:
+            d = spectrum.data_for_lognormal_chi2(f)
+        else:
+            d = spectrum.data_for_normal_chi2(f)
+        res += chi_squared_loglikelihood(
+            prediction=d.y,
+            y=d.y,
+            err_stat=d.err_stat,
+            err_syst=d.err_syst,
+            inv_err_cov=d.standard_inv_err_cov,
+            method=chi2_method,
+        )
+
+    for lnA_data in fit_data.lnA:
+        res += chi_squared_loglikelihood(
+            prediction=lnA_data.y,
+            y=lnA_data.y,
+            err_stat=lnA_data.err_stat,
+            err_syst=lnA_data.err_syst,
+            inv_err_cov=lnA_data.standard_inv_err_cov,
+            method=chi2_method,
+        )
+
+    for flux_ratio in fit_data.flux_ratios:
+        d = flux_ratio.d
+        if use_lognormal_chi2:
+            d = d.log10_ed
+        res += chi_squared_loglikelihood(
+            prediction=d.y,
+            y=d.y,
+            err_stat=d.err_stat,
+            err_syst=d.err_syst,
+            inv_err_cov=d.standard_inv_err_cov,
             method=chi2_method,
         )
 
@@ -255,3 +329,56 @@ def logposterior(
     if not np.isfinite(res):
         return -np.inf
     return res
+
+
+def saturated_logposterior(
+    model_or_theta: Model | np.ndarray,
+    fit_data: Data | None,
+    config: ModelConfig,
+) -> float:
+    model = ensure_model(model_or_theta, config)
+    logpi = saturated_logprior(model)
+    fit_data_ = fit_data or fit_data_global
+    if fit_data_ is None:
+        raise ValueError("fit data must be either passed directly or through a global variable")
+    return logpi + saturated_loglikelihood(fit_data_)
+
+
+@dataclasses.dataclass
+class GoodnessOfFit:
+    logpost: float
+    deviance: float
+    n_data: int
+    n_param: int
+    aic: float
+
+    def __str__(self) -> str:
+        return (
+            f"logpost = {self.logpost:.6g}; "
+            + f"D / ndof = {self.deviance:.4g} / {self.ndof} = {self.deviance / self.ndof:.4g}; "
+            + f"AIC = {self.aic:.6g}"
+        )
+
+    @property
+    def ndof(self) -> int:
+        return self.n_data - self.n_param
+
+    @staticmethod
+    def compute(model: Model, fit_data: Data) -> "GoodnessOfFit":
+        logpost = logposterior(model, fit_data, model.layout_info())
+        return GoodnessOfFit(
+            logpost=logpost,
+            deviance=float(
+                2 * (saturated_logposterior(model, fit_data, model.layout_info()) - logpost)
+            ),
+            n_data=fit_data.size(),
+            n_param=model.size,
+            aic=2 * model.size - 2 * logpost,
+        )
+
+    def save(self, file: Path) -> None:
+        file.write_text(json.dumps(dataclasses.asdict(self), indent=2))
+
+    @staticmethod
+    def load(file: Path) -> "GoodnessOfFit":
+        return GoodnessOfFit(**json.loads(file.read_text()))

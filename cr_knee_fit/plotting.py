@@ -221,6 +221,11 @@ class PosteriorPlotConfig:
         else:
             ax.set_xlim(data_xlim)
 
+    def get_model_xlim(self, data_xlim: tuple[float, float]) -> tuple[float, float]:
+        default = add_log_margin(*data_xlim)
+        override = self.xlim_override if self.xlim_override is not None else (None, None)
+        return (override[0] or default[0], override[1] or default[1])
+
 
 @dataclasses.dataclass
 class PlotExportOpts:
@@ -231,8 +236,11 @@ class PlotExportOpts:
 class PlotsConfig:
     validation_data_config: DataConfig | None = None
 
+    datasets: bool = True
+    observables: bool = True
     corner: bool = True
 
+    # main plot detailed settings
     elements: PosteriorPlotConfig = PosteriorPlotConfig()
     all_particle: PosteriorPlotConfig = PosteriorPlotConfig()
     all_particle_elements_contribution: PosteriorPlotConfig | None = PosteriorPlotConfig()
@@ -343,7 +351,7 @@ def plot_everything(
 
     elem_data_ylim = merged_lims([sp.scaled_flux(spectra_scale) for sp in plotted_elem_spectra])
     elem_data_Elim = merged_lims([sp.E for sp in plotted_elem_spectra])
-    elem_Elim = add_log_margin(*elem_data_Elim)
+    elem_Elim = plots_config.elements.get_model_xlim(elem_data_Elim)
     for element in sorted(elements_to_plot):
         plot_model_predictions(
             ax=ax_el,
@@ -354,18 +362,15 @@ def plot_everything(
         )
         element_legend_items.append((legend_artist_line(element.color), element.name))
 
-    # FIXME: include CRAMS here
-    if plots_config.elements.population_contribs_best_fit and len(best_fit_model.populations) > 1:
-        multipop_elements = [
-            element
-            for element in Element.regular()
-            if len([pop for pop in best_fit_model.populations if element in pop.all_elements]) > 1
-        ]
+    if (
+        plots_config.elements.population_contribs_best_fit
+        and best_fit_model.n_populations_eff() > 1
+    ):
         E_grid = np.geomspace(*elem_Elim, 300)
         E_factor = E_grid**spectra_scale
-        for pop in best_fit_model.populations:
-            for element in pop.resolved_elements:
-                if element not in multipop_elements:
+        for element in best_fit_model.multipopulation_elements():
+            for pop in best_fit_model.populations:
+                if element not in pop.resolved_elements:
                     continue
                 ax_el.plot(
                     E_grid,
@@ -373,6 +378,14 @@ def plot_everything(
                     color=element.color,
                     linewidth=POP_CONTRIB_LINEWIDTH,
                     linestyle=pop.linestyle,
+                )
+            if crams := best_fit_model.crams:
+                ax_el.plot(
+                    E_grid,
+                    E_factor * crams.compute_spectrum(E_grid, element=element, quantity="E"),
+                    color=element.color,
+                    linewidth=POP_CONTRIB_LINEWIDTH,
+                    linestyle=crams.linestyle,
                 )
 
     plots_config.elements.apply_limits(ax_el, data_ylim=elem_data_ylim, data_xlim=elem_Elim)
@@ -397,7 +410,7 @@ def plot_everything(
 
         all_data_ylim = merged_lims([sp.scaled_flux(spectra_scale) for sp in plotted_all_spectra])
         all_data_Elim = merged_lims([sp.E for sp in plotted_all_spectra])
-        all_Elim = add_log_margin(*all_data_Elim)
+        all_Elim = plots_config.all_particle.get_model_xlim(all_data_Elim)
         ALL_PARTICLE_COLOR = "black"
         plot_model_predictions(
             ax=ax_all,
@@ -441,7 +454,7 @@ def plot_everything(
 
         if (
             plots_config.all_particle.population_contribs_best_fit
-            and len(best_fit_model.populations) > 1
+            and best_fit_model.n_populations_eff() > 1
         ):
             E_grid = np.geomspace(*all_Elim, 300)
             E_factor = E_grid**spectra_scale
@@ -452,6 +465,14 @@ def plot_everything(
                     color=ALL_PARTICLE_COLOR,
                     linewidth=POP_CONTRIB_LINEWIDTH,
                     linestyle=pop.linestyle,
+                )
+            if crams := best_fit_model.crams:
+                ax_el.plot(
+                    E_grid,
+                    E_factor * crams.compute_all_particle_spectrum(E_grid),
+                    color=ALL_PARTICLE_COLOR,
+                    linewidth=POP_CONTRIB_LINEWIDTH,
+                    linestyle=crams.linestyle,
                 )
 
         plots_config.all_particle.apply_limits(ax_all, data_ylim=all_data_ylim, data_xlim=all_Elim)
@@ -479,7 +500,7 @@ def plot_everything(
 
         lnA_data_ylim = merged_lims([s.y for s in plotted_lnA_data])
         lnA_data_Elim = merged_lims([s.x for s in plotted_lnA_data])
-        lnA_Elim = add_log_margin(*lnA_data_Elim)
+        lnA_Elim = plots_config.lnA.get_model_xlim(lnA_data_Elim)
         plot_model_predictions(
             ax=ax_lnA,
             observable=lambda model, E: model.compute_lnA(E),
