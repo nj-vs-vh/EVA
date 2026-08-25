@@ -285,7 +285,7 @@ def run_2_or_3_pop(
         name=analysis_name,
         fit_data=fit_data_config,
         mcmc=McmcConfig(
-            n_steps=50000,
+            n_steps=30000,
             n_walkers=256,
             processes=11,
             reuse_saved=True,
@@ -312,6 +312,7 @@ def run_2_or_3_pop(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--three-pop", action="store_true")
+    parser.add_argument("--only-fast-plots", action="store_true")
     opts = LocalRunOptions.parse(parser)
     analysis_name = get_analysis_name(__file__, opts)
     is_3pop = opts.args_raw.three_pop
@@ -322,4 +323,5 @@ if __name__ == "__main__":
         analysis_name=analysis_name,
         opts=opts,
         add_population_3=is_3pop,
+        omit_detailed_plots=opts.args_raw.only_fast_plots,
     )

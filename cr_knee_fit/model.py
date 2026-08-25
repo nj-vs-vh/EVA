@@ -7,6 +7,7 @@ import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
+from cr_knee_fit.constants import SPEED_OF_LIGHT_M_SEC
 from cr_knee_fit.cr_model import (
     CosmicRaysModel,
     CosmicRaysModelConfig,
@@ -672,6 +673,23 @@ class Model(Packable[ModelConfig]):
                 components.append(pop.compute_all_particle_spectrum(Q))
 
         return sum(components, start=np.zeros_like(Q))
+
+    def compute_energy_density(
+        self,
+        E_n: np.ndarray,
+        contributing_elements: list[Element] | None = None,
+    ) -> np.ndarray:
+        """CR energy density in GeV^-1 m^-3"""
+        res = np.zeros_like(E_n)
+        for element in contributing_elements or Element.regular():
+            res += (
+                element.A
+                * self.compute_spectrum(E_n, element, quantity="E_n")
+                * 4
+                * np.pi
+                / SPEED_OF_LIGHT_M_SEC
+            )
+        return res
 
     def compute_flux_ratio(
         self,

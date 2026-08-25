@@ -22,6 +22,8 @@ from matplotlib.figure import Figure
 from pydantic_numpy.typing import Np2DArrayFp64  # type: ignore
 from scipy import optimize  # type: ignore
 
+from cr_knee_fit.constants import SPEED_OF_LIGHT_M_SEC
+from cr_knee_fit.elements import Element
 from cr_knee_fit.fit_data import Data, DataConfig
 from cr_knee_fit.inference import (
     DEFAULT_CHI2_METHOD,
@@ -39,7 +41,7 @@ from cr_knee_fit.plotting import (  # noqa: F401
     plot_everything,
 )
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
-from cr_knee_fit.utils import export_fig
+from cr_knee_fit.utils import E_N_GEV_LABEL, export_fig
 
 # as recommended by emceee parallelization guide
 # see https://emcee.readthedocs.io/en/stable/tutorials/parallel/#parallelization
@@ -72,7 +74,7 @@ class FitConfig(pydantic.BaseModel):
     # useful to regenerate plots without rerunning the actual analysis
     reuse_saved_models: bool = False
 
-    # nan/inf values are written to JSON properly as Infinity/NaN
+    # Pydantic struff: nan/inf values must be written to JSON properly as Infinity/NaN
     model_config = pydantic.ConfigDict(ser_json_inf_nan="constants")
 
     def __post_init__(self) -> None:
@@ -343,7 +345,7 @@ def plot_and_print_model(
     fit_data: Data,
     validation_data: Data,
     scale: float,
-    plots_config: PlotsConfig,
+    config: FitConfig,
 ):
     dest = outdir / dirname
     dest.mkdir(exist_ok=True)
@@ -358,7 +360,7 @@ def plot_and_print_model(
     if fig := model.plot_flux_ratios(fit_data, validation_data):
         fig.savefig(dest / "flux-ratios.png")
 
-    if plots_config.datasets:
+    if config.plots.datasets:
         datasetes_dir = dest / "datasets"
         datasetes_dir.mkdir(exist_ok=True)
         for (exp, observable), fig in model.plot_all_datasets(
@@ -366,13 +368,65 @@ def plot_and_print_model(
         ).items():
             fig.savefig(datasetes_dir / f"{exp.filename_prefix}_{observable}.png")
 
-    if plots_config.observables:
+    if config.plots.observables:
         observables_dir = dest / "observables"
         observables_dir.mkdir(exist_ok=True)
         for (observable), fig in model.plot_all_observables(
             fit_data, spectra_scale=scale, validation_data=validation_data
         ).items():
             fig.savefig(observables_dir / f"{observable}.png")
+
+    if config.plots.energy_density:
+        fig, ax = plt.subplots()
+        E_n = np.geomspace(1e2, 1e7, 300)
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.plot(
+            E_n, E_n**2 * model.compute_energy_density(E_n), color="k", linewidth=2, label="Total"
+        )
+        for elements in ([Element.H], [Element.He], Element.nuclei()):
+            ax.plot(
+                E_n,
+                E_n**2 * model.compute_energy_density(E_n, contributing_elements=elements),
+                color=elements[0].color if len(elements) == 1 else "magenta",
+                linewidth=1,
+                label=elements[0].name if len(elements) == 1 else "nuclei",
+            )
+
+        ax.set_xlim(E_n[0], E_n[-1])
+        ax.set_xlabel(E_N_GEV_LABEL)
+        ax.set_ylabel("$ E^2 n_\\text{CR} $ / $ \\text{GeV} \\; \\text{m}^{-3} $")
+        ax.legend()
+        fig.tight_layout()  # type: ignore
+        fig.savefig(dest / "energy-density.png")
+
+        density2spec = 1e6 / (
+            4 * np.pi / SPEED_OF_LIGHT_M_SEC
+        )  # GeV^-1 m^-3 density -> GeV^-1 cm^-2 s^-1 sr^-1 intensity
+
+        components = [
+            model.compute_energy_density(E_n, contributing_elements=[Element.H]),
+            model.compute_energy_density(E_n, contributing_elements=[Element.He]),
+            model.compute_energy_density(E_n, contributing_elements=Element.nuclei()),
+        ]
+        np.savetxt(
+            dest / "energy-density.txt",
+            np.vstack(
+                (
+                    E_n,
+                    *[density2spec * comp for comp in components],
+                    *components,
+                )
+            ).T,
+            header="\n".join(
+                [
+                    f"Model dir: {outdir}",
+                    f"Dumped on: {datetime.datetime.now()}",  # noqa: DTZ005
+                    "Columns: (1) E per nucleon [GeV], (2-4) proton, helium and nuclei spectra [GeV^-1 cm^-2 s^-1 sr^-1], "
+                    + "(5-7) proton, helium and nuclei energy densities [GeV^-1 m^-3]",
+                ]
+            ),
+        )
 
     plt.close("all")
 
@@ -457,7 +511,7 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
         fit_data=fit_data,
         validation_data=validation_data,
         scale=scale,
-        plots_config=config.plots,
+        config=config,
     )
 
     print_delim()
@@ -548,7 +602,7 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
         fit_data=fit_data,
         validation_data=validation_data,
         scale=scale,
-        plots_config=config.plots,
+        config=config,
     )
 
     print_delim()

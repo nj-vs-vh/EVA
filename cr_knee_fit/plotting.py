@@ -239,6 +239,7 @@ class PlotsConfig:
     datasets: bool = True
     observables: bool = True
     corner: bool = True
+    energy_density: bool = True
 
     # main plot detailed settings
     elements: PosteriorPlotConfig = PosteriorPlotConfig()

@@ -193,7 +193,7 @@ class CramsRunnerConfig:
         return self._runner_cache[self.cache_key]
 
 
-# HACK: pydantic sometimes dumps NaN as null, which breaks validation, so here we convert is back
+# HACK: pydantic sometimes dumps NaN as null, which breaks validation, so here we convert it back
 
 
 def _dict_null2nan(value: Any):
