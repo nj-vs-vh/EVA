@@ -302,6 +302,10 @@ def run_2_or_3_pop(
                 xlim_override=(1e1, 5e7),
                 population_contribs_best_fit=True,
             ),
+            observables_posterior=PosteriorPlotConfig(
+                max_margin_around_data=0.5,
+                margin_around_fitted_data_only=True,
+            ),
         ),
     )
     config.optimizer = "minuit"

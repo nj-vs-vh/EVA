@@ -38,6 +38,7 @@ from cr_knee_fit.plotting import (  # noqa: F401
     PlotExportOpts,
     PlotsConfig,
     PosteriorPlotConfig,
+    plot_all_observables,
     plot_everything,
 )
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
@@ -400,7 +401,7 @@ def plot_and_print_model(
         fig.tight_layout()  # type: ignore
         fig.savefig(dest / "energy-density.png")
 
-        density2spec = 1e6 / (
+        density2spec = 1e-4 / (
             4 * np.pi / SPEED_OF_LIGHT_M_SEC
         )  # GeV^-1 m^-3 density -> GeV^-1 cm^-2 s^-1 sr^-1 intensity
 
@@ -545,11 +546,10 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
     print("Median model:")
     median_model.print_params()
 
-    samples_to_search_for_best = 1000
-    print(f"Computing loglikelihood for the first {samples_to_search_for_best} samples")
+    subsample_size = 3000
+    print(f"Computing loglikelihood for the {subsample_size}-subsample of the posterior")
     model_sample = [
-        Model.unpack(theta, layout_info=config.model)
-        for theta in theta_sample[:samples_to_search_for_best, :]
+        Model.unpack(theta, layout_info=config.model) for theta in theta_sample[:subsample_size, :]
     ]
     loglike_values = [logposterior(model, fit_data, config=config.model) for model in model_sample]
     best_fit_idx = np.argmax(loglike_values)
@@ -606,14 +606,13 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
     )
 
     print_delim()
-    print("Plotting final model plot")
+    print("Plotting the everything plot of the posterior")
 
-    best_fit_model = posterior_ml_best or posterior_best_model
+    center_model = posterior_ml_best or posterior_best_model
     fig = plot_everything(
         plots_config=config.plots,
-        theta_sample=model_sample,
-        theta_bestfit=best_fit_model.pack(),
-        model_config=config.model,
+        model_sample=model_sample,
+        center=center_model,
         spectra_scale=scale,
         fit_data=fit_data,
         validation_data=validation_data,
@@ -622,6 +621,20 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
     if config.plots.export_opts.main is not None:
         export_fig(fig, filename=config.plots.export_opts.main)
     fig.savefig(outdir / "model.png")
+
+    print_delim()
+    print("Plotting the per-observable plot of the posterior")
+    posterior_dir = outdir / "posterior"
+    posterior_dir.mkdir(exist_ok=True)
+    for (observable), fig in plot_all_observables(
+        config=config.plots.observables_posterior,
+        model_sample=model_sample,
+        center=center_model,
+        spectra_scale=scale,
+        fit_data=fit_data,
+        validation_data=validation_data,
+    ).items():
+        fig.savefig(posterior_dir / f"{observable}.png")
 
     print_delim()
     print("Bye!")
