@@ -837,7 +837,7 @@ def plot_all_observables(
 
     spectrum_specs = {s.spec for s in fit_data.spectra + validation_data.spectra}
     for spec in spectrum_specs:
-        fig, ax = plt.subplots(figsize=(8, 7))
+        fig, ax = plt.subplots(figsize=(8, 5))
         plot_spectrum(
             config=config,
             spec=spec,

@@ -691,6 +691,17 @@ class Model(Packable[ModelConfig]):
             )
         return res
 
+    def compute_spectrum_for_hermes(
+        self,
+        E_n: np.ndarray,
+        contributing_elements: list[Element] | None = None,
+    ) -> np.ndarray:
+        """Hermes expects spectrum in GeV^-1 cm^-2 sec^-1 sr^-1; so we just convert m^-2 -> cm^-2"""
+        res = np.zeros_like(E_n)
+        for element in contributing_elements or Element.regular():
+            res += element.A * self.compute_spectrum(E_n, element, quantity="E_n") * 1e-4
+        return res
+
     def compute_flux_ratio(
         self,
         Q: np.ndarray,

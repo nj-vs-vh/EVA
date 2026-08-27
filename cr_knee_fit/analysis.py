@@ -22,7 +22,6 @@ from matplotlib.figure import Figure
 from pydantic_numpy.typing import Np2DArrayFp64  # type: ignore
 from scipy import optimize  # type: ignore
 
-from cr_knee_fit.constants import SPEED_OF_LIGHT_M_SEC
 from cr_knee_fit.elements import Element
 from cr_knee_fit.fit_data import Data, DataConfig
 from cr_knee_fit.inference import (
@@ -401,34 +400,6 @@ def plot_and_print_model(
         fig.tight_layout()  # type: ignore
         fig.savefig(dest / "energy-density.png")
 
-        density2spec = 1e-4 / (
-            4 * np.pi / SPEED_OF_LIGHT_M_SEC
-        )  # GeV^-1 m^-3 density -> GeV^-1 cm^-2 s^-1 sr^-1 intensity
-
-        components = [
-            model.compute_energy_density(E_n, contributing_elements=[Element.H]),
-            model.compute_energy_density(E_n, contributing_elements=[Element.He]),
-            model.compute_energy_density(E_n, contributing_elements=Element.nuclei()),
-        ]
-        np.savetxt(
-            dest / "energy-density.txt",
-            np.vstack(
-                (
-                    E_n,
-                    *[density2spec * comp for comp in components],
-                    *components,
-                )
-            ).T,
-            header="\n".join(
-                [
-                    f"Model dir: {outdir}",
-                    f"Dumped on: {datetime.datetime.now()}",  # noqa: DTZ005
-                    "Columns: (1) E per nucleon [GeV], (2-4) proton, helium and nuclei spectra [GeV^-1 cm^-2 s^-1 sr^-1], "
-                    + "(5-7) proton, helium and nuclei energy densities [GeV^-1 m^-3]",
-                ]
-            ),
-        )
-
     plt.close("all")
 
 
@@ -635,6 +606,39 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
         validation_data=validation_data,
     ).items():
         fig.savefig(posterior_dir / f"{observable}.png")
+
+    print_delim()
+    print("Exporting spectra for Hermes")
+    E_n = np.geomspace(1e2, 1e7, 300)
+    hermes_dir = outdir / "to_hermes"
+    hermes_dir.mkdir(exist_ok=True)
+    for elements, suffix in zip(
+        ([Element.H], [Element.He], Element.nuclei(), None),
+        ("H", "He", "nuclei", "all"),
+    ):
+        fiducial = center_model.compute_spectrum_for_hermes(E_n, contributing_elements=elements)
+        spectrum_sample = np.vstack(
+            [[model.compute_spectrum_for_hermes(E_n, elements)] for model in model_sample]
+        )
+        cl = 0.9  # 90% credible interval band
+        quantile = (1 - cl) / 2
+        lower = np.quantile(spectrum_sample, q=quantile, axis=0)
+        upper = np.quantile(spectrum_sample, q=1 - quantile, axis=0)
+        for spec, kind in zip(
+            (fiducial, lower, upper),
+            ("fiducial", "lower", "upper"),
+        ):
+            np.savetxt(
+                hermes_dir / f"to_hermes_{suffix}_{kind}.txt",
+                np.vstack((E_n, spec)).T,
+                header="\n".join(
+                    [
+                        f"Model dir: {outdir}",
+                        f"Dumped on: {datetime.datetime.now()}",  # noqa: DTZ005
+                        f"Columns: E per nucleon [GeV], {suffix} spectrum [GeV^-1 cm^-2 s^-1 sr^-1]",
+                    ]
+                ),
+            )
 
     print_delim()
     print("Bye!")
