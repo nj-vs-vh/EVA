@@ -5,7 +5,7 @@ import os
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from logging import warning
-from typing import Any, ClassVar, cast
+from typing import Any, ClassVar, Literal, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -25,8 +25,8 @@ from cr_knee_fit.utils import (
     CharacteristicQuantity,
     color_average,
     energy_shift_suffix,
-    label_energy_flux,
     legend_with_added_items,
+    q2q_factor,
     quantity_label,
     quantity_unit,
 )
@@ -241,25 +241,52 @@ class GenericExperimentData:
         )
         return ax
 
+    def lerp(self, new_x: np.ndarray) -> "GenericExperimentData":
+        return GenericExperimentData(
+            x=new_x,
+            y=np.interp(new_x, self.x, self.y),
+            err_stat=np.vstack(
+                (
+                    np.interp(new_x, self.x, self.err_stat[:, 0]),
+                    np.interp(new_x, self.x, self.err_stat[:, 1]),
+                )
+            ).T,
+            err_syst=np.vstack(
+                (
+                    np.interp(new_x, self.x, self.err_syst[:, 0]),
+                    np.interp(new_x, self.x, self.err_syst[:, 1]),
+                )
+            ).T,
+            experiment=self.experiment,
+            custom_label=self.custom_label,
+        )
+
 
 type AllparticleSpectrum = None
 type ElementSum = tuple[Element, ...]
-type SpectrumDataSpec = Element | ElementSum | AllparticleSpectrum
+type Gamma = Literal["gamma"]
+type SpectrumDataSpec = Element | ElementSum | AllparticleSpectrum | Gamma
 
 
 def spectrum_data_spec_label(spec: SpectrumDataSpec) -> str:
-    if spec is None:
-        return "all"
-    elif isinstance(spec, tuple):
-        return "+".join(p.name for p in spec)
-    else:
-        return spec.name
+    match spec:
+        case None:
+            return "all"
+        case "gamma":
+            return "$ \\gamma $"
+        case tuple():
+            return "+".join(p.name for p in spec)
+        case Element():
+            return spec.name
+        case _:
+            raise TypeError(f"Unexpected spec: {spec}")
 
 
 @dataclass(frozen=True)
 class CRSpectrumData:
     d: GenericExperimentData
     spec: SpectrumDataSpec
+    quantity: CharacteristicQuantity
     energy_scale_shift: float = 1.0
 
     def __post_init__(self) -> None:
@@ -269,6 +296,7 @@ class CRSpectrumData:
     def experiment(self) -> Experiment:
         return self.d.experiment
 
+    # FIXME: update these methods to reflect the possibility of non-E quantity!
     @property
     def E(self) -> np.ndarray:
         """Energy in GeV"""
@@ -301,6 +329,7 @@ class CRSpectrumData:
             d=self.data_for_normal_chi2(f),
             spec=self.spec,
             energy_scale_shift=self.energy_scale_shift * f,
+            quantity=self.quantity,
         )
 
     def data_for_normal_chi2(self, f: float) -> "GenericExperimentData":
@@ -350,6 +379,7 @@ class CRSpectrumData:
                 x_bounds=(R_bounds[0] * min_Z, R_bounds[1] * max_Z),
             ),
             spec=element,
+            quantity="E",
         )
 
     @classmethod
@@ -363,6 +393,7 @@ class CRSpectrumData:
                 x_bounds=E_bounds,
             ),
             spec=None,
+            quantity="E",
         )
 
     def element_label(self) -> str:
@@ -389,6 +420,8 @@ class CRSpectrumData:
                 return color_average([el.color for el in self.spec])
             case None:
                 return "black"
+            case "gamma":
+                return "tab:pink"
 
     def plot(
         self,
@@ -408,8 +441,37 @@ class CRSpectrumData:
             label_override=self.plot_label(),
             add_legend_label=add_legend_label,
         )
-        label_energy_flux(axes, scale)
+
+        axes.set_xlabel(quantity_label(self.quantity))
+        unit = quantity_unit(self.quantity)
+        if scale == 0:
+            axes.set_ylabel(
+                f"$ I $ / $ \\text{{{unit}}}^{-1} \\; \\text{{m}}^{-2} \\; \\text{{s}}^{-1} \\; \\text{{sr}}^{-1} $"
+            )
+        else:
+            axes.set_ylabel(
+                f"$ E^{{{scale}}} F $ / $ \\text{{{unit}}}^{{{scale - 1:.3g}}} \\; \\text{{m}}^{{-2}} \\; \\text{{s}}^{{-1}} \\; \\text{{sr}}^{{-1}} $"
+            )
         return axes
+
+    def to_quantity(self, new: CharacteristicQuantity) -> "CRSpectrumData":
+        element = self.spec
+        if not isinstance(element, Element):
+            raise RuntimeError("Only elemental spectra can be converted between quantities")  # noqa: TRY004
+        factor = q2q_factor(Z=element.Z, A=element.A, from_=self.quantity, to=new)
+        return CRSpectrumData(
+            d=GenericExperimentData(
+                x=self.d.x * factor,
+                y=self.d.y / factor,
+                err_stat=self.d.err_stat / factor,
+                err_syst=self.d.err_syst / factor,
+                experiment=self.d.experiment,
+                custom_label=self.d.custom_label,
+            ),
+            spec=element,
+            energy_scale_shift=self.energy_scale_shift,
+            quantity=new,
+        )
 
 
 @dataclass(frozen=True)
@@ -542,6 +604,69 @@ class FluxRatioData:
         axes.set_ylabel("Flux ratio")
         return axes
 
+    @staticmethod
+    def from_fluxes(
+        num: CRSpectrumData,
+        denom: CRSpectrumData,
+        quantity: CharacteristicQuantity,
+        error_propagation: Literal["first-order", "intervals"] = "first-order",
+    ) -> "FluxRatioData":
+        num = num.to_quantity(quantity)
+        denom = denom.to_quantity(quantity)
+        num_el = num.spec
+        denom_el = denom.spec
+        assert isinstance(num_el, Element)
+        assert isinstance(denom_el, Element)
+
+        Q = num.E
+        Q = Q[(Q > denom.E[0]) & (Q < denom.E[-1])]
+        num_d = num.d.lerp(Q)
+        denom_d = denom.d.lerp(Q)
+        R = num_d.y / denom_d.y
+        match error_propagation:
+            case "first-order":
+                R_lower_stat = R * np.sqrt(
+                    (num_d.err_stat[:, 0] / num_d.y) ** 2
+                    + (denom_d.err_stat[:, 0] / denom_d.y) ** 2
+                )
+                R_upper_stat = R * np.sqrt(
+                    (num_d.err_stat[:, 1] / num_d.y) ** 2
+                    + (denom_d.err_stat[:, 1] / denom_d.y) ** 2
+                )
+                R_lower_syst = R * np.sqrt(
+                    (num_d.err_syst[:, 0] / num_d.y) ** 2
+                    + (denom_d.err_syst[:, 0] / denom_d.y) ** 2
+                )
+                R_upper_syst = R * np.sqrt(
+                    (num_d.err_syst[:, 1] / num_d.y) ** 2
+                    + (denom_d.err_syst[:, 1] / denom_d.y) ** 2
+                )
+            case "intervals":
+                R_upper_stat = (num_d.y + num_d.err_stat[:, 1]) / (
+                    denom_d.y - denom_d.err_stat[:, 0]
+                )
+                R_lower_stat = (num_d.y - num_d.err_stat[:, 0]) / (
+                    denom_d.y + denom_d.err_stat[:, 1]
+                )
+                R_upper_syst = (num_d.y + num_d.err_syst[:, 1]) / (
+                    denom_d.y - denom_d.err_syst[:, 0]
+                )
+                R_lower_syst = (num_d.y - num_d.err_syst[:, 0]) / (
+                    denom_d.y + denom_d.err_syst[:, 1]
+                )
+        return FluxRatioData(
+            d=GenericExperimentData(
+                x=Q,
+                y=R,
+                err_stat=np.vstack((R_lower_stat, R_upper_stat)).T,
+                err_syst=np.vstack((R_lower_syst, R_upper_syst)).T,
+                experiment=num.experiment,
+                custom_label="",
+            ),
+            ratio=FluxRatio(num_el, denom_el),
+            quantity=quantity,
+        )
+
 
 @dataclass(frozen=True)
 class SpectrumDataConfig:
@@ -629,6 +754,11 @@ class Data:
     lnA: list[GenericExperimentData] = dataclasses.field(default_factory=list)
     flux_ratios: list[FluxRatioData] = dataclasses.field(default_factory=list)
 
+    def __post_init__(self):
+        self.spectra.sort(key=lambda d: (d.experiment, d.E[-1]))
+        self.lnA.sort(key=lambda d: (d.experiment, d.x[-1]))
+        self.flux_ratios.sort(key=lambda d: (d.d.experiment, d.Q[-1]))
+
     # backwards-compatible properties
     @property
     def element_spectra(self) -> dict[Experiment, dict[Element, CRSpectrumData]]:
@@ -654,11 +784,6 @@ class Data:
             if allparticle:
                 out[exp] = allparticle[0]
         return out
-
-    def __post_init__(self):
-        self.spectra.sort(key=lambda d: d.experiment)
-        self.lnA.sort(key=lambda d: d.experiment)
-        self.flux_ratios.sort(key=lambda frd: frd.d.experiment)
 
     def experiments(self, spectra_only: bool = False) -> list[Experiment]:
         all = {sp.d.experiment for sp in self.spectra}
@@ -723,6 +848,7 @@ class Data:
                             spectrum = CRSpectrumData(
                                 d=spectrum.d.masked_out(mask_out_region),
                                 spec=spectrum.spec,
+                                quantity="E",
                             )
                         spectra.append(spectrum)
                     case None:

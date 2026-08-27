@@ -1,10 +1,9 @@
 import enum
 from typing import Any
 
-import matplotlib.pyplot as plt
 import numpy as np
-
-_FALLBACK_CMAP = plt.colormaps["rainbow_r"]
+from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.typing import ColorType
 
 
 class Element(enum.IntEnum):
@@ -69,23 +68,29 @@ class Element(enum.IntEnum):
         return np.log(self.A)
 
     @property
-    def color(self) -> Any:
-        # FIXME: ensure the selected colors and the fallback are visually distinct
-        if color := {
-            Element.H: "#ff0000",
-            Element.He: "#8F9827",
-            Element.C: "#2edaaf",
+    def lnA_normalized(self) -> float:
+        LN_A_MIN = Element.H.lnA
+        LN_A_MAX = Element.Cu.lnA
+        return (self.lnA - LN_A_MIN) / (LN_A_MAX - LN_A_MIN)
+
+    @property
+    def color_custom(self) -> ColorType | None:
+        return {
+            Element.H: "#D52B2B",
+            Element.He: "#C2C23F",
+            Element.Be: "#317E30",
+            Element.C: "#35cfa9",
             Element.O: "#3a889d",
             Element.Mg: "#398be9",
             Element.Si: "#31259f",
             Element.Fe: "#7f00ff",
+            Element.Cu: "#E33EB7",
             Element.FreeZ: "gray",
-        }.get(self):
-            return color
-        else:
-            # idx = sorted(Element.regular()).index(self)
-            # return _ELEMENT_CMAP(idx / (len(Element.regular()) - 1))
-            return _FALLBACK_CMAP(self.lnA / self.Fe.lnA)  # type: ignore
+        }.get(self)
+
+    @property
+    def color(self) -> ColorType:
+        return ELEMENTS_CMAP(self.lnA_normalized)
 
     def __truediv__(self, other: Any):
         if not isinstance(other, Element):
@@ -131,3 +136,13 @@ def isotope_average_A(Z: int) -> float:
     Z_clamped = min(28, max(1, Z))
     element = Element(Z_clamped)
     return element_name_to_Z_A[element]
+
+
+ELEMENTS_CMAP = LinearSegmentedColormap.from_list(
+    "elements",
+    [
+        (el.lnA_normalized, el.color_custom)
+        for el in Element.regular()
+        if el.color_custom is not None
+    ],
+)

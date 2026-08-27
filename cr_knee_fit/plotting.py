@@ -12,6 +12,7 @@ from matplotlib import pyplot as plt
 from matplotlib import ticker
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
+from matplotlib.typing import ColorType
 
 from cr_knee_fit.elements import Element
 from cr_knee_fit.experiments import Experiment
@@ -56,7 +57,7 @@ def plot_credible_band(
     bounds: tuple[float, float],
     model_sample: list[Model],
     observable: Observable,
-    color: str,
+    color: ColorType,
     label: str | None = None,
     cl: float = 0.9,
     alpha: float = 0.3,
@@ -157,7 +158,7 @@ def plot_posterior_contours(
 
 
 def tricontourf_kwargs_transparent_colors(
-    color: str,
+    color: ColorType,
     levels: int = 10,
     alpha_min: float = 0.1,
     alpha_max: float = 0.8,
@@ -274,7 +275,7 @@ def plot_model_predictions(
     model_sample: list[Model] | None,
     E_bounds: tuple[float, float],
     plot_config: PosteriorPlotConfig,
-    color: str,
+    color: ColorType,
     scale: float,
 ) -> None:
     if plot_config.contours:
@@ -699,6 +700,8 @@ def plot_spectrum(
             plot_elements = list(spec)
         case None:
             plot_elements = Element.regular()
+        case _:
+            raise TypeError(f"Unexpected spec: {spec}")
     plot_allpart = spec is None
 
     model_legend_items: list[LegendItem] = []

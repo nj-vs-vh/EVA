@@ -1,5 +1,5 @@
 import subprocess
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from pathlib import Path
 from typing import Literal
 
@@ -46,18 +46,6 @@ E_N_GEV_LABEL: str = "$E_n$ / $\\text{GeV}$"
 LN_A_LABEL = "$ \\langle \\ln A \\rangle $"
 
 
-def label_energy_flux(ax: Axes, scale: float) -> None:
-    ax.set_xlabel(E_GEV_LABEL)
-    if scale == 0:
-        ax.set_ylabel(
-            "$ I $ / $ \\text{GeV}^{-1} \\; \\text{m}^{-2} \\; \\text{s}^{-1} \\; \\text{sr}^{-1} $"
-        )
-    else:
-        ax.set_ylabel(
-            f"$ E^{{{scale}}} F $ / $ \\text{{GeV}}^{{{scale - 1:.3g}}} \\; \\text{{m}}^{{-2}} \\; \\text{{s}}^{{-1}} \\; \\text{{sr}}^{{-1}} $"
-        )
-
-
 LegendItem = tuple[Artist, str]
 
 
@@ -71,7 +59,8 @@ def legend_with_added_items(ax: Axes, items: Iterable[LegendItem], **kwargs) -> 
 
 def add_elements_lnA_secondary_axis(ax: Axes) -> Axes:
     lnA_min, lnA_max = ax.get_ylim()
-    tick_elements = [el for el in Element.regular() if lnA_min < el.lnA < lnA_max]
+    tick_elements = [Element.H, Element.He, Element.Be, Element.N, Element.Si, Element.Fe]
+    tick_elements = [el for el in tick_elements if lnA_min < el.lnA < lnA_max]
     ax_element_ticks = ax.twinx()
     ax_element_ticks.set_yticks(
         ticks=[e.lnA for e in tick_elements],
@@ -98,7 +87,7 @@ def energy_shift_suffix(f: float) -> str:
 
 
 def legend_artist_line(
-    color: str, linestyle: str | None = None, linewidth: float | None = None
+    color: ColorType, linestyle: str | None = None, linewidth: float | None = None
 ) -> Line2D:
     return Line2D(
         [],
@@ -182,7 +171,6 @@ def q2E_factor(Z: float, A: float, quantity: CharacteristicQuantity) -> float:
 
 
 def q2R_factor(Z: float, A: float, quantity: CharacteristicQuantity) -> float:
-
     match quantity:
         case "E":
             return 1 / Z
@@ -190,3 +178,22 @@ def q2R_factor(Z: float, A: float, quantity: CharacteristicQuantity) -> float:
             return 1
         case "E_n":
             return 1 * A / Z
+
+
+def q2q_factor(
+    Z: float, A: float, from_: CharacteristicQuantity, to: CharacteristicQuantity
+) -> float:
+    return q2R_factor(Z, A, from_) / q2R_factor(Z, A, to)
+
+
+if __name__ == "__main__":
+    import itertools
+
+    qs: Collection[CharacteristicQuantity] = ("E", "R", "E_n")
+    Z = 26
+    A = 56
+    print(f"1 / Z = {1 / Z}")
+    print(f"1 / A = {1 / A}")
+    print(f"Z / A = {Z / A}")
+    for q1, q2 in itertools.product(qs, qs):
+        print(f"{q1} -> {q2}: {q2q_factor(Z, A, q1, q2)}")

@@ -640,6 +640,7 @@ class Model(Packable[ModelConfig]):
         element: SpectrumDataSpec,
         quantity: CharacteristicQuantity,
     ) -> np.ndarray:
+
         if quantity != "E" and element is None:
             raise ValueError("All-particle spectrum can only be computed in total energy")
 
@@ -649,6 +650,8 @@ class Model(Packable[ModelConfig]):
                 (self.compute_spectrum(Q, element, quantity=quantity) for element in element_group),
                 np.zeros_like(Q),
             )
+        elif not isinstance(element, Element):
+            raise TypeError(f"Can't compute spectrum for {element}")  # gamma guard
 
         components: list[np.ndarray] = []
         if self.crams is not None:

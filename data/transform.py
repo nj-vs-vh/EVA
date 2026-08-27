@@ -512,10 +512,16 @@ def transform_KISS() -> None:
         "DAMPE_B_O_kineticEnergyPerNucleon.txt",
         "CALET_B_C_kineticEnergyPerNucleon.txt",
         "CALET_C_O_kineticEnergyPerNucleon.txt",
+        ("TALE_lnA_totalEnergy.txt", "TALE_QGSJET-II-04_lnA_energy.txt"),
     ):
-        output = input.replace("_rigidity", "_ratio_rigidity").replace(
-            "_kineticEnergyPerNucleon", "_ratio_energy_per_nucleon"
-        )
+        if isinstance(input, tuple):
+            input, output = input
+        else:
+            output = (
+                input.replace("_rigidity", "_ratio_rigidity")
+                .replace("_kineticEnergyPerNucleon", "_ratio_energy_per_nucleon")
+                .replace("_totalEnergy", "_energy")
+            )
         output_path = OUTPUT_DIR / output
         shutil.copy(kiss_dir / input, output_path)
         logging.info("Data moved as-is from KISS to %s", output_path)  # noqa: LOG015
