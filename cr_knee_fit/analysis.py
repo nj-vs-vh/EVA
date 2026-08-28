@@ -644,6 +644,56 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
     print("Bye!")
 
 
+@dataclasses.dataclass
+class AnalysisResults:
+    config: FitConfig
+    mle: Model
+    gof: GoodnessOfFit | None
+    posterior_sample: list[Model] | None
+
+    @staticmethod
+    def load(outdir: Path | str, subsample_size: int | None = 3000) -> "AnalysisResults":
+        outdir = Path(outdir)
+        config_path = outdir / "config-dump.json"
+        config = FitConfig.model_validate_json(config_path.read_text())
+
+        mle_filenames = ("mle-map", "mle-prelim")
+        for mle_file in mle_filenames:
+            mle = Model.load(outdir / f"{mle_file}.txt", layout_info=config.model)
+            if mle is None:
+                continue
+
+            try:
+                gof = GoodnessOfFit.load(outdir / f"{mle_file}.gof.json")
+            except FileNotFoundError:
+                gof = None
+
+            break
+        else:
+            raise FileNotFoundError(
+                f"No MLE model found in any of the locations: {', '.join(mle_filenames)}"
+            )
+
+        try:
+            sample_path = outdir / "theta.txt"
+            theta_sample = np.loadtxt(sample_path)
+            assert theta_sample.ndim == 2, "Saved theta sample has the wrong number of dimensions"
+
+            model_sample = [
+                Model.unpack(theta, layout_info=config.model)
+                for theta in theta_sample[: (subsample_size or theta_sample.shape[0]), :]
+            ]
+        except Exception:  # noqa: BLE001
+            model_sample = None
+
+        return AnalysisResults(
+            config=config,
+            mle=mle,
+            gof=gof,
+            posterior_sample=model_sample,
+        )
+
+
 if __name__ == "__main__":
     # CLI for cluster run; use run_local.py wrapper script to run the analysis locally
     parser = argparse.ArgumentParser()

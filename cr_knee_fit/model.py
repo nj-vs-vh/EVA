@@ -562,6 +562,8 @@ class Model(Packable[ModelConfig]):
                 plot_elements = list(spec)
             case None:
                 plot_elements = Element.regular()
+            case _:
+                raise TypeError(f"Unsupported spec: {spec}")
         plot_allpart = spec is None
 
         self._plot_predictions(
@@ -607,7 +609,9 @@ class Model(Packable[ModelConfig]):
     ) -> dict[str, Figure]:
         res: dict[str, Figure] = {}
 
-        spectrum_specs = {s.spec for s in fit_data.spectra + validation_data.spectra}
+        spectrum_specs: set[SpectrumDataSpec] = {
+            s.spec for s in fit_data.spectra + validation_data.spectra
+        }
         for spec in spectrum_specs:
             fig, ax = plt.subplots()
             self._plot_spectrum(
@@ -650,7 +654,7 @@ class Model(Packable[ModelConfig]):
                 (self.compute_spectrum(Q, element, quantity=quantity) for element in element_group),
                 np.zeros_like(Q),
             )
-        elif not isinstance(element, Element):
+        elif isinstance(element, str):
             raise TypeError(f"Can't compute spectrum for {element}")  # gamma guard
 
         components: list[np.ndarray] = []

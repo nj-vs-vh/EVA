@@ -192,6 +192,12 @@ class GenericExperimentData:
     def scale_factor(self, scale: float) -> np.ndarray:
         return self.x**scale
 
+    def plot_label(self) -> str:
+        label = self.experiment.name
+        if self.custom_label is not None:
+            label += " " + self.custom_label
+        return label
+
     def plot(
         self,
         ax: Axes | None = None,
@@ -210,9 +216,7 @@ class GenericExperimentData:
         if label_override is not None:
             label = label_override
         else:
-            label = self.experiment.name
-            if self.custom_label is not None:
-                label += " " + self.custom_label
+            label = self.plot_label()
         factor_2D = np.expand_dims(factor, axis=-1)
 
         alpha = 1.0 if is_fitted else NON_FITTED_ALPHA
@@ -556,7 +560,7 @@ class FluxRatioData:
         self,
         ax: Axes | None = None,
         color: Any | None = None,
-        add_legend_label: bool = True,
+        add_legend_label: bool | str = True,
         is_fitted: bool = True,
         marker_size: float = DEFAULT_MARKER_SIZE,
     ) -> Axes | None:
@@ -576,8 +580,12 @@ class FluxRatioData:
             color=color or self.ratio.color(),
             is_fitted=is_fitted,
             marker_size=marker_size,
-            label_override=self.plot_label() + label_suffix,
-            add_legend_label=add_legend_label,
+            label_override=(
+                (self.plot_label() + label_suffix)
+                if isinstance(add_legend_label, bool)
+                else add_legend_label
+            ),
+            add_legend_label=add_legend_label is not False,
             x_factor=x_factor,
         )
         axes.set_xlabel(R_GV_LABEL)
@@ -661,7 +669,7 @@ class FluxRatioData:
                 err_stat=np.vstack((R_lower_stat, R_upper_stat)).T,
                 err_syst=np.vstack((R_lower_syst, R_upper_syst)).T,
                 experiment=num.experiment,
-                custom_label="",
+                custom_label=" (from fluxes)",
             ),
             ratio=FluxRatio(num_el, denom_el),
             quantity=quantity,

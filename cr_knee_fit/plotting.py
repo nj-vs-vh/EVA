@@ -833,12 +833,13 @@ def plot_all_observables(
     spectra_scale: float,
     fit_data: Data,
     validation_data: Data,
-    axes: dict[str, Axes] | None = None,
     legend_ncol: int = 4,
 ) -> dict[str, Figure]:
     res: dict[str, Figure] = {}
 
-    spectrum_specs = {s.spec for s in fit_data.spectra + validation_data.spectra}
+    spectrum_specs: set[SpectrumDataSpec] = {
+        s.spec for s in fit_data.spectra + validation_data.spectra
+    }
     for spec in spectrum_specs:
         fig, ax = plt.subplots(figsize=(8, 5))
         plot_spectrum(
@@ -869,3 +870,22 @@ def plot_all_observables(
     #             res[f"ratio_{fr.num.name}_over_{fr.denom.name}_vs_{quantity}"] = fig
 
     return res
+
+
+CARTO_VIVID = matplotlib.colors.ListedColormap(
+    [
+        "#E58606",
+        "#5D69B1",
+        "#52BCA3",
+        "#99C945",
+        "#CC61B0",
+        "#24796C",
+        "#DAA51B",
+        "#2F8AC4",
+        "#764E9F",
+        "#ED645A",
+        "#CC3A8E",
+        "#A5AA99",
+    ],
+    name="Carto Vivid (https://carto.com/carto-colors/)",
+)
