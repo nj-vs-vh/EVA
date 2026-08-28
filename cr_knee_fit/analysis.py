@@ -421,7 +421,8 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
     fit_data = Data.load(config.fit_data_config)
     assert not fit_data.is_empty(), "Fit data cannot be empty"
     set_global_fit_data(fit_data)
-    scale = 2.75 if fit_data.E_max() > 2e6 else 2.6
+    # scale = 2.75 if fit_data.E_max() > 2e6 else 2.6
+    scale = 2.75
     if fig := fit_data.plot(scale=scale, describe=True):
         fig.savefig(outdir / "data.png")
 
@@ -649,7 +650,8 @@ class AnalysisResults:
     config: FitConfig
     mle: Model
     gof: GoodnessOfFit | None
-    posterior_sample: list[Model] | None
+    posterior_sample: np.ndarray | None
+    model_sample: list[Model] | None
 
     @staticmethod
     def load(outdir: Path | str, subsample_size: int | None = 3000) -> "AnalysisResults":
@@ -684,13 +686,15 @@ class AnalysisResults:
                 for theta in theta_sample[: (subsample_size or theta_sample.shape[0]), :]
             ]
         except Exception:  # noqa: BLE001
+            theta_sample = None
             model_sample = None
 
         return AnalysisResults(
             config=config,
             mle=mle,
             gof=gof,
-            posterior_sample=model_sample,
+            model_sample=model_sample,
+            posterior_sample=theta_sample,
         )
 
 

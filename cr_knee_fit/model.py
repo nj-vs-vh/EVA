@@ -159,7 +159,7 @@ class Model(Packable[ModelConfig]):
         axes: Axes | None = None,
     ) -> Figure:
         if axes is None:
-            fig, ax = plt.subplots(figsize=(10, 8))
+            fig, ax = plt.subplots(figsize=(8, 6))
         else:
             ax = axes
             fig = cast(Figure, ax.figure)

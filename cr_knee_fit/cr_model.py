@@ -397,8 +397,6 @@ class LognormalSourceMaxAcceleration(Packable[LognormalSourceMaxAccelerationConf
         )
 
     def compute(self, R: np.ndarray, Z: int, A: float, is_lower: bool) -> np.ndarray:
-        #   spectrumModifier = 0.5 * std::erfc((std::log10(T) - m_featureLgT - pow2(m_lognormSigma) * m_lognormBeta) /
-        #                              (M_SQRT2 * m_lognormSigma));
         lg_Q = np.log10(R / q2R_factor(Z, A, self.config.quantity))
         return 0.5 * scipy.special.erfc(
             (lg_Q - self.lg_cut - self.beta * self.sigma**2) / (np.sqrt(2) * self.sigma)

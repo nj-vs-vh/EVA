@@ -81,7 +81,7 @@ if __name__ == "__main__":
     ).excluding(fit_data_config)
 
     def generate_guess() -> Model:
-        return Model(
+        m = Model(
             populations=[],
             energy_shifts=initial_guess_energy_shifts(
                 fit_data_config.experiments_spectra,
@@ -89,6 +89,8 @@ if __name__ == "__main__":
             ),
             crams=CramsModel.make(up2PeV=False, source_feature="none"),
         )
+        m.crams.config.population_meta.name = "LE"
+        return m
 
     # m = generate_guess()
     # d = Data.load(fit_data_config, verbose=True)
