@@ -1,5 +1,3 @@
-import itertools
-
 import numpy as np
 
 from cr_knee_fit import experiments
@@ -70,26 +68,27 @@ if __name__ == "__main__":
     fit_data_config.remove_subdominant_spectra_constrained_by_flux_ratios()
 
     validation_data_config = DataConfig(
-        spectra=[SpectrumDataConfig.allparticle(experiments.hawc)]
-        + [SpectrumDataConfig(experiments.dampe, element) for element in elements]
-        + [SpectrumDataConfig(experiments.calet, element) for element in elements]
-        + [SpectrumDataConfig(experiments.ams02, element) for element in elements],
-        flux_ratios=[
-            FluxRatioDataConfig(exp, ratio)
-            for ratio, exp in itertools.product(ratios, [experiments.calet, experiments.dampe])
-        ],
+        # spectra=[SpectrumDataConfig.allparticle(experiments.hawc)]
+        # + [SpectrumDataConfig(experiments.dampe, element) for element in elements]
+        # + [SpectrumDataConfig(experiments.calet, element) for element in elements]
+        [SpectrumDataConfig(experiments.ams02, element) for element in elements],
+        # flux_ratios=[
+        #     FluxRatioDataConfig(exp, ratio)
+        #     for ratio, exp in itertools.product(ratios, [experiments.calet, experiments.dampe])
+        # ],
     ).excluding(fit_data_config)
 
     def generate_guess() -> Model:
+        crams = CramsModel.make(up2PeV=False, source_feature="none")
+        crams.config.population_meta = None
         m = Model(
             populations=[],
             energy_shifts=initial_guess_energy_shifts(
                 fit_data_config.experiments_spectra,
                 fixed=experiments.ams02,
             ),
-            crams=CramsModel.make(up2PeV=False, source_feature="none"),
+            crams=crams,
         )
-        m.crams.config.population_meta.name = "LE"
         return m
 
     # m = generate_guess()

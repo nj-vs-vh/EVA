@@ -323,7 +323,7 @@ def plot_everything(
     fit_data: Data,
     validation_data: Data,
     axes: dict[str, Axes] | None = None,
-    legend_ncol: int = 4,
+    legend_ncol: int = 6,
 ) -> Figure:
     if axes is None:
         fig, axes = plt.subplot_mosaic(
@@ -716,7 +716,7 @@ def plot_spectrum(
             observable=lambda model, E: model.compute_spectrum(E, element=element, quantity="E"),  # noqa: B023
             E_bounds=data_Elim,
             plot_config=config,
-            color=element.color,  # NOTE: change to a neutral color for better readability?
+            color="k" if len(plot_elements) == 1 else element.color,
             scale=scale,
         )
         if not plot_allpart:

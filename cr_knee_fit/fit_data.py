@@ -72,6 +72,7 @@ class GenericExperimentData:
 
     # used to avoid re-inverting matrix on energy shifts
     precomputed_standard_inv_err_cov: np.ndarray | None = None
+    systematics_correlation_length: float | None = None
 
     default_systematics_correlation_length: ClassVar[float] = DEFAULT_SYSTEMATICS_CORRELATION_LENGTH
 
@@ -148,13 +149,17 @@ class GenericExperimentData:
         )
 
     @functools.cached_property
-    def standard_inv_err_cov(self) -> np.ndarray:
-        return np.linalg.inv(
-            self.err_cov(
-                corr_length=self.default_systematics_correlation_length,
-                log_space_correlation=True,
-            )
+    def standard_err_cov(self) -> np.ndarray:
+        return self.err_cov(
+            corr_length=(
+                self.systematics_correlation_length or self.default_systematics_correlation_length
+            ),
+            log_space_correlation=True,
         )
+
+    @functools.cached_property
+    def standard_inv_err_cov(self) -> np.ndarray:
+        return np.linalg.inv(self.standard_err_cov)
 
     @classmethod
     def load(
@@ -635,31 +640,31 @@ class FluxRatioData:
             case "first-order":
                 R_lower_stat = R * np.sqrt(
                     (num_d.err_stat[:, 0] / num_d.y) ** 2
-                    + (denom_d.err_stat[:, 0] / denom_d.y) ** 2
+                    + (denom_d.err_stat[:, 1] / denom_d.y) ** 2
                 )
                 R_upper_stat = R * np.sqrt(
                     (num_d.err_stat[:, 1] / num_d.y) ** 2
-                    + (denom_d.err_stat[:, 1] / denom_d.y) ** 2
+                    + (denom_d.err_stat[:, 0] / denom_d.y) ** 2
                 )
                 R_lower_syst = R * np.sqrt(
                     (num_d.err_syst[:, 0] / num_d.y) ** 2
-                    + (denom_d.err_syst[:, 0] / denom_d.y) ** 2
+                    + (denom_d.err_syst[:, 1] / denom_d.y) ** 2
                 )
                 R_upper_syst = R * np.sqrt(
                     (num_d.err_syst[:, 1] / num_d.y) ** 2
-                    + (denom_d.err_syst[:, 1] / denom_d.y) ** 2
+                    + (denom_d.err_syst[:, 0] / denom_d.y) ** 2
                 )
             case "intervals":
                 R_upper_stat = (num_d.y + num_d.err_stat[:, 1]) / (
                     denom_d.y - denom_d.err_stat[:, 0]
-                )
-                R_lower_stat = (num_d.y - num_d.err_stat[:, 0]) / (
+                ) - R
+                R_lower_stat = R - (num_d.y - num_d.err_stat[:, 0]) / (
                     denom_d.y + denom_d.err_stat[:, 1]
                 )
                 R_upper_syst = (num_d.y + num_d.err_syst[:, 1]) / (
                     denom_d.y - denom_d.err_syst[:, 0]
-                )
-                R_lower_syst = (num_d.y - num_d.err_syst[:, 0]) / (
+                ) - R
+                R_lower_syst = R - (num_d.y - num_d.err_syst[:, 0]) / (
                     denom_d.y + denom_d.err_syst[:, 1]
                 )
         return FluxRatioData(
