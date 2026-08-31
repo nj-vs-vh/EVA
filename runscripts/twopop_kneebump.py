@@ -142,7 +142,7 @@ def run_2_or_3_pop(
             FluxRatioDataConfig(experiments.calet, ratio)
             for ratio in [Element.B / Element.C, Element.C / Element.O, Element.H / Element.He]
         ],
-        lnA=[lhaaso],
+        lnA=[lhaaso, experiments.tale],
     ).excluding(fit_data_config)
 
     def generate_guess() -> Model:

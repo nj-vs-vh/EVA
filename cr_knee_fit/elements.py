@@ -77,7 +77,7 @@ class Element(enum.IntEnum):
     def color_custom(self) -> ColorType | None:
         return {
             Element.H: "#D52B2B",
-            Element.He: "#C2C23F",
+            Element.He: "#daa51c",
             Element.Be: "#317E30",
             Element.C: "#35cfa9",
             Element.O: "#3a889d",

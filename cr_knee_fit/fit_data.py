@@ -430,7 +430,7 @@ class CRSpectrumData:
             case None:
                 return "black"
             case "gamma":
-                return "tab:pink"
+                return "tab:green"
 
     def plot(
         self,
@@ -440,6 +440,7 @@ class CRSpectrumData:
         add_legend_label: bool = True,
         is_fitted: bool = True,
         marker_size: float = DEFAULT_MARKER_SIZE,
+        use_cr_spectrum_label: bool = True,
     ) -> Axes:
         axes = self.d.plot(
             ax=ax,
@@ -447,7 +448,7 @@ class CRSpectrumData:
             scale=scale,
             is_fitted=is_fitted,
             marker_size=marker_size,
-            label_override=self.plot_label(),
+            label_override=self.plot_label() if use_cr_spectrum_label else None,
             add_legend_label=add_legend_label,
         )
 
