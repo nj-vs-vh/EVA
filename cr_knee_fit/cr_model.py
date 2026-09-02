@@ -396,10 +396,14 @@ class LognormalSourceMaxAcceleration(Packable[LognormalSourceMaxAccelerationConf
             config=layout_info,
         )
 
+    @property
+    def beta_ln10(self) -> float:
+        return self.beta * np.log10(self.beta)
+
     def compute(self, R: np.ndarray, Z: int, A: float, is_lower: bool) -> np.ndarray:
         lg_Q = np.log10(R / q2R_factor(Z, A, self.config.quantity))
         return 0.5 * scipy.special.erfc(
-            (lg_Q - self.lg_cut - self.beta * self.sigma**2) / (np.sqrt(2) * self.sigma)
+            (lg_Q - self.lg_cut - self.beta_ln10 * self.sigma**2) / (np.sqrt(2) * self.sigma)
         )
 
     def description(self, is_lower: bool) -> str:
