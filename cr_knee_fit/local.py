@@ -10,7 +10,7 @@ from cr_knee_fit.utils import ROOT_DIR
 OUT_DIR = ROOT_DIR / "out"
 
 
-PHASE = 6
+PHASE = 7
 
 
 class FileStdoutTee(TextIO):
