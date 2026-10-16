@@ -4,11 +4,12 @@ from typing import cast
 
 import matplotlib.pyplot as plt
 import numpy as np
+from crams import PropagationParams
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
 from cr_knee_fit.constants import SPEED_OF_LIGHT_M_SEC
-from cr_knee_fit.cr_models.crams import CramsModel, CramsModelConfig
+from cr_knee_fit.cr_models.crams import SHARED_PROPAGATION_PARAMS, CramsModel, CramsModelConfig
 from cr_knee_fit.cr_models.pheno import (
     PhenomenologicalModel,
     PhenomenologicalModelConfig,
@@ -115,6 +116,10 @@ class Model(Packable[ModelConfig]):
         offset = 0
 
         populations: list[CRModel] = []
+
+        # enforce all CRAMS-computed populations share the same propagation parameters
+        crams_propagation_common: PropagationParams | None = None
+
         for pop_conf in layout_info.population_configs:
             match pop_conf:
                 case PhenomenologicalModelConfig():
@@ -122,7 +127,19 @@ class Model(Packable[ModelConfig]):
                         theta[offset:], layout_info=pop_conf
                     )
                 case CramsModelConfig():
+                    if pop_conf.has_shared_propagation():
+                        is_shared_propagation = True
+                        assert crams_propagation_common is not None, (
+                            "Shared-propagation CRAMS population must come after another CRAMS population with defined propagation parameters"
+                        )
+                        pop_conf = pop_conf.with_frozen_propagation(crams_propagation_common)
+                    else:
+                        is_shared_propagation = False
+
                     population = CramsModel.unpack(theta[offset:], layout_info=pop_conf)
+
+                    if not is_shared_propagation:
+                        crams_propagation_common = population.propagation
                 case _:
                     raise ValueError(f"Unknown population config type: {type(pop_conf)}")
             offset += population.ndim()
@@ -798,7 +815,21 @@ if __name__ == "__main__":
             ),
         ),
         Model(
-            populations=[CramsModel.make(up2PeV=False, source_feature="break")],
+            populations=[CramsModel.make(False, source_feature="break")],
+            energy_shifts=ExperimentEnergyScaleShifts(
+                lg_shifts={Experiment("a", filename_stem="aaa"): np.random.random()}
+            ),
+        ),
+        Model(
+            populations=[
+                CramsModel.make(False, source_feature="break"),
+                CramsModel.make(
+                    True,
+                    source_feature="erfc-cutoff",
+                    freeze_propagation=SHARED_PROPAGATION_PARAMS,
+                    population_meta=PopulationMetadata(name="CRAMS 2"),
+                ),
+            ],
             energy_shifts=ExperimentEnergyScaleShifts(
                 lg_shifts={Experiment("a", filename_stem="aaa"): np.random.random()}
             ),

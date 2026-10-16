@@ -229,6 +229,11 @@ def _inj_null2nan(value: Any):
     return value
 
 
+# placeholder params that should be used in frozen_propagation when in fact the propagation
+# params are shared between multiple CramsModel instances coordinated by Model
+SHARED_PROPAGATION_PARAMS = PropagationParams(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+
+
 class CramsModelConfig(pydantic.BaseModel):
     runner: CramsRunnerConfig
 
@@ -257,9 +262,21 @@ class CramsModelConfig(pydantic.BaseModel):
     def is_fitted_injection(self) -> np.ndarray:
         return np.isnan(self.frozen_injection_packed)
 
+    def with_frozen_propagation(self, frozen_propagation: PropagationParams) -> "CramsModelConfig":
+        return CramsModelConfig(
+            runner=self.runner,
+            frozen_propagation=frozen_propagation,
+            frozen_injection=self.frozen_injection,
+            interpolation_method=self.interpolation_method,
+            population_meta=self.population_meta,
+        )
+
+    def has_shared_propagation(self) -> bool:
+        return self.frozen_propagation == SHARED_PROPAGATION_PARAMS
+
     @staticmethod
     def make(
-        up2PeV: bool,
+        to_high_E: bool,
         source_feature: SourceFeatureSpec | InjectionFeature,
         fit_abundances: Collection[Element] = (
             [Element.H, Element.He, Element.C, Element.N, Element.O]
@@ -267,17 +284,18 @@ class CramsModelConfig(pydantic.BaseModel):
         ),
         freeze_propagation: bool | PropagationParams = False,
         freeze_injection: bool = False,
+        population_meta: PopulationMetadata | None = None,
     ) -> "CramsModelConfig":
-        if up2PeV:
+        if to_high_E:
             T_sim_grid = LogGrid(
                 min=0.1,  # 0.1 GeV
-                max=5e7,  # 3 PeV
-                size=200,  # enough for numerical errors <0.1%
+                max=1e9,  # 100 PeV
+                size=300,  # enough for numerical errors <0.1%
             )
             R_out_grid = LogGrid(
-                min=5,  # GV
-                max=1e7,  # PV
-                size=200,
+                min=5,
+                max=5e8,
+                size=300,
             )
         else:
             T_sim_grid = CRAMS_DEFAULT_T_SIM_GRID
@@ -286,7 +304,7 @@ class CramsModelConfig(pydantic.BaseModel):
         features: list[InjectionFeature] = []
         match source_feature:
             case "break":
-                features.append(InjectionBreak(R_GV=FREE, delta_slope=FREE, omega=FREE))
+                features.append(InjectionBreak(FREE, FREE, FREE))
             case "erfc-cutoff":
                 features.append(InjectionLognormalDist(FREE, FREE, beta=1.0))
             case "exp-cutoff":
@@ -358,7 +376,7 @@ class CramsModelConfig(pydantic.BaseModel):
                 features=features,
             ),
             frozen_propagation=frozen_propagation,
-            population_meta=PopulationMetadata(name="CRAMS", linestyle="-"),
+            population_meta=population_meta or PopulationMetadata(name="CRAMS", linestyle="-"),
         )
 
     @property
@@ -395,11 +413,12 @@ class CramsModel(Packable[CramsModelConfig]):
 
     @staticmethod
     def make(
-        up2PeV: bool,
+        to_high_E: bool,
         source_feature: SourceFeatureSpec | InjectionFeature = "none",
         freeze_propagation: bool | PropagationParams = False,
         freeze_injection: bool = False,
         randomize_init: bool = False,
+        population_meta: PopulationMetadata | None = None,
     ) -> "CramsModel":
 
         def _init(v: float, sigma: float) -> float:
@@ -437,11 +456,12 @@ class CramsModel(Packable[CramsModelConfig]):
         )
 
         config = CramsModelConfig.make(
-            up2PeV=up2PeV,
+            to_high_E=to_high_E,
             fit_abundances=list(init_fitted_abundances.keys()),
             source_feature=source_feature,
             freeze_propagation=freeze_propagation,
             freeze_injection=freeze_injection,
+            population_meta=population_meta,
         )
 
         def _if_not_frozen(v: float, default: float) -> float:
@@ -507,6 +527,119 @@ class CramsModel(Packable[CramsModelConfig]):
             config=config,
         )
 
+    # @staticmethod
+    # def make_HE(
+    #     source_feature: SourceFeatureSpec | InjectionFeature = "none",
+    #     freeze_propagation: bool | PropagationParams = False,
+    #     freeze_injection: bool = False,
+    #     randomize_init: bool = False,
+    # ) -> "CramsModel":
+
+    #     def _init(v: float, sigma: float) -> float:
+    #         if randomize_init:
+    #             return stats.norm.rvs(v, sigma)
+    #         else:
+    #             return v
+
+    #     init_fitted_abundances = {
+    #         Element.H: _init(4.14e-2, 1e-4),
+    #         Element.He: _init(2.04e-2, 1e-4),
+    #         Element.C: _init(4.00e-3, 1e-4),
+    #         Element.N: _init(3.83e-4, 1e-4),
+    #         Element.O: _init(7.21e-3, 1e-4),
+    #         Element.Ne: _init(1.35e-3, 1e-4),
+    #         Element.Mg: _init(2.38e-3, 1e-4),
+    #         Element.Si: _init(2.83e-3, 1e-4),
+    #         Element.S: _init(5.06e-4, 1e-4),
+    #         Element.Fe: _init(7.53e-3, 1e-4),
+    #     }
+    #     init_fitted_slopes = [
+    #         _init(4.37, 0.05),
+    #         _init(4.30, 0.05),
+    #         _init(4.36, 0.05),
+    #     ]
+    #     init_prop = PropagationParams(
+    #         H_kpc=_init(7.0, 0.1),
+    #         D_0_cm2_sec=_init(2.376e28, 1e27),
+    #         v_A_km_sec=_init(3.32, 0.1),
+    #         R_b_GV=_init(316.9, 10),
+    #         delta=_init(0.54, 0.05),
+    #         ddelta=_init(0.27, 0.05),
+    #         phi=_init(0.47, 0.05),
+    #         X_src=-1.0,
+    #     )
+
+    #     config = CramsModelConfig.make(
+    #         to_high_E=to_high_E,
+    #         fit_abundances=list(init_fitted_abundances.keys()),
+    #         source_feature=source_feature,
+    #         freeze_propagation=freeze_propagation,
+    #         freeze_injection=freeze_injection,
+    #     )
+
+    #     def _if_not_frozen(v: float, default: float) -> float:
+    #         if np.isnan(default):
+    #             return v
+    #         else:
+    #             return default
+
+    #     features: list[InjectionFeature] = []
+    #     for feature in config.frozen_injection.features:
+    #         match feature:
+    #             case InjectionBreak() as b:
+    #                 feature = InjectionBreak(
+    #                     R_GV=_if_not_frozen(_init(15e3, 1e3), b.R_GV),
+    #                     delta_slope=_if_not_frozen(_init(0.2, 0.05), b.delta_slope),
+    #                     omega=_if_not_frozen(_init(0.2, 0.05), b.omega),
+    #                 )
+    #             case InjectionLognormalDist() as ln:
+    #                 feature = InjectionLognormalDist(
+    #                     R_mean_GV=_if_not_frozen(_init(15e3, 1e3), ln.R_mean_GV),
+    #                     sigma=_if_not_frozen(_init(0.5, 0.05), ln.sigma),
+    #                     beta=_if_not_frozen(_init(1.0, 0.05), ln.beta),
+    #                 )
+    #             case InjectionExpCutoff() as iec:
+    #                 feature = InjectionExpCutoff(
+    #                     R_cut_GV=_if_not_frozen(_init(15e3, 1e3), iec.R_cut_GV),
+    #                     Delta=_if_not_frozen(_init(0.2, 0.05), iec.Delta),
+    #                     is_lower=iec.is_lower,
+    #                 )
+    #         features.append(feature)
+
+    #     return CramsModel(
+    #         propagation=PropagationParams(
+    #             H_kpc=_if_not_frozen(init_prop.H_kpc, config.frozen_propagation.H_kpc),
+    #             D_0_cm2_sec=_if_not_frozen(
+    #                 init_prop.D_0_cm2_sec, config.frozen_propagation.D_0_cm2_sec
+    #             ),
+    #             v_A_km_sec=_if_not_frozen(
+    #                 init_prop.v_A_km_sec, config.frozen_propagation.v_A_km_sec
+    #             ),
+    #             R_b_GV=_if_not_frozen(init_prop.R_b_GV, config.frozen_propagation.R_b_GV),
+    #             delta=_if_not_frozen(init_prop.delta, config.frozen_propagation.delta),
+    #             ddelta=_if_not_frozen(init_prop.ddelta, config.frozen_propagation.ddelta),
+    #             phi=_if_not_frozen(init_prop.phi, config.frozen_propagation.phi),
+    #             X_src=_if_not_frozen(init_prop.X_src, config.frozen_propagation.X_src),
+    #         ),
+    #         injection=InjectionParams(
+    #             abundances=[
+    #                 _if_not_frozen(
+    #                     init_fitted_abundances.get(element, DEFAULT_ABUNDANCES[element]),
+    #                     frozen_abundance,
+    #                 )
+    #                 for element, frozen_abundance in zip(
+    #                     CRAMS_ELEMENTS, config.frozen_injection.abundances, strict=True
+    #                 )
+    #             ],
+    #             slopes=[
+    #                 _if_not_frozen(sl, frozen)
+    #                 for sl, frozen in zip(init_fitted_slopes, config.frozen_injection.slopes)
+    #             ],
+    #             features=features,
+    #         ),
+    #         config=config,
+    #     )
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, CramsModel):
             return False
@@ -537,19 +670,27 @@ class CramsModel(Packable[CramsModelConfig]):
                         and np.isclose(d1.beta, f2.beta)
                     )
 
-        flags = [
-            np.isclose(self.propagation.H_kpc, other.propagation.H_kpc),
-            np.isclose(self.propagation.v_A_km_sec, other.propagation.v_A_km_sec),
-            np.isclose(self.propagation.R_b_GV, other.propagation.R_b_GV),
-            np.isclose(self.propagation.delta, other.propagation.delta),
-            np.isclose(self.propagation.ddelta, other.propagation.ddelta),
-            np.isclose(self.propagation.D_0_cm2_sec, other.propagation.D_0_cm2_sec),
-            np.isclose(self.propagation.X_src, other.propagation.X_src),
-            np.isclose(self.propagation.phi, other.propagation.phi),
+        flags: list[bool | np.bool_] = [
             np.allclose(self.injection.abundances, other.injection.abundances),
             np.allclose(self.injection.slopes, other.injection.slopes),
             is_feature_same,
         ]
+
+        if not self.config.has_shared_propagation() and not other.config.has_shared_propagation():
+            flags.extend(
+                [
+                    np.isclose(self.propagation.H_kpc, other.propagation.H_kpc),
+                    np.isclose(self.propagation.v_A_km_sec, other.propagation.v_A_km_sec),
+                    np.isclose(self.propagation.R_b_GV, other.propagation.R_b_GV),
+                    np.isclose(self.propagation.delta, other.propagation.delta),
+                    np.isclose(self.propagation.ddelta, other.propagation.ddelta),
+                    np.isclose(self.propagation.D_0_cm2_sec, other.propagation.D_0_cm2_sec),
+                    np.isclose(self.propagation.X_src, other.propagation.X_src),
+                    np.isclose(self.propagation.phi, other.propagation.phi),
+                ]
+            )
+
+        # print(self, other)
         # print(flags)
 
         return bool(np.all(flags))  # type: ignore
@@ -848,6 +989,10 @@ class CramsModel(Packable[CramsModelConfig]):
     @classmethod
     def unpack(cls, theta: np.ndarray, layout_info: CramsModelConfig) -> "CramsModel":
         config = layout_info
+        assert not config.has_shared_propagation(), (
+            "Attempted to unpack a CramsModel with shared propagation; "
+            + "it is a placeholder which needs to be replaced with actual values before use"
+        )
 
         propagation_packed = config.frozen_propagation_packed
         n_prop = np.sum(config.is_fitted_propagation)
@@ -877,7 +1022,7 @@ if __name__ == "__main__":
                 for freeze_inj in (False, True):
                     print("\n===\n")
                     cm = CramsModel.make(
-                        up2PeV=up2PeV,
+                        to_high_E=up2PeV,
                         source_feature=source_feature,
                         freeze_propagation=freeze_prop,
                         freeze_injection=freeze_inj,

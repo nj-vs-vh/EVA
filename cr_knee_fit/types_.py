@@ -69,6 +69,7 @@ class Packable[LayoutInfo](abc.ABC):
                     self.print_params()
                     print("\nUnpacked:")
                     unpacked.print_params()
+                    print()
                 raise RuntimeError("Packing validation failed")
 
         if len(self.bounds()) != self.size:
