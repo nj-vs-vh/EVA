@@ -365,6 +365,10 @@ class CramsModelConfig(pydantic.BaseModel):
     def elements(self) -> list[Element]:
         return CRAMS_ELEMENTS
 
+    @property
+    def all_elements(self) -> list[Element]:  # compat with CosmicRaysModelConfig
+        return self.elements
+
     def unpack_injection(self, v: np.ndarray):
         return unpack_injection(
             v,
@@ -392,7 +396,7 @@ class CramsModel(Packable[CramsModelConfig]):
     @staticmethod
     def make(
         up2PeV: bool,
-        source_feature: SourceFeatureSpec | InjectionFeature,
+        source_feature: SourceFeatureSpec | InjectionFeature = "none",
         freeze_propagation: bool | PropagationParams = False,
         freeze_injection: bool = False,
         randomize_init: bool = False,
@@ -604,7 +608,11 @@ class CramsModel(Packable[CramsModelConfig]):
             return np.zeros_like(R) * np.nan
 
     def compute_spectrum(
-        self, Q: np.ndarray, element: Element, quantity: CharacteristicQuantity
+        self,
+        Q: np.ndarray,
+        element: Element,
+        quantity: CharacteristicQuantity,
+        contrib_to_all_particle: bool = True,  # noop, compatibility with legacy pheno signature
     ) -> np.ndarray:
         q2R = q2R_factor(element.Z, element.A, quantity=quantity)
         dNdR = self._compute_rigidity_spectrum(R=q2R * Q, element=element)
@@ -621,6 +629,10 @@ class CramsModel(Packable[CramsModelConfig]):
             element: float(self._compute_rigidity_spectrum(np.array([R]), element=element)[0])
             for element in CRAMS_ELEMENTS
         }
+
+    @property
+    def population_meta(self) -> PopulationMetadata | None:
+        return self.config.population_meta
 
     @property
     def linestyle(self) -> str | None:
@@ -850,6 +862,12 @@ class CramsModel(Packable[CramsModelConfig]):
             propagation=unpack_propagation(propagation_packed),
             config=config,
         )
+
+    # pheno model compatibility methods
+
+    @property
+    def all_elements(self) -> list[Element]:
+        return self.layout_info().all_elements
 
 
 if __name__ == "__main__":

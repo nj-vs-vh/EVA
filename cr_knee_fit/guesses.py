@@ -4,19 +4,19 @@ import numpy as np
 from scipy import stats  # type: ignore
 
 from cr_knee_fit.cr_models.pheno import (
-    CosmicRaysModel,
-    CosmicRaysModelConfig,
     ExpCutoff,
     ExpCutoffConfig,
     LognormalSourceMaxAcceleration,
     LognormalSourceMaxAccelerationConfig,
+    PhenomenologicalModel,
+    PhenomenologicalModelConfig,
     SharedPowerLawSpectrum,
     SpectralBreak,
     SpectralBreakConfig,
 )
 from cr_knee_fit.elements import Element
 from cr_knee_fit.experiments import Experiment
-from cr_knee_fit.model import Model, ModelConfig
+from cr_knee_fit.model import CRModelConfig, Model, ModelConfig
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 
 # break_pos_guesses = [4.2, 5.3, 6.5]
@@ -83,9 +83,11 @@ def initial_guess_pl_index(center: float = 2.6, width: float = 0.05) -> float:
 
 
 def initial_guess_main_population(
-    pop_config: CosmicRaysModelConfig,
+    pop_config: CRModelConfig,
     initial_guess_lgI_override: dict[Element, float] | None = None,
-) -> CosmicRaysModel:
+) -> PhenomenologicalModel:
+    assert isinstance(pop_config, PhenomenologicalModelConfig)
+
     initial_guess_lgI = {
         Element.H: -4,
         Element.He: -4.65,
@@ -97,7 +99,7 @@ def initial_guess_main_population(
     }
     if initial_guess_lgI_override:
         initial_guess_lgI.update(initial_guess_lgI_override)
-    return CosmicRaysModel(
+    return PhenomenologicalModel(
         base_spectra=[
             (
                 SharedPowerLawSpectrum(

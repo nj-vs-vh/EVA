@@ -10,8 +10,8 @@ from matplotlib.figure import Figure
 from cr_knee_fit.constants import SPEED_OF_LIGHT_M_SEC
 from cr_knee_fit.cr_models.crams import CramsModel, CramsModelConfig
 from cr_knee_fit.cr_models.pheno import (
-    CosmicRaysModel,
-    CosmicRaysModelConfig,
+    PhenomenologicalModel,
+    PhenomenologicalModelConfig,
     PopulationMetadata,
     SharedPowerLawSpectrum,
     SpectralBreak,
@@ -44,16 +44,15 @@ from cr_knee_fit.utils import (
     quantity_label,
 )
 
+CRModel = PhenomenologicalModel | CramsModel
+CRModelConfig = PhenomenologicalModelConfig | CramsModelConfig
+
 
 @dataclasses.dataclass
 class ModelConfig:
     shifted_experiments: list[Experiment]
 
-    crams_config: CramsModelConfig | None = None
-
-    population_configs: list[CosmicRaysModelConfig] = dataclasses.field(default_factory=list)
-    # single population, for backwards compatibility
-    cr_model_config: CosmicRaysModelConfig | None = None
+    population_configs: list[CRModelConfig] = dataclasses.field(default_factory=list)
 
     # if specified, these uncertainties are used instead of the default one hard-coded in inference.py
     energy_scale_lg_uncertainty_override: dict[Experiment, float] = dataclasses.field(
@@ -61,13 +60,6 @@ class ModelConfig:
     )
 
     def __post_init__(self) -> None:
-        if self.cr_model_config is not None:
-            if self.population_configs:
-                raise ValueError(
-                    "population_configs and cr_model_config parameters are mutually exclusive"
-                )
-            self.population_configs = [self.cr_model_config]
-            self.cr_model_config = None
         deduplicated_shifted_experiments: list[Experiment] = []
         for e in self.shifted_experiments:
             if e in deduplicated_shifted_experiments:
@@ -79,21 +71,17 @@ class ModelConfig:
         all = {
             element
             for element in itertools.chain.from_iterable(
-                c.resolved_elements for c in self.population_configs
+                c.all_elements for c in self.population_configs
             )
             if element is not Element.FreeZ or not only_fixed_Z
         }
-        if self.crams_config is not None:
-            all.update(self.crams_config.elements)
         return sorted(all)
 
 
 @dataclasses.dataclass
 class Model(Packable[ModelConfig]):
-    populations: list[CosmicRaysModel]
+    populations: list[CRModel]
     energy_shifts: ExperimentEnergyScaleShifts
-
-    crams: CramsModel | None = None
 
     energy_scale_lg_uncertainty_override: dict[Experiment, float] = dataclasses.field(
         default_factory=dict
@@ -102,7 +90,6 @@ class Model(Packable[ModelConfig]):
     @property
     def children(self) -> list[Packable | None]:
         return [
-            self.crams,
             *self.populations,
             self.energy_shifts,
         ]
@@ -118,7 +105,6 @@ class Model(Packable[ModelConfig]):
 
     def layout_info(self) -> ModelConfig:
         return ModelConfig(
-            crams_config=self.crams.layout_info() if self.crams is not None else None,
             population_configs=[pop.layout_info() for pop in self.populations],
             shifted_experiments=self.energy_shifts.experiments,
             energy_scale_lg_uncertainty_override=self.energy_scale_lg_uncertainty_override,
@@ -128,15 +114,17 @@ class Model(Packable[ModelConfig]):
     def unpack(cls, theta: np.ndarray, layout_info: ModelConfig) -> "Model":
         offset = 0
 
-        if layout_info.crams_config is not None:
-            crams = CramsModel.unpack(theta, layout_info=layout_info.crams_config)
-            offset += crams.ndim()
-        else:
-            crams = None
-
-        populations: list[CosmicRaysModel] = []
+        populations: list[CRModel] = []
         for pop_conf in layout_info.population_configs:
-            population = CosmicRaysModel.unpack(theta[offset:], layout_info=pop_conf)
+            match pop_conf:
+                case PhenomenologicalModelConfig():
+                    population: CRModel = PhenomenologicalModel.unpack(
+                        theta[offset:], layout_info=pop_conf
+                    )
+                case CramsModelConfig():
+                    population = CramsModel.unpack(theta[offset:], layout_info=pop_conf)
+                case _:
+                    raise ValueError(f"Unknown population config type: {type(pop_conf)}")
             offset += population.ndim()
             populations.append(population)
 
@@ -146,7 +134,6 @@ class Model(Packable[ModelConfig]):
         )
         return Model(
             populations=populations,
-            crams=crams,
             energy_shifts=energy_shifts,
             energy_scale_lg_uncertainty_override=layout_info.energy_scale_lg_uncertainty_override,
         )
@@ -462,23 +449,13 @@ class Model(Packable[ModelConfig]):
         allparticle: bool,
         caption_elements: bool,
     ):
-        if self.crams is not None:
-            self.crams.plot(
-                Emin=E_min,
-                Emax=E_max,
-                scale=scale,
-                axes=ax,
-                all_particle=allparticle,
-                elements=elements,
-                caption_elements=caption_elements,
-            )
         for pop in self.populations:
             pop.plot(
                 Emin=E_min,
                 Emax=E_max,
                 scale=scale,
                 axes=ax,
-                all_particle=allparticle and len(pop.all_elements) > 1,
+                all_particle=allparticle and len(pop.layout_info().all_elements) > 1,
                 elements=elements,
                 caption_elements=caption_elements,
             )
@@ -503,17 +480,13 @@ class Model(Packable[ModelConfig]):
                 )
 
     def n_populations_eff(self) -> int:
-        # crams is an effective extra population
-        return int(self.crams is not None) + len(self.populations)
+        return len(self.populations)
 
     def multipopulation_elements(self, from_elements: list[Element] | None = None) -> list[Element]:
         return [
             element
-            for element in (from_elements or self.layout_info().elements(True))
-            if (
-                len([pop for pop in self.populations if element in pop.all_elements])
-                > (1 if self.crams is None else 0)  # crams includes all elements in any case
-            )
+            for element in (from_elements or self.layout_info().elements(only_fixed_Z=True))
+            if len([pop for pop in self.populations if element in pop.all_elements]) > 0
         ]
 
     def _plot_spectrum(
@@ -658,16 +631,9 @@ class Model(Packable[ModelConfig]):
             raise TypeError(f"Can't compute spectrum for {element}")  # gamma guard
 
         components: list[np.ndarray] = []
-        if self.crams is not None:
-            components.append(
-                self.crams.compute_spectrum(Q, element, quantity=quantity)
-                if element is not None
-                else self.crams.compute_all_particle_spectrum(Q)
-            )
-
         for pop in self.populations:
             if element is not None:
-                if pop.has_element(element):
+                if element in pop.all_elements:
                     components.append(
                         pop.compute_spectrum(
                             Q,
@@ -726,7 +692,7 @@ class Model(Packable[ModelConfig]):
 
         # adding FreeZ components per-population as they are potentially distinct
         for pop in self.populations:
-            if Element.FreeZ not in pop.layout_info().resolved_elements:
+            if isinstance(pop, CramsModel) or Element.FreeZ not in pop.layout_info().all_elements:
                 continue
             spectra.append(pop.compute_spectrum(E, element=Element.FreeZ, quantity="E"))
             lnA.append(np.log(isotope_average_A(round(pop.element_Z(Element.FreeZ)))))
@@ -737,8 +703,6 @@ class Model(Packable[ModelConfig]):
 
     def compute_abundances(self, R: float) -> dict[Element | str, float]:
         abundances = [pop.compute_abundances(R) for pop in self.populations]
-        if self.crams is not None:
-            abundances.append(self.crams.compute_abundances(R))
         all_elements = list(set(itertools.chain.from_iterable(ab.keys() for ab in abundances)))
         return {el: sum(ab.get(el, 0.0) for ab in abundances) for el in all_elements}
 
@@ -782,7 +746,7 @@ if __name__ == "__main__":
     for m in [
         Model(
             populations=[
-                CosmicRaysModel(
+                PhenomenologicalModel(
                     base_spectra=[
                         SharedPowerLawSpectrum(
                             lgI_per_element={p: np.random.random()},
@@ -834,8 +798,7 @@ if __name__ == "__main__":
             ),
         ),
         Model(
-            populations=[],
-            crams=CramsModel.make(up2PeV=False, source_feature="break"),
+            populations=[CramsModel.make(up2PeV=False, source_feature="break")],
             energy_shifts=ExperimentEnergyScaleShifts(
                 lg_shifts={Experiment("a", filename_stem="aaa"): np.random.random()}
             ),

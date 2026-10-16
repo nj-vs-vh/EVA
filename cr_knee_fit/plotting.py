@@ -14,6 +14,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.typing import ColorType
 
+from cr_knee_fit.cr_models.pheno import PhenomenologicalModel, PhenomenologicalModelConfig
 from cr_knee_fit.elements import Element
 from cr_knee_fit.experiments import Experiment
 from cr_knee_fit.fit_data import (
@@ -386,7 +387,7 @@ def plot_everything(
         E_factor = E_grid**spectra_scale
         for element in center.multipopulation_elements():
             for pop in center.populations:
-                if element not in pop.resolved_elements:
+                if element not in pop.all_elements:
                     continue
                 ax_el.plot(
                     E_grid,
@@ -394,14 +395,6 @@ def plot_everything(
                     color=element.color,
                     linewidth=POP_CONTRIB_LINEWIDTH,
                     linestyle=pop.linestyle,
-                )
-            if crams := center.crams:
-                ax_el.plot(
-                    E_grid,
-                    E_factor * crams.compute_spectrum(E_grid, element=element, quantity="E"),
-                    color=element.color,
-                    linewidth=POP_CONTRIB_LINEWIDTH,
-                    linestyle=crams.linestyle,
                 )
 
     plots_config.elements.apply_limits(ax_el, data_ylim=elem_data_ylim, data_xlim=elem_Elim)
@@ -460,13 +453,18 @@ def plot_everything(
             pop_conf.rescale_all_particle
             or any(comp.scale_contrib_to_allpart for comp in pop_conf.component_configs)
             for pop_conf in model_config.population_configs
+            if isinstance(pop_conf, PhenomenologicalModelConfig)
         ):
             plot_model_predictions(
                 ax=ax_all,
                 best=center,
                 model_sample=model_sample,
                 observable=lambda model, E: sum(
-                    (pop.compute_extra_all_particle_contribution(E) for pop in model.populations),
+                    (
+                        pop.compute_extra_all_particle_contribution(E)
+                        for pop in model.populations
+                        if isinstance(pop, PhenomenologicalModel)
+                    ),
                     np.zeros_like(E),
                 ),
                 E_bounds=all_Elim,
@@ -489,14 +487,6 @@ def plot_everything(
                     color=ALL_PARTICLE_COLOR,
                     linewidth=POP_CONTRIB_LINEWIDTH,
                     linestyle=pop.linestyle,
-                )
-            if crams := center.crams:
-                ax_el.plot(
-                    E_grid,
-                    E_factor * crams.compute_all_particle_spectrum(E_grid),
-                    color=ALL_PARTICLE_COLOR,
-                    linewidth=POP_CONTRIB_LINEWIDTH,
-                    linestyle=crams.linestyle,
                 )
 
         plots_config.all_particle.apply_limits(ax_all, data_ylim=all_data_ylim, data_xlim=all_Elim)
@@ -613,27 +603,14 @@ def plot_everything(
         plots_config.elements.population_contribs_best_fit
         or plots_config.all_particle.population_contribs_best_fit
     ):
-        if crams := center.crams:
-            legend_items.append(
-                (
-                    legend_artist_line(
-                        color="gray", linestyle=crams.linestyle, linewidth=POP_CONTRIB_LINEWIDTH
-                    ),
-                    (
-                        crams.config.population_meta.name
-                        if crams.config.population_meta
-                        else "Unnamed"
-                    )
-                    + " pop.",
-                )
-            )
         for pop in center.populations:
             legend_items.append(
                 (
                     legend_artist_line(
                         color="gray", linestyle=pop.linestyle, linewidth=POP_CONTRIB_LINEWIDTH
                     ),
-                    (pop.population_meta.name if pop.population_meta else "Unnamed") + " pop.",
+                    (pop.population_meta.name if pop.population_meta is not None else "Unnamed")
+                    + " pop.",
                 )
             )
     legend_items += list(experiment_legend_item_by_label.values())
@@ -727,7 +704,7 @@ def plot_spectrum(
         E_factor = E_grid**scale
         for element in center.multipopulation_elements():
             for pop in center.populations:
-                if element not in pop.resolved_elements:
+                if element not in pop.all_elements:
                     continue
                 ax.plot(
                     E_grid,
@@ -735,14 +712,6 @@ def plot_spectrum(
                     color=element.color,
                     linewidth=POP_CONTRIB_LINEWIDTH,
                     linestyle=pop.linestyle,
-                )
-            if crams := center.crams:
-                ax.plot(
-                    E_grid,
-                    E_factor * crams.compute_spectrum(E_grid, element=element, quantity="E"),
-                    color=element.color,
-                    linewidth=POP_CONTRIB_LINEWIDTH,
-                    linestyle=crams.linestyle,
                 )
 
     if plot_allpart:
@@ -769,14 +738,6 @@ def plot_spectrum(
                     linewidth=POP_CONTRIB_LINEWIDTH,
                     linestyle=pop.linestyle,
                 )
-            if crams := center.crams:
-                ax.plot(
-                    E_grid,
-                    E_factor * crams.compute_all_particle_spectrum(E_grid),
-                    color=ALL_PARTICLE_COLOR,
-                    linewidth=POP_CONTRIB_LINEWIDTH,
-                    linestyle=crams.linestyle,
-                )
 
     config.apply_limits(ax, data_ylim=data_ylim, data_xlim=data_Elim)
 
@@ -786,20 +747,6 @@ def plot_spectrum(
 
     legend_items = model_legend_items.copy()
     if config.population_contribs_best_fit:
-        if crams := center.crams:
-            legend_items.append(
-                (
-                    legend_artist_line(
-                        color="gray", linestyle=crams.linestyle, linewidth=POP_CONTRIB_LINEWIDTH
-                    ),
-                    (
-                        crams.config.population_meta.name
-                        if crams.config.population_meta
-                        else "Unnamed"
-                    )
-                    + " pop.",
-                )
-            )
         for pop in center.populations:
             legend_items.append(
                 (

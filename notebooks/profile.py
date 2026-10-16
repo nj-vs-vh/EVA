@@ -17,9 +17,8 @@ from cr_knee_fit.model import Model
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 
 m = Model(
-    populations=[],
+    populations=[CramsModel.make(up2PeV=True, source_feature="none")],
     energy_shifts=ExperimentEnergyScaleShifts({}),
-    crams=CramsModel.make(up2PeV=True, source_feature="none"),
 )
 
 fit_data_config = DataConfig(
@@ -81,8 +80,9 @@ for up_to_stage in (0, 1, 2):
     for _ in range(n_evals):
         m = Model.unpack(m.pack(), layout_info=m.layout_info())
         if up_to_stage == 1:
-            assert m.crams is not None
-            crams_data = m.crams._crams_lg_output
+            crams = m.populations[0]
+            assert isinstance(crams, CramsModel)
+            crams_data = crams._crams_lg_output
         elif up_to_stage == 2:
             ll = loglikelihood(m, fit_data=d, config=m.layout_info())
     total = time.time() - start

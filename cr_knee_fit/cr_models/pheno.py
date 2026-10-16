@@ -415,7 +415,7 @@ class LognormalSourceMaxAcceleration(Packable[LognormalSourceMaxAccelerationConf
 
 
 @dataclass
-class CosmicRaysModelConfig:
+class PhenomenologicalModelConfig:
     components: Sequence[list[Element] | SpectralComponentConfig]
     breaks: Sequence[SpectralBreakConfig]
     cutoff: ExpCutoffConfig | LognormalSourceMaxAccelerationConfig | None = None
@@ -426,13 +426,13 @@ class CosmicRaysModelConfig:
     population_meta: PopulationMetadata | None = None
 
     def __post_init__(self) -> None:
-        assert len(self.resolved_elements) == len(set(self.resolved_elements)), (
+        assert len(self.all_elements) == len(set(self.all_elements)), (
             "Duplicate elements in components!"
         )
 
     @property
     def has_free_Z_component(self) -> bool:
-        return Element.FreeZ in self.resolved_elements
+        return Element.FreeZ in self.all_elements
 
     @property
     def component_configs(self) -> list[SpectralComponentConfig]:
@@ -446,7 +446,7 @@ class CosmicRaysModelConfig:
         ]
 
     @property
-    def resolved_elements(self) -> list[Element]:
+    def all_elements(self) -> list[Element]:
         return sorted(
             itertools.chain.from_iterable(
                 c.elements if isinstance(c, SpectralComponentConfig) else c for c in self.components
@@ -455,7 +455,7 @@ class CosmicRaysModelConfig:
 
 
 @dataclass
-class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
+class PhenomenologicalModel(Packable[PhenomenologicalModelConfig]):
     base_spectra: list[SharedPowerLawSpectrum]
     breaks: list[SpectralBreak] = dataclasses.field(default_factory=list)
     cutoff: ExpCutoff | LognormalSourceMaxAcceleration | None = None
@@ -474,13 +474,13 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
                     "Ambiguous base spectra, at least one element specified in several components"
                 )
             seen.update(s.elements)
-        if self.free_Z is not None and Element.FreeZ not in self.resolved_elements:
+        if self.free_Z is not None and Element.FreeZ not in self.all_elements:
             raise ValueError(
                 "FreeZ element must be present as a element if it's effective Z is used as a param"
             )
 
         self._components: dict[Element, SharedPowerLawSpectrum] = {}
-        for element in self.resolved_elements:
+        for element in self.all_elements:
             matches = [comp for comp in self.base_spectra if element in comp.elements]
             assert len(matches) == 1, (
                 f"Element {element} has to match exactly one component, found: {matches}"
@@ -488,12 +488,8 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             self._components[element] = matches[0]
 
     @property
-    def resolved_elements(self) -> list[Element]:
-        return self.layout_info().resolved_elements  # legacy from when we had "unresolved elements"
-
-    @property
     def all_elements(self) -> list[Element]:
-        return self.resolved_elements
+        return self.layout_info().all_elements
 
     def description(self) -> str:
         return "; ".join(
@@ -507,9 +503,6 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
 
     def _get_component(self, element: Element) -> SharedPowerLawSpectrum | None:
         return self._components.get(element)
-
-    def has_element(self, element: Element) -> bool:
-        return self._get_component(element) is not None
 
     def _compute_rigidity_spectrum(self, R: np.ndarray, element: Element) -> np.ndarray:
         spectrum = self._get_component(element)
@@ -637,8 +630,8 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             else:
                 return label_prefix + (name if preserve_capitalization else name.lower())
 
-        for element in elements or self.resolved_elements:
-            if element not in self.resolved_elements:
+        for element in elements or self.all_elements:
+            if element not in self.all_elements:
                 continue
 
             ax.plot(
@@ -731,8 +724,8 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
             subbounds.append([(1.0, 28.0)])
         return list(itertools.chain.from_iterable(subbounds))
 
-    def layout_info(self) -> CosmicRaysModelConfig:
-        return CosmicRaysModelConfig(
+    def layout_info(self) -> PhenomenologicalModelConfig:
+        return PhenomenologicalModelConfig(
             components=[spectrum.layout_info() for spectrum in self.base_spectra],
             breaks=[b.layout_info() for b in self.breaks],
             cutoff=self.cutoff.layout_info() if self.cutoff is not None else None,
@@ -742,7 +735,9 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         )
 
     @classmethod
-    def unpack(cls, theta: np.ndarray, layout_info: CosmicRaysModelConfig) -> "CosmicRaysModel":
+    def unpack(
+        cls, theta: np.ndarray, layout_info: PhenomenologicalModelConfig
+    ) -> "PhenomenologicalModel":
         components: list[SharedPowerLawSpectrum] = []
         offset = 0
         for component in layout_info.components:
@@ -788,7 +783,7 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         else:
             free_Z = None
 
-        return CosmicRaysModel(
+        return PhenomenologicalModel(
             base_spectra=components,
             breaks=breaks,
             cutoff=cutoff,
@@ -799,12 +794,17 @@ class CosmicRaysModel(Packable[CosmicRaysModelConfig]):
         )
 
 
+# backwards compatible type aliases
+CosmicRaysModel = PhenomenologicalModel
+CosmicRaysModelConfig = PhenomenologicalModelConfig
+
+
 def component_label(p_or_ps: Element | Sequence[Element]) -> str:
     return p_or_ps.name if isinstance(p_or_ps, Element) else ", ".join(p.name for p in p_or_ps)
 
 
 if __name__ == "__main__":
-    gcr = CosmicRaysModel(
+    gcr = PhenomenologicalModel(
         base_spectra=[
             SharedPowerLawSpectrum.single_element(
                 Element.H, np.random.random(), np.random.random()

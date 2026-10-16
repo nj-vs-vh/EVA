@@ -98,12 +98,11 @@ if __name__ == "__main__":
 
     def generate_guess() -> Model:
         return Model(
-            populations=[],
+            populations=[CramsModel.make(up2PeV=True, source_feature=source_feature)],
             energy_shifts=initial_guess_energy_shifts(
                 fit_data_config.experiments_spectra,
                 fixed=experiments.ams02,
             ),
-            crams=CramsModel.make(up2PeV=True, source_feature=source_feature),
         )
 
     config = FitConfig.from_guessing_func(

@@ -194,7 +194,8 @@ def run_2_or_3_pop(
         cutoff.R_mean_GV = 10 ** stats.norm.rvs(4.48, 0.01)
         cutoff.sigma = stats.norm.rvs(0.514, 0.01)
 
-        populations = [
+        populations: list[CramsModel | CosmicRaysModel] = [
+            crams,
             CosmicRaysModel(
                 base_spectra=[
                     SharedPowerLawSpectrum(
@@ -243,7 +244,7 @@ def run_2_or_3_pop(
                     )
                 ),
                 population_meta=PopulationMetadata(name="HE", linestyle=":"),
-            )
+            ),
         ]
 
         if add_population_3:
@@ -274,7 +275,6 @@ def run_2_or_3_pop(
 
         return Model(
             populations=populations,
-            crams=crams,
             energy_shifts=initial_guess_energy_shifts(
                 fit_data_config.experiments_spectra,
                 fixed=experiments.ams02,

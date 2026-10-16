@@ -1,5 +1,4 @@
 import dataclasses
-import itertools
 import json
 import os
 from pathlib import Path
@@ -9,6 +8,8 @@ import numpy as np
 from scipy import stats  # type: ignore
 
 from cr_knee_fit import experiments
+from cr_knee_fit.cr_models.crams import CramsModel, InjectionBreak
+from cr_knee_fit.cr_models.pheno import PhenomenologicalModel
 from cr_knee_fit.fit_data import Data
 from cr_knee_fit.model import Model, ModelConfig
 
@@ -82,29 +83,38 @@ def logprior(model: Model, model_packed: np.ndarray | None) -> float:
 
     # breaks ordering check to avoid sampling all the permutations
     for population in model.populations:
-        break_positions = [m.lg_break for m in population.breaks]
+        match population:
+            case PhenomenologicalModel():
+                break_positions = [m.lg_break for m in population.breaks]
+            case CramsModel():
+                break_positions = [
+                    ftr.R_GV
+                    for ftr in population.injection.features
+                    if isinstance(ftr, InjectionBreak)
+                ]
+
         if break_positions != sorted(break_positions):
             return -np.inf
 
-    # sigmoid prior on ratio of populations' energy densities
-    # TODO: tunable params
-    Emin = 1.0
-    Emax = 1e8
-    npoints = 200
-    energy_dominant_pop_densities = [
-        pop._compute_energy_density_simpson(Emin=Emin, Emax=Emax, npoints=npoints)
-        for pop in model.populations
-        if pop.population_meta and pop.population_meta.is_apriori_energy_dominant is True
-    ]
-    energy_inferior_pop_densities = [
-        pop._compute_energy_density_simpson(Emin=Emin, Emax=Emax, npoints=npoints)
-        for pop in model.populations
-        if pop.population_meta and pop.population_meta.is_apriori_energy_dominant is False
-    ]
-    for dom, inf in itertools.product(energy_dominant_pop_densities, energy_inferior_pop_densities):
-        ratio = dom / inf
-        print(dom, inf, ratio)
-        res += -np.log(1 + ratio**-1)  # "smooth step" preferring dom >> inf
+    # TODO: revisit the energy density prior and introduce some more tunable params
+    # # sigmoid prior on ratio of populations' energy densities
+    # Emin = 1.0
+    # Emax = 1e8
+    # npoints = 200
+    # energy_dominant_pop_densities = [
+    #     pop._compute_energy_density_simpson(Emin=Emin, Emax=Emax, npoints=npoints)
+    #     for pop in model.populations
+    #     if pop.population_meta and pop.population_meta.is_apriori_energy_dominant is True
+    # ]
+    # energy_inferior_pop_densities = [
+    #     pop._compute_energy_density_simpson(Emin=Emin, Emax=Emax, npoints=npoints)
+    #     for pop in model.populations
+    #     if pop.population_meta and pop.population_meta.is_apriori_energy_dominant is False
+    # ]
+    # for dom, inf in itertools.product(energy_dominant_pop_densities, energy_inferior_pop_densities):
+    #     ratio = dom / inf
+    #     print(dom, inf, ratio)
+    #     res += -np.log(1 + ratio**-1)  # "smooth step" preferring dom >> inf
 
     # Gaussian priors on experimental energy scale shifts
     for exp, lg_shift in model.energy_shifts.lg_shifts.items():

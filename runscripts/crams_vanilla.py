@@ -82,12 +82,11 @@ if __name__ == "__main__":
         crams = CramsModel.make(up2PeV=False, source_feature="none")
         crams.config.population_meta = None
         m = Model(
-            populations=[],
+            populations=[crams],
             energy_shifts=initial_guess_energy_shifts(
                 fit_data_config.experiments_spectra,
                 fixed=experiments.ams02,
             ),
-            crams=crams,
         )
         return m
 
