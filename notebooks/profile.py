@@ -3,7 +3,7 @@ import time
 import numpy as np
 
 from cr_knee_fit import experiments
-from cr_knee_fit.crams_model import CramsModel
+from cr_knee_fit.cr_models.crams import CramsModel
 from cr_knee_fit.elements import Element
 from cr_knee_fit.fit_data import (
     Data,

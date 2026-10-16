@@ -10,6 +10,7 @@ import scipy.special  # type: ignore
 from matplotlib.axes import Axes
 from num2tex import num2tex  # type: ignore
 
+from cr_knee_fit.cr_models.utils import PopulationMetadata
 from cr_knee_fit.elements import (
     Element,
     isotope_average_A,
@@ -411,20 +412,6 @@ class LognormalSourceMaxAcceleration(Packable[LognormalSourceMaxAccelerationConf
 
 
 # endregion
-
-
-@dataclass
-class PopulationMetadata:
-    name: str
-    linestyle: str | None = None
-
-    is_apriori_energy_dominant: bool | None = None
-
-    def plot_prefix(self, latex: bool) -> str:
-        if self.name:
-            return f"\\text{{{self.name}}} \\; " if latex else self.name + " "
-        else:
-            return ""
 
 
 @dataclass

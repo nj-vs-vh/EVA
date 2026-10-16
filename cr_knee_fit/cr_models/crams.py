@@ -15,56 +15,60 @@ from crams import (
     CramsError,
     CramsRunner,
     InjectionBreak,
+    InjectionExpCutoff,
+    InjectionFeature,
+    InjectionLognormalDist,
     InjectionParams,
     LogGrid,
-    LognormalRmaxDistribution,
     PropagationParams,
 )
 from crams import ELEMENT_NAMES as CRAMS_ELEMENT_NAMES
 from matplotlib.axes import Axes
 from scipy import stats
 
-from cr_knee_fit.cr_model import (
-    CharacteristicQuantity,
-    PopulationMetadata,
-)
+from cr_knee_fit.cr_models.utils import PopulationMetadata
 from cr_knee_fit.elements import Element
 from cr_knee_fit.types_ import Packable
-from cr_knee_fit.utils import q2R_factor
+from cr_knee_fit.utils import CharacteristicQuantity, q2R_factor
 
 CRAMS_ELEMENTS = [Element[name] for name in CRAMS_ELEMENT_NAMES]
 
 
 def pack_injection(ip: InjectionParams) -> np.ndarray:
     components = [ip.abundances, ip.slopes]
-    match ip.feature:
-        case None:
-            pass
-        case InjectionBreak() as br:
-            components.append((np.log10(br.R_GV), br.delta_slope, br.omega))
-        case LognormalRmaxDistribution() as dist:
-            components.append((np.log10(dist.R_mean_GV), dist.sigma, dist.beta))
+    for feature in ip.features:
+        match feature:
+            case InjectionBreak() as br:
+                components.append((np.log10(br.R_GV), br.delta_slope, br.omega))
+            case InjectionLognormalDist() as dist:
+                components.append((np.log10(dist.R_mean_GV), dist.sigma, dist.beta))
+            case InjectionExpCutoff() as cutoff:
+                components.append((np.log10(cutoff.R_cut_GV), cutoff.Delta, cutoff.is_lower))
     return np.concatenate(components)
 
 
 def unpack_injection(
     v: np.ndarray,
     n_slopes: int,
-    feature_class: type[LognormalRmaxDistribution | InjectionBreak] | None,
+    feature_classes: list[type[InjectionFeature]] | None,
 ) -> InjectionParams:
     abundances = v[: len(CRAMS_ELEMENTS)]
     offset = len(CRAMS_ELEMENTS)
     slopes = v[offset : offset + n_slopes]
     offset += n_slopes
-    if feature_class is not None:
-        feature = feature_class(10 ** v[offset], v[offset + 1], v[offset + 2])
-        offset += 2
-    else:
-        feature = None
+    features: list[InjectionFeature] = []
+    if feature_classes is not None:
+        for cls in feature_classes:
+            if cls in (InjectionBreak, InjectionLognormalDist, InjectionExpCutoff):
+                feature = cls(10 ** v[offset], v[offset + 1], v[offset + 2])
+                offset += 3
+            else:
+                raise ValueError(f"Unsupported feature class: {cls}")
+            features.append(feature)
     return InjectionParams(
         abundances=abundances,  # type: ignore
         slopes=slopes,  # type: ignore
-        feature=feature,
+        features=features,
     )
 
 
@@ -126,7 +130,11 @@ LOGNORMAL_RMAX_DISTRIBUTION_BOUNDS = [
     (0.0, 1.0),
     (-5, 5),
 ]
-
+EXPCUTOFF_BOUNDS = [
+    SOURCE_BREAK_BOUNDS[0],
+    (0.0, 3.0),
+    (-5, 5),
+]
 
 # copied from CRAMS source code
 DEFAULT_ABUNDANCES = {
@@ -161,7 +169,7 @@ DEFAULT_ABUNDANCES = {
 }
 
 
-SourceFeatureSpec = Literal["break", "erfc-cutoff", "none"]
+SourceFeatureSpec = Literal["break", "erfc-cutoff", "exp-cutoff", "exp-cutoff-lower", "none"]
 
 
 FREE = np.nan  # used to signify non-frozen parameter within the config
@@ -252,7 +260,7 @@ class CramsModelConfig(pydantic.BaseModel):
     @staticmethod
     def make(
         up2PeV: bool,
-        source_feature: SourceFeatureSpec | InjectionBreak | LognormalRmaxDistribution,
+        source_feature: SourceFeatureSpec | InjectionFeature,
         fit_abundances: Collection[Element] = (
             [Element.H, Element.He, Element.C, Element.N, Element.O]
             + [Element.Ne, Element.Mg, Element.Si, Element.S, Element.Fe]
@@ -275,19 +283,20 @@ class CramsModelConfig(pydantic.BaseModel):
             T_sim_grid = CRAMS_DEFAULT_T_SIM_GRID
             R_out_grid = CRAMS_DEFAULT_R_OUT_GRID
 
+        features: list[InjectionFeature] = []
         match source_feature:
             case "break":
-                feature: InjectionBreak | LognormalRmaxDistribution | None = InjectionBreak(
-                    R_GV=FREE,
-                    delta_slope=FREE,
-                    omega=FREE,
-                )
+                features.append(InjectionBreak(R_GV=FREE, delta_slope=FREE, omega=FREE))
             case "erfc-cutoff":
-                feature = LognormalRmaxDistribution(FREE, FREE, 1.0)
+                features.append(InjectionLognormalDist(FREE, FREE, beta=1.0))
+            case "exp-cutoff":
+                features.append(InjectionExpCutoff(FREE, FREE, is_lower=False))
+            case "exp-cutoff-lower":
+                features.append(InjectionExpCutoff(FREE, FREE, is_lower=True))
             case "none":
-                feature = None
-            case InjectionBreak() | LognormalRmaxDistribution():
-                feature = source_feature
+                pass
+            case _:
+                features.append(source_feature)
 
         if freeze_injection:
             # best-fit params from CRAMS-only fit
@@ -346,7 +355,7 @@ class CramsModelConfig(pydantic.BaseModel):
                     for element in CRAMS_ELEMENTS
                 ],
                 slopes=slopes,
-                feature=(feature),
+                features=features,
             ),
             frozen_propagation=frozen_propagation,
             population_meta=PopulationMetadata(name="CRAMS", linestyle="-"),
@@ -360,11 +369,7 @@ class CramsModelConfig(pydantic.BaseModel):
         return unpack_injection(
             v,
             n_slopes=len(self.frozen_injection.slopes),
-            feature_class=(
-                type(self.frozen_injection.feature)
-                if self.frozen_injection.feature is not None
-                else None
-            ),
+            feature_classes=[type(ftr) for ftr in self.frozen_injection.features],
         )
 
 
@@ -378,12 +383,16 @@ class CramsModel(Packable[CramsModelConfig]):
     def __post_init__(self) -> None:
         assert len(self.injection.abundances) == len(self.config.frozen_injection.abundances)
         assert len(self.injection.slopes) == len(self.config.frozen_injection.slopes)
-        assert type(self.injection.feature) == type(self.config.frozen_injection.feature)
+        assert len(self.injection.features) == len(self.config.frozen_injection.features)
+        for inj_ftr, frozen_ftr in zip(
+            self.injection.features, self.config.frozen_injection.features
+        ):
+            assert type(inj_ftr) == type(frozen_ftr)
 
     @staticmethod
     def make(
         up2PeV: bool,
-        source_feature: SourceFeatureSpec | InjectionBreak | LognormalRmaxDistribution,
+        source_feature: SourceFeatureSpec | InjectionFeature,
         freeze_propagation: bool | PropagationParams = False,
         freeze_injection: bool = False,
         randomize_init: bool = False,
@@ -437,22 +446,28 @@ class CramsModel(Packable[CramsModelConfig]):
             else:
                 return default
 
-        feature: InjectionBreak | LognormalRmaxDistribution | None
-        match config.frozen_injection.feature:
-            case InjectionBreak() as b:
-                feature = InjectionBreak(
-                    R_GV=_if_not_frozen(_init(15e3, 1e3), b.R_GV),
-                    delta_slope=_if_not_frozen(_init(0.2, 0.05), b.delta_slope),
-                    omega=_if_not_frozen(_init(0.2, 0.05), b.omega),
-                )
-            case LognormalRmaxDistribution() as ln:
-                feature = LognormalRmaxDistribution(
-                    R_mean_GV=_if_not_frozen(_init(15e3, 1e3), ln.R_mean_GV),
-                    sigma=_if_not_frozen(_init(0.5, 0.05), ln.sigma),
-                    beta=_if_not_frozen(_init(1.0, 0.05), ln.beta),
-                )
-            case None:
-                feature = None
+        features: list[InjectionFeature] = []
+        for feature in config.frozen_injection.features:
+            match feature:
+                case InjectionBreak() as b:
+                    feature = InjectionBreak(
+                        R_GV=_if_not_frozen(_init(15e3, 1e3), b.R_GV),
+                        delta_slope=_if_not_frozen(_init(0.2, 0.05), b.delta_slope),
+                        omega=_if_not_frozen(_init(0.2, 0.05), b.omega),
+                    )
+                case InjectionLognormalDist() as ln:
+                    feature = InjectionLognormalDist(
+                        R_mean_GV=_if_not_frozen(_init(15e3, 1e3), ln.R_mean_GV),
+                        sigma=_if_not_frozen(_init(0.5, 0.05), ln.sigma),
+                        beta=_if_not_frozen(_init(1.0, 0.05), ln.beta),
+                    )
+                case InjectionExpCutoff() as iec:
+                    feature = InjectionExpCutoff(
+                        R_cut_GV=_if_not_frozen(_init(15e3, 1e3), iec.R_cut_GV),
+                        Delta=_if_not_frozen(_init(0.2, 0.05), iec.Delta),
+                        is_lower=iec.is_lower,
+                    )
+            features.append(feature)
 
         return CramsModel(
             propagation=PropagationParams(
@@ -483,7 +498,7 @@ class CramsModel(Packable[CramsModelConfig]):
                     _if_not_frozen(sl, frozen)
                     for sl, frozen in zip(init_fitted_slopes, config.frozen_injection.slopes)
                 ],
-                feature=feature,
+                features=features,
             ),
             config=config,
         )
@@ -495,27 +510,28 @@ class CramsModel(Packable[CramsModelConfig]):
         # NOTE: use with caution; this method ignores the embedded CramsRunner that might have different
         # configurations between self and other, and hence give different results
 
-        match self.injection.feature:
-            case None:
-                is_feature_same = np.bool(other.injection.feature is None)
-            case InjectionBreak() as b1:
-                b2 = other.injection.feature
-                if not isinstance(b2, InjectionBreak):
-                    return False
-                is_feature_same = (
-                    np.isclose(b1.R_GV, b2.R_GV)
-                    and np.isclose(b1.delta_slope, b2.delta_slope)
-                    and np.isclose(b1.omega, b2.omega)
-                )
-            case LognormalRmaxDistribution() as d1:
-                d2 = other.injection.feature
-                if not isinstance(d2, LognormalRmaxDistribution):
-                    return False
-                is_feature_same = (
-                    np.isclose(d1.R_mean_GV, d2.R_mean_GV)
-                    and np.isclose(d1.sigma, d2.sigma)
-                    and np.isclose(d1.beta, d2.beta)
-                )
+        is_feature_same = True
+        for f1, f2 in zip(self.injection.features, other.injection.features):
+            match f1:
+                case None:
+                    if f2 is not None:
+                        return False
+                case InjectionBreak() as b1:
+                    if not isinstance(f2, InjectionBreak):
+                        return False
+                    is_feature_same &= bool(
+                        np.isclose(b1.R_GV, f2.R_GV)
+                        and np.isclose(b1.delta_slope, f2.delta_slope)
+                        and np.isclose(b1.omega, f2.omega)
+                    )
+                case InjectionLognormalDist() as d1:
+                    if not isinstance(f2, InjectionLognormalDist):
+                        return False
+                    is_feature_same &= bool(
+                        np.isclose(d1.R_mean_GV, f2.R_mean_GV)
+                        and np.isclose(d1.sigma, f2.sigma)
+                        and np.isclose(d1.beta, f2.beta)
+                    )
 
         flags = [
             np.isclose(self.propagation.H_kpc, other.propagation.H_kpc),
@@ -705,23 +721,32 @@ class CramsModel(Packable[CramsModelConfig]):
                 all_inj_labels.append(f"\\gamma_\\text{{{CRAMS_ELEMENT_NAMES[-1]}}}")
             else:
                 all_inj_labels.append("\\gamma_\\text{nuc}")
-            match self.injection.feature:
-                case InjectionBreak():
-                    all_inj_labels.extend(
-                        [
-                            r"\lg \mathcal{R}_{b, \text{src}} \; / \; \text{GV}",
-                            r"\Delta \gamma",
-                            r"\omega",
-                        ]
-                    )
-                case LognormalRmaxDistribution():
-                    all_inj_labels.extend(
-                        [
-                            r"\langle \lg \mathcal{R}_{max} \; / \; \text{GV} \rangle",
-                            r"\sigma(\lg \mathcal{R}_{max} \; / \; \text{GV})",
-                            r"\beta",
-                        ]
-                    )
+            for feature in self.injection.features:
+                match feature:
+                    case InjectionBreak():
+                        all_inj_labels.extend(
+                            [
+                                r"\lg \mathcal{R}_{b, \text{src}} \; / \; \text{GV}",
+                                r"\Delta \gamma",
+                                r"\omega",
+                            ]
+                        )
+                    case InjectionLognormalDist():
+                        all_inj_labels.extend(
+                            [
+                                r"\langle \lg \mathcal{R}_{max} \; / \; \text{GV} \rangle",
+                                r"\sigma(\lg \mathcal{R}_{max} \; / \; \text{GV})",
+                                r"\beta",
+                            ]
+                        )
+                    case InjectionExpCutoff():
+                        all_inj_labels.extend(
+                            [
+                                r"R_\text{cut, src}",
+                                r"\Delta \gamma",
+                                r"\text{is_lower}",
+                            ]
+                        )
         else:
             all_inj_labels = [f"q_{el.name}" for el in CRAMS_ELEMENTS]
             all_inj_labels.extend(
@@ -731,23 +756,32 @@ class CramsModel(Packable[CramsModelConfig]):
                 all_inj_labels.append(f"gamma_{CRAMS_ELEMENT_NAMES[-1]}")
             else:
                 all_inj_labels.append("gamma_nuc")
-            match self.injection.feature:
-                case InjectionBreak():
-                    all_inj_labels.extend(
-                        [
-                            r"lg R_b, src",
-                            r"Delta gamma",
-                            r"omega",
-                        ]
-                    )
-                case LognormalRmaxDistribution():
-                    all_inj_labels.extend(
-                        [
-                            r"<lg R_max>",
-                            r"sigma(lg R_max)",
-                            r"beta",
-                        ]
-                    )
+            for feature in self.injection.features:
+                match feature:
+                    case InjectionBreak():
+                        all_inj_labels.extend(
+                            [
+                                r"lg R_b, src",
+                                r"Delta gamma",
+                                r"omega",
+                            ]
+                        )
+                    case InjectionLognormalDist():
+                        all_inj_labels.extend(
+                            [
+                                r"<lg R_max>",
+                                r"sigma(lg R_max)",
+                                r"beta",
+                            ]
+                        )
+                    case InjectionExpCutoff():
+                        all_inj_labels.extend(
+                            [
+                                r"R_cut, src",
+                                r"Delta gamma",
+                                r"is_lower",
+                            ]
+                        )
 
         labels = [
             pl
@@ -773,8 +807,15 @@ class CramsModel(Packable[CramsModelConfig]):
         injection_bounds = [ABUNDANCE_BOUND] * len(self.injection.abundances) + [SLOPE_BOUND] * len(
             self.injection.slopes
         )
-        if self.injection.feature is not None:
-            injection_bounds.extend(SOURCE_BREAK_BOUNDS)
+        for feature in self.injection.features:
+            if feature is not None:
+                match feature:
+                    case InjectionBreak():
+                        injection_bounds.extend(SOURCE_BREAK_BOUNDS)
+                    case InjectionLognormalDist():
+                        injection_bounds.extend(LOGNORMAL_RMAX_DISTRIBUTION_BOUNDS)
+                    case InjectionExpCutoff():
+                        injection_bounds.extend(EXPCUTOFF_BOUNDS)
 
         return [
             prop_bound

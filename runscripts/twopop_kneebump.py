@@ -2,7 +2,7 @@ import argparse
 from typing import Literal
 
 import numpy as np
-from crams import LognormalRmaxDistribution, PropagationParams
+from crams import InjectionLognormalDist, PropagationParams
 from scipy import stats  # type: ignore
 
 from cr_knee_fit import experiments
@@ -11,7 +11,8 @@ from cr_knee_fit.analysis import (
     McmcConfig,
     PlotsConfig,
 )
-from cr_knee_fit.cr_model import (
+from cr_knee_fit.cr_models.crams import FREE, CramsModel
+from cr_knee_fit.cr_models.pheno import (
     CosmicRaysModel,
     ExpCutoff,
     ExpCutoffConfig,
@@ -21,7 +22,6 @@ from cr_knee_fit.cr_model import (
     SharedPowerLawSpectrum,
     omega2lg_sharpness,
 )
-from cr_knee_fit.crams_model import FREE, CramsModel
 from cr_knee_fit.elements import Element
 from cr_knee_fit.fit_data import (
     DataConfig,
@@ -159,7 +159,7 @@ def run_2_or_3_pop(
                 X_src=-1.0,
                 phi=0.631,
             ),
-            source_feature=LognormalRmaxDistribution(
+            source_feature=InjectionLognormalDist(
                 R_mean_GV=FREE,
                 sigma=FREE,
                 beta=1.0,
@@ -189,10 +189,10 @@ def run_2_or_3_pop(
             stats.norm.rvs(4.35, 0.01),
             stats.norm.rvs(4.4, 0.01),
         ]
-        match crams.injection.feature:
-            case LognormalRmaxDistribution() as d:
-                d.R_mean_GV = 10 ** stats.norm.rvs(4.48, 0.01)
-                d.sigma = stats.norm.rvs(0.514, 0.01)
+        cutoff = crams.injection.features[0]
+        assert isinstance(cutoff, InjectionLognormalDist)
+        cutoff.R_mean_GV = 10 ** stats.norm.rvs(4.48, 0.01)
+        cutoff.sigma = stats.norm.rvs(0.514, 0.01)
 
         populations = [
             CosmicRaysModel(

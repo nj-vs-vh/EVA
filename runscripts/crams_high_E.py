@@ -7,7 +7,7 @@ from cr_knee_fit.analysis import (
     FitConfig,
     PlotsConfig,
 )
-from cr_knee_fit.crams_model import CramsModel
+from cr_knee_fit.cr_models.crams import CramsModel
 from cr_knee_fit.elements import Element
 from cr_knee_fit.fit_data import DataConfig, FluxRatio, FluxRatioDataConfig, SpectrumDataConfig
 from cr_knee_fit.guesses import (

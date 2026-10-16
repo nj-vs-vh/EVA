@@ -8,7 +8,8 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
 from cr_knee_fit.constants import SPEED_OF_LIGHT_M_SEC
-from cr_knee_fit.cr_model import (
+from cr_knee_fit.cr_models.crams import CramsModel, CramsModelConfig
+from cr_knee_fit.cr_models.pheno import (
     CosmicRaysModel,
     CosmicRaysModelConfig,
     PopulationMetadata,
@@ -16,7 +17,6 @@ from cr_knee_fit.cr_model import (
     SpectralBreak,
     SpectralBreakConfig,
 )
-from cr_knee_fit.crams_model import CramsModel, CramsModelConfig
 from cr_knee_fit.elements import Element, isotope_average_A
 from cr_knee_fit.experiments import Experiment
 from cr_knee_fit.fit_data import (

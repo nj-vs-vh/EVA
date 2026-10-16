@@ -3,7 +3,7 @@ from typing import overload
 import numpy as np
 from scipy import stats  # type: ignore
 
-from cr_knee_fit.cr_model import (
+from cr_knee_fit.cr_models.pheno import (
     CosmicRaysModel,
     CosmicRaysModelConfig,
     ExpCutoff,
