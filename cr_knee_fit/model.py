@@ -88,6 +88,30 @@ class Model(Packable[ModelConfig]):
         default_factory=dict
     )
 
+    def __post_init__(self) -> None:
+        # processing shared propagation CRAMS populations
+        # this is only useful at initialization, during model unpacking it happens automatically
+        # still, we do it to validate that the shared propagation is configured correctly
+
+        last_crams_propagation: PropagationParams | None = None
+
+        for pop in self.populations:
+            if not isinstance(pop, CramsModel):
+                continue
+
+            if pop.layout_info().has_shared_propagation():
+                is_shared_propagation = True
+                assert last_crams_propagation is not None, (
+                    "Shared-propagation CRAMS population must come after another CRAMS population with defined propagation parameters"
+                )
+                pop.propagation = last_crams_propagation
+                pop.config = pop.config.with_frozen_propagation(last_crams_propagation)
+            else:
+                is_shared_propagation = False
+
+            if not is_shared_propagation:
+                last_crams_propagation = pop.propagation
+
     @property
     def children(self) -> list[Packable | None]:
         return [
@@ -117,8 +141,8 @@ class Model(Packable[ModelConfig]):
 
         populations: list[CRModel] = []
 
-        # enforce all CRAMS-computed populations share the same propagation parameters
-        crams_propagation_common: PropagationParams | None = None
+        # share CRAMS propagation params with the following population specifying shared propagation
+        last_crams_propagation: PropagationParams | None = None
 
         for pop_conf in layout_info.population_configs:
             match pop_conf:
@@ -129,17 +153,17 @@ class Model(Packable[ModelConfig]):
                 case CramsModelConfig():
                     if pop_conf.has_shared_propagation():
                         is_shared_propagation = True
-                        assert crams_propagation_common is not None, (
+                        assert last_crams_propagation is not None, (
                             "Shared-propagation CRAMS population must come after another CRAMS population with defined propagation parameters"
                         )
-                        pop_conf = pop_conf.with_frozen_propagation(crams_propagation_common)
+                        pop_conf = pop_conf.with_frozen_propagation(last_crams_propagation)
                     else:
                         is_shared_propagation = False
 
                     population = CramsModel.unpack(theta[offset:], layout_info=pop_conf)
 
                     if not is_shared_propagation:
-                        crams_propagation_common = population.propagation
+                        last_crams_propagation = population.propagation
                 case _:
                     raise ValueError(f"Unknown population config type: {type(pop_conf)}")
             offset += population.ndim()

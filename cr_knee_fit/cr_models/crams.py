@@ -673,22 +673,16 @@ class CramsModel(Packable[CramsModelConfig]):
         flags: list[bool | np.bool_] = [
             np.allclose(self.injection.abundances, other.injection.abundances),
             np.allclose(self.injection.slopes, other.injection.slopes),
+            np.isclose(self.propagation.H_kpc, other.propagation.H_kpc),
+            np.isclose(self.propagation.v_A_km_sec, other.propagation.v_A_km_sec),
+            np.isclose(self.propagation.R_b_GV, other.propagation.R_b_GV),
+            np.isclose(self.propagation.delta, other.propagation.delta),
+            np.isclose(self.propagation.ddelta, other.propagation.ddelta),
+            np.isclose(self.propagation.D_0_cm2_sec, other.propagation.D_0_cm2_sec),
+            np.isclose(self.propagation.X_src, other.propagation.X_src),
+            np.isclose(self.propagation.phi, other.propagation.phi),
             is_feature_same,
         ]
-
-        if not self.config.has_shared_propagation() and not other.config.has_shared_propagation():
-            flags.extend(
-                [
-                    np.isclose(self.propagation.H_kpc, other.propagation.H_kpc),
-                    np.isclose(self.propagation.v_A_km_sec, other.propagation.v_A_km_sec),
-                    np.isclose(self.propagation.R_b_GV, other.propagation.R_b_GV),
-                    np.isclose(self.propagation.delta, other.propagation.delta),
-                    np.isclose(self.propagation.ddelta, other.propagation.ddelta),
-                    np.isclose(self.propagation.D_0_cm2_sec, other.propagation.D_0_cm2_sec),
-                    np.isclose(self.propagation.X_src, other.propagation.X_src),
-                    np.isclose(self.propagation.phi, other.propagation.phi),
-                ]
-            )
 
         # print(self, other)
         # print(flags)
