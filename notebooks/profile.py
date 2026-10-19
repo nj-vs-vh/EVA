@@ -17,7 +17,7 @@ from cr_knee_fit.model import Model
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 
 m = Model(
-    populations=[CramsModel.make(True, source_feature="none")],
+    populations=[CramsModel.make(True)],
     energy_shifts=ExperimentEnergyScaleShifts({}),
 )
 

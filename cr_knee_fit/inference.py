@@ -66,19 +66,24 @@ def get_energy_scale_lg_uncertainty(exp: experiments.Experiment) -> float:
     return energy_scale_lg_uncertainties[exp]
 
 
-def logprior(model: Model, model_packed: np.ndarray | None) -> float:
+def logprior(model: Model, model_packed: np.ndarray | None, verbose: bool = False) -> float:
     res = 0.0
 
     # parameter bounds check
-    for param, bound in zip(
-        (model_packed if model_packed is not None else model.pack()),
+
+    model_packed_ = model_packed if model_packed is not None else model.pack()
+    for param, bound, label in zip(
+        model_packed_,
         model.bounds(),
+        (model.labels(False) if verbose else [None] * len(model_packed_)),
         strict=True,
     ):
         if bound is None:
             continue
         min, max = bound
         if not (min <= param <= max):
+            if verbose and label is not None:
+                print(f"Parameter {label}={param} out of bounds ({min}, {max})")
             return -np.inf
 
     # breaks ordering check to avoid sampling all the permutations

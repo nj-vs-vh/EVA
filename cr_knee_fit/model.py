@@ -9,7 +9,11 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
 from cr_knee_fit.constants import SPEED_OF_LIGHT_M_SEC
-from cr_knee_fit.cr_models.crams import SHARED_PROPAGATION_PARAMS, CramsModel, CramsModelConfig
+from cr_knee_fit.cr_models.crams import (
+    SHARED_PROPAGATION,
+    CramsModel,
+    CramsModelConfig,
+)
 from cr_knee_fit.cr_models.pheno import (
     PhenomenologicalModel,
     PhenomenologicalModelConfig,
@@ -839,18 +843,17 @@ if __name__ == "__main__":
             ),
         ),
         Model(
-            populations=[CramsModel.make(False, source_feature="break")],
+            populations=[CramsModel.make(False)],
             energy_shifts=ExperimentEnergyScaleShifts(
                 lg_shifts={Experiment("a", filename_stem="aaa"): np.random.random()}
             ),
         ),
         Model(
             populations=[
-                CramsModel.make(False, source_feature="break"),
+                CramsModel.make(False),
                 CramsModel.make(
                     True,
-                    source_feature="erfc-cutoff",
-                    freeze_propagation=SHARED_PROPAGATION_PARAMS,
+                    init_propagation=SHARED_PROPAGATION,
                     population_meta=PopulationMetadata(name="CRAMS 2"),
                 ),
             ],
