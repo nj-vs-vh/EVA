@@ -93,7 +93,7 @@ PROPAGATION_BOUNDS = [
     (0.0, 1.5),
     (0.0, 1.0),
     (1e-2, 1e2),
-    None,
+    (0.1, 1.0),
     (0.1, 1.0),
 ]
 
@@ -727,7 +727,7 @@ class CramsModel(Packable[CramsModelConfig]):
             )
         )
 
-    def bounds(self) -> Sequence[tuple[float, float] | None]:
+    def bounds(self) -> Sequence[tuple[float | None, float | None]]:
         injection_bounds = [ABUNDANCE_BOUND] * len(self.injection.abundances) + [SLOPE_BOUND] * len(
             self.injection.slopes
         )

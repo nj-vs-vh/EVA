@@ -78,9 +78,9 @@ def logprior(model: Model, model_packed: np.ndarray | None, verbose: bool = Fals
         (model.labels(False) if verbose else [None] * len(model_packed_)),
         strict=True,
     ):
-        if bound is None:
-            continue
         min, max = bound
+        if min is None or max is None:
+            continue
         if not (min <= param <= max):
             if verbose and label is not None:
                 print(f"Parameter {label}={param} out of bounds ({min}, {max})")

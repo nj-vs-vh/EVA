@@ -178,13 +178,13 @@ if __name__ == "__main__":
             "TALE (2014/06/-2016/03) QGSJet-II-03",
             "TALE_QGSJET-II-04_all_energy.txt",
         ),
-        DatasetDef(
-            "AllParticles",
-            "ETOT",
-            "TUNKA",
-            "TUNKA-133 Array (2009/10-2012/04) QGSJet01",
-            "TUNKA-133_QGSJET-01_all_energy.txt",
-        ),
+        # DatasetDef(
+        #     "AllParticles",
+        #     "ETOT",
+        #     "TUNKA",
+        #     "TUNKA-133 Array (2009/10-2012/04) QGSJet01",
+        #     "TUNKA-133_QGSJET-01_all_energy.txt",
+        # ),
         DatasetDef(
             "AllParticles",
             "ETOT",
@@ -262,13 +262,13 @@ if __name__ == "__main__":
             "Telescope Array Hybrid (2008/01-2015/05)",
             "TA_all_energy.txt",
         ),
-        DatasetDef(
-            "H-He-group",
-            "ETOT",
-            "Tibet",
-            "Tibet III (2000/11-2004/10) QGSJet01",
-            "TIBET_light_energy.txt",
-        ),
+        # DatasetDef(
+        #     "H-He-group",
+        #     "ETOT",
+        #     "Tibet",
+        #     "Tibet III (2000/11-2004/10) QGSJet01",
+        #     "TIBET_light_energy.txt",
+        # ),
         DatasetDef(
             "H/He", "R", "AMS02", "AMS02 (2011/05-2018/05)", "AMS-02_p_He_ratio_rigidity.txt"
         ),

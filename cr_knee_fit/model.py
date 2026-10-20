@@ -126,7 +126,7 @@ class Model(Packable[ModelConfig]):
     def pack(self) -> np.ndarray:
         return self.pack_children()
 
-    def bounds(self) -> list[tuple[float, float] | None]:
+    def bounds(self) -> list[tuple[float | None, float | None]]:
         return self.children_bounds()
 
     def labels(self, latex: bool) -> list[str]:

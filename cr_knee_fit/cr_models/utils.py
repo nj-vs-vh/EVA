@@ -37,6 +37,10 @@ class Param(float):
         return Param.gaussian(value, init_std)
 
     @staticmethod
+    def fitted_relative(value: float, std_relative: float) -> "Param":
+        return Param.gaussian(value, value * std_relative)
+
+    @staticmethod
     def gaussian(value: float, init_std: float) -> "Param":
         if isinstance(value, Param):
             v = value

@@ -171,6 +171,7 @@ def run_ml_analysis(
                 method="Nelder-Mead",
                 options={
                     "maxiter": 100_000,
+                    "disp": True,
                 },
             )
         case "minuit":
@@ -244,7 +245,7 @@ def run_mcmc(
             if mle_model is not None and mle_model.sample_errcov() is not None:
                 print("Initializing sampler around MLE model...")
                 for i_walker in range(mcmc_conf.n_walkers):
-                    n_try = 1_000
+                    n_try = 10_000
                     for _i_try in range(n_try):
                         theta = mle_model.sample_errcov()
                         if theta is None:

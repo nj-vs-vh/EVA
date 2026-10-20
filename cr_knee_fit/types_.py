@@ -32,7 +32,7 @@ class Packable[LayoutInfo](abc.ABC):
         chunks = [child.pack() for child in self.children if child is not None]
         return np.hstack(chunks)
 
-    def children_bounds(self) -> list[tuple[float, float] | None]:
+    def children_bounds(self) -> list[tuple[float | None, float | None]]:
         bounds = [child.bounds() for child in self.children if child is not None]
         return list(itertools.chain.from_iterable(bounds))
 
@@ -50,9 +50,9 @@ class Packable[LayoutInfo](abc.ABC):
     @abc.abstractmethod
     def unpack(cls: type[Self], theta: np.ndarray, layout_info: LayoutInfo) -> Self: ...
 
-    def bounds(self) -> Sequence[tuple[float, float] | None]:
+    def bounds(self) -> Sequence[tuple[float | None, float | None]]:
         """Parameter bounds to be used during inference. By default, no bounds are specified."""
-        return [None] * self.size
+        return [(None, None)] * self.size
 
     def validate_packing(self, quiet: bool = False) -> None:
         packed = self.pack()

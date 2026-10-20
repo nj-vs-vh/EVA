@@ -65,12 +65,12 @@ class SharedPowerLawSpectrum(Packable[SpectralComponentConfig]):
             packed.append(self.lg_scale_contrib_to_all)
         return np.array(packed)
 
-    def bounds(self) -> Sequence[tuple[float, float] | None]:
+    def bounds(self) -> Sequence[tuple[float | None, float | None]]:
         # ad hoc bound for all spectral normalizations to [10^-20; 10^6];
         # this is roughly +/- 5 orders of magnitude w.r.t. values we find in the fit, so it shouldn't affect
         # the "normal" flux estimation, but it limits the parameter space in cases where a particular spectrum
         # is poorly or not at all constrained by data
-        bounds: list[tuple[float, float] | None] = [(-20, 1)] * len(self.lgI_per_element)
+        bounds: list[tuple[float | None, float | None]] = [(-20, 1)] * len(self.lgI_per_element)
         bounds.append((1, 4))
         if self.lg_scale_contrib_to_all is not None:
             bounds.append((0, np.inf))
@@ -174,7 +174,7 @@ class SpectralBreak(Packable[SpectralBreakConfig]):
     def pack(self) -> np.ndarray:
         return np.array([self.lg_break, self.d_alpha, self.lg_sharpness][: self.size])
 
-    def bounds(self) -> Sequence[tuple[float, float] | None]:
+    def bounds(self) -> Sequence[tuple[float | None, float | None]]:
         return [
             self.config.lg_break_prior_limits,
             self.config.delta_alpha_prior_limits,
@@ -295,7 +295,7 @@ class ExpCutoff(Packable[ExpCutoffConfig]):
     def pack(self) -> np.ndarray:
         return np.array([self.lg_cut, self.lg_sharpness][: self.size])
 
-    def bounds(self) -> Sequence[tuple[float, float] | None]:
+    def bounds(self) -> Sequence[tuple[float | None, float | None]]:
         return [self.config.lg_cut_prior_limits, self.config.lg_sharpness_prior_limits][: self.size]
 
     def labels(self, latex: bool) -> list[str]:
@@ -361,7 +361,7 @@ class LognormalSourceMaxAcceleration(Packable[LognormalSourceMaxAccelerationConf
     def pack(self) -> np.ndarray:
         return np.array([self.lg_cut, self.sigma, self.beta][: self.size])
 
-    def bounds(self) -> Sequence[tuple[float, float] | None]:
+    def bounds(self) -> Sequence[tuple[float | None, float | None]]:
         return [
             self.config.lg_cut_prior_limits,
             (0.05, 3.0),
@@ -716,7 +716,7 @@ class PhenomenologicalModel(Packable[PhenomenologicalModelConfig]):
             subvectors.append(np.array([self.free_Z]))
         return np.hstack(subvectors)
 
-    def bounds(self) -> Sequence[tuple[float, float] | None]:
+    def bounds(self) -> Sequence[tuple[float | None, float | None]]:
         subbounds = [self.children_bounds()]
         if self.all_particle_lg_shift is not None:
             subbounds.append([(np.log10(1), np.log10(2))])
