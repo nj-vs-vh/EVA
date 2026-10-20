@@ -239,7 +239,7 @@ def run_minimal(
         name=analysis_name,
         fit_data=fit_data_config,
         mcmc=McmcConfig(
-            n_steps=30000,
+            n_steps=9000,
             n_walkers=256,
             processes=11,
             reuse_saved=True,

@@ -570,7 +570,7 @@ class CramsModel(Packable[CramsModelConfig]):
         all_particle: bool = False,
         elements: list[Element] | None = None,
         grid_size: int = 100,
-        caption_elements: bool = True,
+        add_labels: bool = True,
     ) -> Axes:
         if axes is not None:
             ax = axes
@@ -594,9 +594,7 @@ class CramsModel(Packable[CramsModelConfig]):
                 E_grid,
                 E_factor * self.compute_spectrum(E_grid, element, quantity="E"),
                 label=(
-                    with_prefix(element.name, preserve_capitalization=True)
-                    if caption_elements
-                    else None
+                    with_prefix(element.name, preserve_capitalization=True) if add_labels else None
                 ),
                 color=element.color,
                 linestyle=self.linestyle,
@@ -605,7 +603,7 @@ class CramsModel(Packable[CramsModelConfig]):
             ax.plot(
                 E_grid,
                 E_factor * self.compute_all_particle_spectrum(E_grid),
-                label=with_prefix("All particle"),
+                label=with_prefix("All particle") if add_labels else None,
                 color="black",
                 linestyle=self.linestyle,
             )

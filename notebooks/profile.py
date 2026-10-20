@@ -17,7 +17,7 @@ from cr_knee_fit.model import Model
 from cr_knee_fit.shifts import ExperimentEnergyScaleShifts
 
 m = Model(
-    populations=[CramsModel.make(True)],
+    populations=[CramsModel.make(True), CramsModel.make(True)],
     energy_shifts=ExperimentEnergyScaleShifts({}),
 )
 
@@ -74,17 +74,17 @@ fit_data_config = DataConfig(
 
 d = Data.load(fit_data_config)
 
-for up_to_stage in (0, 1, 2):
+for test_kind in (0, 1, 2):
     start = time.time()
     n_evals = 100
     for _ in range(n_evals):
         m = Model.unpack(m.pack(), layout_info=m.layout_info())
-        if up_to_stage == 1:
+        if test_kind == 1:
             crams = m.populations[0]
             assert isinstance(crams, CramsModel)
             crams_data = crams._crams_lg_output
-        elif up_to_stage == 2:
+        elif test_kind == 2:
             ll = loglikelihood(m, fit_data=d, config=m.layout_info())
     total = time.time() - start
-    print(["Parsing", "CRAMS only", "Full loglike"][up_to_stage])
+    print(["Parsing", "CRAMS only", "Loglike w/ 2 CRAMS populations"][test_kind])
     print(f"Total: {total:.2f} sec, per eval: {1000 * total / n_evals:.2f} msec")

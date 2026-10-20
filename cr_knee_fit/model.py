@@ -242,7 +242,7 @@ class Model(Packable[ModelConfig]):
             scale,
             elements=sorted(set(fit_data.elements() + validation_data.elements())),
             allparticle=plot_allpart,
-            caption_elements=True,
+            add_labels=False,
         )
 
         legend_with_added_items(
@@ -492,7 +492,7 @@ class Model(Packable[ModelConfig]):
         scale: float,
         elements: list[Element],
         allparticle: bool,
-        caption_elements: bool,
+        add_labels: bool,
     ):
         for pop in self.populations:
             pop.plot(
@@ -502,7 +502,7 @@ class Model(Packable[ModelConfig]):
                 axes=ax,
                 all_particle=allparticle and len(pop.layout_info().all_elements) > 1,
                 elements=elements,
-                caption_elements=caption_elements,
+                add_labels=add_labels,
             )
         if self.n_populations_eff() > 1:
             E_grid = np.geomspace(E_min, E_max, 300)
@@ -511,7 +511,7 @@ class Model(Packable[ModelConfig]):
                 ax.plot(
                     E_grid,
                     E_factor * self.compute_spectrum(E_grid, element=plot_element, quantity="E"),
-                    label="Total " + plot_element.name,
+                    label="Total " + plot_element.name if add_labels else None,
                     color=plot_element.color,
                     linewidth=2,
                 )
@@ -519,7 +519,7 @@ class Model(Packable[ModelConfig]):
                 ax.plot(
                     E_grid,
                     E_factor * self.compute_spectrum(E_grid, element=None, quantity="E"),
-                    label="Total all particle",
+                    label="Total all particle" if add_labels else None,
                     color="black",
                     linewidth=2,
                 )
@@ -591,7 +591,7 @@ class Model(Packable[ModelConfig]):
             scale,
             elements=plot_elements,
             allparticle=plot_allpart,
-            caption_elements=spec is not None,
+            add_labels=spec is not None,
         )
 
         legend_with_added_items(

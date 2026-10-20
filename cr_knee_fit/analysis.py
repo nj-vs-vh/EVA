@@ -243,7 +243,7 @@ def run_mcmc(
             initial_state_samples: list[np.ndarray] = []
             if mle_model is not None and mle_model.sample_errcov() is not None:
                 print("Initializing sampler around MLE model...")
-                for _i_walker in range(mcmc_conf.n_walkers):
+                for i_walker in range(mcmc_conf.n_walkers):
                     n_try = 1_000
                     for _i_try in range(n_try):
                         theta = mle_model.sample_errcov()
@@ -254,7 +254,7 @@ def run_mcmc(
                             break
                     else:
                         print(
-                            f"Couldn't sample a valid model from errcov in {n_try} tries :( Initializing this walker with initial guess..."
+                            f"Couldn't sample a valid model from errcov in {n_try} tries :( Initializing walker #{i_walker} with initial guess..."
                         )
                         initial_state_samples.append(config.generate_initial_guess(fit_data).pack())
             else:

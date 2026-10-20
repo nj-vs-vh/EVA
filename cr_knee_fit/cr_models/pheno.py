@@ -613,7 +613,7 @@ class PhenomenologicalModel(Packable[PhenomenologicalModelConfig]):
         all_particle: bool = False,
         elements: list[Element] | None = None,
         grid_size: int = 100,
-        caption_elements: bool = True,
+        add_labels: bool = True,
     ) -> Axes:
         if axes is not None:
             ax = axes
@@ -639,7 +639,7 @@ class PhenomenologicalModel(Packable[PhenomenologicalModelConfig]):
                 E_factor * self.compute_spectrum(E_grid, element, quantity="E"),
                 label=(
                     with_prefix(self.element_name(element), preserve_capitalization=True)
-                    if caption_elements
+                    if add_labels
                     else None
                 ),
                 color=element.color,
@@ -652,7 +652,7 @@ class PhenomenologicalModel(Packable[PhenomenologicalModelConfig]):
             ax.plot(
                 E_grid,
                 E_factor * extra_all_particle_contrib,
-                label=with_prefix("Extra contribution to all-particle"),
+                label=with_prefix("Extra contribution to all-particle") if add_labels else None,
                 color="gray",
                 linestyle=self.linestyle,
             )
@@ -660,7 +660,7 @@ class PhenomenologicalModel(Packable[PhenomenologicalModelConfig]):
             ax.plot(
                 E_grid,
                 E_factor * self.compute_all_particle_spectrum(E_grid),
-                label=with_prefix("All particle"),
+                label=with_prefix("All particle") if add_labels else None,
                 color="black",
                 linestyle=self.linestyle,
             )
