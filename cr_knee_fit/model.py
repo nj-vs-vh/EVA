@@ -109,7 +109,6 @@ class Model(Packable[ModelConfig]):
                     "Shared-propagation CRAMS population must come after another CRAMS population with defined propagation parameters"
                 )
                 pop.propagation = last_crams_propagation
-                pop.config = pop.config.with_frozen_propagation(last_crams_propagation)
             else:
                 is_shared_propagation = False
 

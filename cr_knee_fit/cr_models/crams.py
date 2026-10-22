@@ -480,6 +480,12 @@ class CramsModel(Packable[CramsModelConfig]):
     def crams_lgR_grid(self) -> np.ndarray:
         return self._crams_lg_output[:, 0]
 
+    def clear_crams_cache(self) -> None:
+        if hasattr(self, "_crams_lg_output"):
+            del self._crams_lg_output
+        if hasattr(self, "crams_lgR_grid"):
+            del self.crams_lgR_grid
+
     def crams_lg_spectrum(self, element: Element) -> np.ndarray:
         Z = round(element.Z)
         return self._crams_lg_output[:, Z]

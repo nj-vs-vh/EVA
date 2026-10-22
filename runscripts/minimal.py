@@ -218,7 +218,7 @@ def run(
         return Model(
             populations=generate_populations(),
             energy_shifts=initial_guess_energy_shifts(
-                fit_data_config.experiments_spectra,
+                experiments=fit_data_config.experiments_spectra,
                 fixed=experiments.ams02,
             ),
         )

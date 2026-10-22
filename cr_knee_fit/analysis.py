@@ -144,6 +144,7 @@ def run_ml_analysis(
     fit_data: Data,
     freeze_shifts: bool,
     initial_model: Model | None = None,
+    outdir: Path | None = None,
 ) -> Model:
     model_config = config.model
     initial_model = initial_model or config.generate_initial_guess(fit_data)
@@ -154,11 +155,27 @@ def run_ml_analysis(
             energy_shifts=ExperimentEnergyScaleShifts({}),
         )
 
+    last_wip_plot = time.time()
+    plot_wip_interval = 120
+
     def to_minimize(v: np.ndarray) -> float:
         # technically it should be -loglikelihood, but as we're using mostly flat priors
         # plus gaussian priors (L2 regularization) for experimental scale shifts
         # so, let us use logposterior instead
-        return -logposterior(v, fit_data, model_config)
+
+        model = Model.unpack(v, layout_info=model_config)
+
+        nonlocal last_wip_plot
+        if outdir is not None and time.time() - last_wip_plot > plot_wip_interval:
+            print("Plotting WIP model state...")
+            model.plot_spectra(fit_data, scale=2.75).savefig(outdir / "mle-wip.png")
+            model.save(
+                outdir / "mle-wip.txt",
+                header=[f"GoF: {GoodnessOfFit.compute(model, fit_data)}"],
+            )
+            last_wip_plot = time.time()
+
+        return -logposterior(model, fit_data, model_config)
 
     print(f"Running optimization with {config.optimizer}...")
     start = time.time()
@@ -468,6 +485,7 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
             fit_data=fit_data,
             freeze_shifts=False,
             initial_model=None,
+            outdir=outdir,
         )
         mle_model.save(
             mle_model_dump, header=[f"GoF: {GoodnessOfFit.compute(mle_model, fit_data)}"]
