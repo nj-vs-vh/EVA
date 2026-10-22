@@ -306,8 +306,8 @@ def run_mcmc(
             tau_eff = np.median(tau)
 
         print(f"Effective tau = {tau_eff}...")
-        burn_in = int(5 * tau_eff)
-        thin = int(2 * tau_eff)
+        burn_in = int(3 * tau_eff)
+        thin = int(tau_eff)
 
         print(f"Burn in: {burn_in}; Thinning: {thin}")
 
@@ -529,19 +529,6 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
     print(f"Best-fitting model idx: {best_fit_idx}; loglike = {loglike_values[best_fit_idx]}")
     posterior_best_model = model_sample[best_fit_idx]
 
-    if config.plots.corner:
-        print_delim()
-        print("Plotting corner plot of the posterior")
-        sample_to_plot = theta_sample
-        sample_labels = ["$" + label + "$" for label in initial_guess.labels(latex=True)]
-        fig_corner: Figure = corner.corner(
-            sample_to_plot,
-            labels=sample_labels,
-            show_titles=True,
-            quantiles=[0.05, 0.5, 0.95],
-        )
-        fig_corner.savefig(outdir / "corner.png")
-
     print_delim()
     print("Plotting best-fitting model from the posterior sample")
     posterior_best_model.plot_spectra(
@@ -577,6 +564,21 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
         scale=scale,
         config=config,
     )
+
+    if config.plots.corner:
+        print_delim()
+        print("Plotting corner plot of the posterior")
+        sample_to_plot = theta_sample
+        sample_labels = ["$" + label + "$" for label in initial_guess.labels(latex=True)]
+        fig_corner: Figure = corner.corner(
+            sample_to_plot,
+            labels=sample_labels,
+            show_titles=True,
+            quantiles=[0.05, 0.5, 0.95],
+        )
+        corner.overplot_lines(fig_corner, mle_model.pack(), color="tab:red")
+        corner.overplot_lines(fig_corner, posterior_ml_best.pack(), color="tab:green")
+        fig_corner.savefig(outdir / "corner.png")
 
     print_delim()
     print("Plotting the everything plot of the posterior")
