@@ -32,94 +32,84 @@ from cr_knee_fit.inference import (
     set_default_lognormal_chi2,
 )
 from cr_knee_fit.local import LocalRunOptions, get_analysis_name, run_local
-from cr_knee_fit.model import Model
+from cr_knee_fit.model import CRModel, Model
 from cr_knee_fit.plotting import PosteriorPlotConfig
 
 
-def minimal_model_generator(fit_data_config: DataConfig) -> Callable[[], Model]:
-    def generate_guess() -> Model:
-        crams_LE = CramsModel.make(
-            to_high_E=True,
-            randomize_init=True,
-            init_propagation=PropagationParams(
-                H_kpc=Param.frozen(7.0),
-                D_0_cm2_sec=Param.fitted(3.21e28, 1e26),
-                v_A_km_sec=Param.fitted(1.67, 0.1),
-                R_b_GV=Param.fitted(10**2.61, 1),
-                delta=Param.fitted(0.47, 0.01),
-                ddelta=Param.fitted(0.332, 0.01),
-                smoothness=Param.frozen(0.1),
-                phi=Param.fitted(0.51, 0.05),
-                X_src=Param.frozen(-1.0),
-            ),
-            init_injection=init_injection(
-                fitted_abundances={
-                    Element.H: Param.fitted_relative(0.042, 0.01),
-                    Element.He: Param.fitted_relative(0.02, 0.01),
-                    Element.C: Param.fitted_relative(0.004, 0.01),
-                    Element.N: Param.fitted_relative(0.00053, 0.01),
-                    Element.O: Param.fitted_relative(0.008, 0.01),
-                    Element.Ne: Param.fitted_relative(0.0017, 0.01),
-                    Element.Mg: Param.fitted_relative(0.00312, 0.01),
-                    Element.Si: Param.fitted_relative(0.0037, 0.01),
-                    Element.S: Param.fitted_relative(0.00069, 0.01),
-                    Element.Fe: Param.fitted_relative(0.00914, 0.01),
-                },
-                slopes=[
-                    Param.fitted(4.45, 0.01),
-                    Param.fitted(4.38, 0.01),
-                    Param.fitted(4.41, 0.01),
-                ],
-                features=[
-                    InjectionLognormalDist(
-                        R_mean_GV=Param.fitted(10**4.48, 100),
-                        sigma=Param.fitted(0.514, 0.01),
-                        beta=Param.frozen(1.0),
-                    )
-                ],
-            ),
-            population_meta=PopulationMetadata(name="LE", linestyle="--"),
-        )
+def generate_minimal_populations() -> list[CRModel]:
+    crams_LE = CramsModel.make(
+        to_high_E=True,
+        randomize_init=True,
+        init_propagation=PropagationParams(
+            H_kpc=Param.frozen(7.0),
+            D_0_cm2_sec=Param.fitted(3.21e28, 1e26),
+            v_A_km_sec=Param.fitted(1.67, 0.1),
+            R_b_GV=Param.fitted(10**2.61, 1),
+            delta=Param.fitted(0.47, 0.01),
+            ddelta=Param.fitted(0.332, 0.01),
+            smoothness=Param.frozen(0.1),
+            phi=Param.fitted(0.51, 0.05),
+            X_src=Param.frozen(-1.0),
+        ),
+        init_injection=init_injection(
+            fitted_abundances={
+                Element.H: Param.fitted_relative(0.042, 0.01),
+                Element.He: Param.fitted_relative(0.02, 0.01),
+                Element.C: Param.fitted_relative(0.004, 0.01),
+                Element.N: Param.fitted_relative(0.00053, 0.01),
+                Element.O: Param.fitted_relative(0.008, 0.01),
+                Element.Ne: Param.fitted_relative(0.0017, 0.01),
+                Element.Mg: Param.fitted_relative(0.00312, 0.01),
+                Element.Si: Param.fitted_relative(0.0037, 0.01),
+                Element.S: Param.fitted_relative(0.00069, 0.01),
+                Element.Fe: Param.fitted_relative(0.00914, 0.01),
+            },
+            slopes=[
+                Param.fitted(4.45, 0.01),
+                Param.fitted(4.38, 0.01),
+                Param.fitted(4.41, 0.01),
+            ],
+            features=[
+                InjectionLognormalDist(
+                    R_mean_GV=Param.fitted(10**4.48, 100),
+                    sigma=Param.fitted(0.514, 0.01),
+                    beta=Param.frozen(1.0),
+                )
+            ],
+        ),
+        population_meta=PopulationMetadata(name="LE", linestyle="--"),
+    )
 
-        crams_HE = CramsModel.make(
-            to_high_E=True,
-            randomize_init=True,
-            init_propagation=SHARED_PROPAGATION,
-            init_injection=init_injection(
-                fitted_abundances={
-                    Element.H: Param.fitted_relative(0.000692, 0.01),
-                    Element.He: Param.fitted_relative(0.00044, 0.01),
-                    Element.C: Param.fitted_relative(0.0000377, 0.01),
-                    Element.O: Param.fitted_relative(0.000036, 0.01),
-                    Element.Fe: Param.fitted_relative(0.000018, 0.01),
-                },
-                frozen_abundances={el: 0.0 for el in Element.regular()},
-                slopes=[
-                    Param.fitted(4.1, 0.001),
-                ],
-                features=[
-                    InjectionLognormalDist(
-                        R_mean_GV=Param.fitted(10**6.4, 1000),
-                        sigma=Param.fitted(0.4, 0.02),
-                        beta=Param.frozen(1.0),
-                    )
-                ],
-            ),
-            population_meta=PopulationMetadata(name="HE", linestyle=":"),
-        )
-
-        return Model(
-            populations=[crams_LE, crams_HE],
-            energy_shifts=initial_guess_energy_shifts(
-                fit_data_config.experiments_spectra,
-                fixed=experiments.ams02,
-            ),
-        )
-
-    return generate_guess
+    crams_HE = CramsModel.make(
+        to_high_E=True,
+        randomize_init=True,
+        init_propagation=SHARED_PROPAGATION,
+        init_injection=init_injection(
+            fitted_abundances={
+                Element.H: Param.fitted_relative(0.000692, 0.01),
+                Element.He: Param.fitted_relative(0.00044, 0.01),
+                Element.C: Param.fitted_relative(0.0000377, 0.01),
+                Element.O: Param.fitted_relative(0.000036, 0.01),
+                Element.Fe: Param.fitted_relative(0.000018, 0.01),
+            },
+            frozen_abundances={el: 0.0 for el in Element.regular()},
+            slopes=[
+                Param.fitted(4.1, 0.001),
+            ],
+            features=[
+                InjectionLognormalDist(
+                    R_mean_GV=Param.fitted(10**6.4, 1000),
+                    sigma=Param.fitted(0.4, 0.02),
+                    beta=Param.frozen(1.0),
+                )
+            ],
+        ),
+        population_meta=PopulationMetadata(name="HE", linestyle=":"),
+    )
+    return [crams_LE, crams_HE]
 
 
-def run_minimal(
+def run(
     analysis_name: str,
     opts: LocalRunOptions,
     lhaaso_him: Literal["sibyll", "qgsjet", "epos"] = "sibyll",
@@ -127,6 +117,7 @@ def run_minimal(
     is_lognormal_chi2: bool = True,
     lambda_syst: float = 1.0,
     omit_detailed_plots: bool = False,
+    generate_populations: Callable[[], list[CRModel]] = generate_minimal_populations,
 ):
     print(f"Analysis name: {analysis_name}")
 
@@ -223,17 +214,14 @@ def run_minimal(
         lnA=[lhaaso, experiments.tale],
     ).excluding(fit_data_config)
 
-    generate_guess = minimal_model_generator(fit_data_config)
-
-    # temp
-    # m = generate_guess()
-    # print(m)
-    # data = Data.load(fit_data_config, verbose=False)
-
-    # print(loglikelihood(m, data, config=m.layout_info()))
-    # print(logprior(m, model_packed=None, verbose=True))
-
-    # return
+    def generate_guess() -> Model:
+        return Model(
+            populations=generate_populations(),
+            energy_shifts=initial_guess_energy_shifts(
+                fit_data_config.experiments_spectra,
+                fixed=experiments.ams02,
+            ),
+        )
 
     config = FitConfig.from_guessing_func(
         name=analysis_name,
@@ -273,7 +261,7 @@ if __name__ == "__main__":
     opts = LocalRunOptions.parse(parser)
     analysis_name = get_analysis_name(__file__, opts)
 
-    run_minimal(
+    run(
         analysis_name=analysis_name,
         opts=opts,
         omit_detailed_plots=opts.args_raw.only_fast_plots,
