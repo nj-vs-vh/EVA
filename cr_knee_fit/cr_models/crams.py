@@ -50,6 +50,7 @@ def unpack_injection(
     v: np.ndarray,
     n_slopes: int,
     feature_classes: list[type[InjectionFeature]] | None,
+    abundances_are_precomputed_normalizations: bool = False,
 ) -> InjectionParams:
     abundances = v[: len(CRAMS_ELEMENTS)]
     offset = len(CRAMS_ELEMENTS)
@@ -68,6 +69,7 @@ def unpack_injection(
         abundances=abundances,  # type: ignore
         slopes=slopes,  # type: ignore
         features=features,
+        abundances_are_precomputed_normalizations=abundances_are_precomputed_normalizations,
     )
 
 
@@ -116,24 +118,6 @@ def unpack_propagation(v: np.ndarray) -> PropagationParams:
         phi=v[7],
     )
 
-
-ABUNDANCE_BOUND = (0.0, 2.0)
-SLOPE_BOUND = (4.001, 4.999)  # (4, 5) is strictly enforced by CRAMS, here we add a small margin
-SOURCE_BREAK_BOUNDS = [
-    # no break is expected below TV range (DAMPE break is at ~13 TV)
-    (np.log10(5e3), np.log10(1e7)),
-    (0.0, 2.0),  # break should harden the spectrum
-    (0.01, 1.0),
-]
-LOGNORMAL_RMAX_DISTRIBUTION_BOUNDS = [
-    SOURCE_BREAK_BOUNDS[0],
-    (0.1, 1.0),
-    (-5, 5),
-]
-EXPCUTOFF_BOUNDS = [
-    SOURCE_BREAK_BOUNDS[0],
-    (0.1, 3.0),
-]
 
 # copied from CRAMS source code
 DEFAULT_ABUNDANCES = {
@@ -261,13 +245,13 @@ def init_injection(
     features: list[InjectionFeature] | None = None,
     frozen_abundances: dict[Element, float] = DEFAULT_ABUNDANCES,
 ) -> InjectionParams:
-    _init_abundances: list[Param | float] = []
+    _init_abundances: list[float] = []
     for element in CRAMS_ELEMENTS:
         if fitted := fitted_abundances.get(element):
             if isinstance(fitted, Param):
                 _init_abundances.append(fitted)
             else:
-                _init_abundances.append(Param.fitted(fitted, 1e-4))
+                _init_abundances.append(Param.fitted_relative(fitted, 1e-2))
         else:
             _init_abundances.append(Param.frozen(frozen_abundances[element]))
 
@@ -379,6 +363,7 @@ class CramsModelConfig(pydantic.BaseModel):
             v,
             n_slopes=len(self.frozen_injection.slopes),
             feature_classes=[type(ftr) for ftr in self.frozen_injection.features],
+            abundances_are_precomputed_normalizations=self.frozen_injection.abundances_are_precomputed_normalizations,
         )
 
 
@@ -734,18 +719,46 @@ class CramsModel(Packable[CramsModelConfig]):
         )
 
     def bounds(self) -> Sequence[tuple[float | None, float | None]]:
-        injection_bounds = [ABUNDANCE_BOUND] * len(self.injection.abundances) + [SLOPE_BOUND] * len(
-            self.injection.slopes
-        )
+        injection_bounds = [
+            (
+                (0.0, 300.0)
+                if self.injection.abundances_are_precomputed_normalizations
+                else (0.0, 2.0)
+            )
+        ] * len(self.injection.abundances) + [
+            (
+                (0.0, 6.0)
+                if self.injection.abundances_are_precomputed_normalizations
+                # (4, 5) is strictly enforced by CRAMS, here we add a small margin
+                # unless we specify precomputed normalizations
+                else (4.001, 4.999)
+            )
+        ] * len(self.injection.slopes)
+        # no break is expected below TV range (DAMPE break is at ~13 TV)
+        feature_position_bounds = (np.log10(5e3), np.log10(1e7))
         for feature in self.injection.features:
             if feature is not None:
                 match feature:
                     case InjectionBreak():
-                        injection_bounds.extend(SOURCE_BREAK_BOUNDS)
+                        injection_bounds.extend(
+                            (
+                                feature_position_bounds,
+                                (0.0, 2.0),  # break should harden the spectrum
+                                (0.01, 1.0),
+                            )
+                        )
                     case InjectionLognormalDist():
-                        injection_bounds.extend(LOGNORMAL_RMAX_DISTRIBUTION_BOUNDS)
+                        injection_bounds.extend(
+                            (
+                                feature_position_bounds,
+                                (0.1, 1.0),
+                                (-5, 5),
+                            )
+                        )
                     case InjectionExpCutoff():
-                        injection_bounds.extend(EXPCUTOFF_BOUNDS)
+                        injection_bounds.extend(
+                            (feature_position_bounds, (0.1, 3.0)),
+                        )
 
         return [
             prop_bound

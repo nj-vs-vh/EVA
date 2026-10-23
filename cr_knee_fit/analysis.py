@@ -215,7 +215,7 @@ def run_mcmc(
     sample_path: Path,
     mle_model: Model | None,
 ) -> np.ndarray:
-    ndim = config.generate_initial_guess(fit_data).ndim()
+    ndim = config.generate_initial_guess(None).ndim()
 
     chain_path = outdir / "chain.h5"
     if chain_path.exists() and not mcmc_conf.reuse_saved:
