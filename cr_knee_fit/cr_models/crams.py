@@ -1,3 +1,4 @@
+import copy
 import dataclasses
 import functools
 import json
@@ -34,7 +35,7 @@ CRAMS_ELEMENTS = [Element[name] for name in CRAMS_ELEMENT_NAMES]
 
 
 def pack_injection(ip: InjectionParams) -> np.ndarray:
-    components = [ip.abundances, ip.slopes]
+    components = [np.log10(ip.abundances), ip.slopes]
     for feature in ip.features:
         match feature:
             case InjectionBreak() as br:
@@ -43,7 +44,7 @@ def pack_injection(ip: InjectionParams) -> np.ndarray:
                 components.append((np.log10(dist.R_mean_GV), dist.sigma, dist.beta))
             case InjectionExpCutoff() as cutoff:
                 components.append((np.log10(cutoff.R_cut_GV), cutoff.Delta, cutoff.is_lower))
-    return np.concatenate(components)
+    return np.concatenate(components)  # type: ignore
 
 
 def unpack_injection(
@@ -52,7 +53,7 @@ def unpack_injection(
     feature_classes: list[type[InjectionFeature]] | None,
     abundances_are_precomputed_normalizations: bool = False,
 ) -> InjectionParams:
-    abundances = v[: len(CRAMS_ELEMENTS)]
+    abundances = 10 ** v[: len(CRAMS_ELEMENTS)]
     offset = len(CRAMS_ELEMENTS)
     slopes = v[offset : offset + n_slopes]
     offset += n_slopes
@@ -212,7 +213,7 @@ def _inj_null2nan(value: Any):
     return value
 
 
-# placeholder params that should be used in frozen_propagation when in fact the propagation
+# sentinel params that should be used in frozen_propagation when in fact the propagation
 # params are shared between multiple CramsModel instances coordinated by Model
 SHARED_PROPAGATION = PropagationParams(
     H_kpc=Param.frozen(0.0),
@@ -225,6 +226,9 @@ SHARED_PROPAGATION = PropagationParams(
     smoothness=Param.frozen(0.0),
     X_src=Param.frozen(0.0),
 )
+# sentinel params that should be used in frozen_injection when in the nuclei abundances must
+# be taken from another population
+SHARED_NUCLEI_INJECTION = [Param.frozen(np.inf) for _ in range(len(CRAMS_ELEMENTS) - 2)]
 
 DEFAULT_INIT_PROPAGATION = PropagationParams(
     H_kpc=Param.frozen(7.0),
@@ -293,40 +297,36 @@ class CramsModelConfig(pydantic.BaseModel):
 
     population_meta: PopulationMetadata | None = None
 
-    @functools.cached_property
+    scale_nuclei_abundances: bool = False  # NOTE: this is useful if nuclei abundances are frozen/shared, but need to be scaled coherently
+
+    @property
     def frozen_injection_packed(self) -> np.ndarray:
         return pack_injection(self.frozen_injection)
 
-    @functools.cached_property
+    @property
     def frozen_propagation_packed(self) -> np.ndarray:
         return pack_propagation(self.frozen_propagation)
 
-    @functools.cached_property
+    @property
     def is_fitted_propagation(self) -> np.ndarray:
         return np.isnan(self.frozen_propagation_packed)
 
-    @functools.cached_property
+    @property
     def is_fitted_injection(self) -> np.ndarray:
         return np.isnan(self.frozen_injection_packed)
 
-    def with_frozen_propagation(self, frozen_propagation: PropagationParams) -> "CramsModelConfig":
-        return CramsModelConfig(
-            runner=self.runner,
-            frozen_propagation=frozen_propagation,
-            frozen_injection=self.frozen_injection,
-            interpolation_method=self.interpolation_method,
-            population_meta=self.population_meta,
-        )
-
     def has_shared_propagation(self) -> bool:
         return self.frozen_propagation == SHARED_PROPAGATION
+
+    def has_shared_nuclei_injection(self) -> bool:
+        return self.frozen_injection.abundances[2:] == SHARED_NUCLEI_INJECTION
 
     @staticmethod
     def make(
         to_high_E: bool,
         frozen_propagation: PropagationParams,
         frozen_injection: InjectionParams,
-        population_meta: PopulationMetadata | None = None,
+        population_meta: PopulationMetadata,
     ) -> "CramsModelConfig":
         if to_high_E:
             T_sim_grid = LogGrid(
@@ -347,7 +347,7 @@ class CramsModelConfig(pydantic.BaseModel):
             runner=CramsRunnerConfig(T_sim_grid=T_sim_grid, R_out_grid=R_out_grid),
             frozen_injection=frozen_injection or DEFAULT_INIT_INJECTION,
             frozen_propagation=frozen_propagation or DEFAULT_INIT_PROPAGATION,
-            population_meta=population_meta or PopulationMetadata(name="CRAMS", linestyle="-"),
+            population_meta=population_meta,
         )
 
     @property
@@ -373,6 +373,8 @@ class CramsModel(Packable[CramsModelConfig]):
     injection: InjectionParams
 
     config: CramsModelConfig
+
+    nuclei_abundance_scale: float = 1.0
 
     def __post_init__(self) -> None:
         assert len(self.injection.abundances) == len(self.config.frozen_injection.abundances)
@@ -400,7 +402,7 @@ class CramsModel(Packable[CramsModelConfig]):
                 to_high_E=to_high_E,
                 frozen_propagation=get_frozen_scheme(init_propagation),
                 frozen_injection=get_frozen_scheme(init_injection),
-                population_meta=population_meta,
+                population_meta=population_meta or PopulationMetadata(name="CRAMS", linestyle="-"),
             ),
         )
 
@@ -446,6 +448,7 @@ class CramsModel(Packable[CramsModelConfig]):
             np.isclose(self.propagation.X_src, other.propagation.X_src),
             np.isclose(self.propagation.phi, other.propagation.phi),
             is_feature_same,
+            np.isclose(self.nuclei_abundance_scale, other.nuclei_abundance_scale),
         ]
 
         # print(self, other)
@@ -459,7 +462,16 @@ class CramsModel(Packable[CramsModelConfig]):
 
     @functools.cached_property
     def _crams_lg_output(self) -> np.ndarray:
-        return np.log10(self.crams.compute(self.propagation, self.injection))
+        if self.nuclei_abundance_scale:
+            injection = copy.deepcopy(self.injection)
+            injection.abundances = [
+                # nuclei heavier than He are scaled
+                (self.nuclei_abundance_scale if i > 1 else 1.0) * a
+                for i, a in enumerate(injection.abundances)
+            ]
+        else:
+            injection = self.injection
+        return np.log10(self.crams.compute(self.propagation, injection))
 
     @functools.cached_property
     def crams_lgR_grid(self) -> np.ndarray:
@@ -625,7 +637,7 @@ class CramsModel(Packable[CramsModelConfig]):
             ]
 
         if latex:
-            all_inj_labels = [f"q_\\text{{{el.name}}}" for el in CRAMS_ELEMENTS]
+            all_inj_labels = [f"\\lg q_\\text{{{el.name}}}" for el in CRAMS_ELEMENTS]
             all_inj_labels.extend(
                 [
                     f"\\gamma_\\text{{{el}}}"
@@ -634,6 +646,8 @@ class CramsModel(Packable[CramsModelConfig]):
             )
             if len(self.injection.slopes) == len(CRAMS_ELEMENT_NAMES):
                 all_inj_labels.append(f"\\gamma_\\text{{{CRAMS_ELEMENT_NAMES[-1]}}}")
+            elif len(self.injection.slopes) == 1:
+                all_inj_labels.append("\\gamma")
             else:
                 all_inj_labels.append("\\gamma_\\text{nuc}")
             for feature in self.injection.features:
@@ -663,12 +677,14 @@ class CramsModel(Packable[CramsModelConfig]):
                             ]
                         )
         else:
-            all_inj_labels = [f"q_{el.name}" for el in CRAMS_ELEMENTS]
+            all_inj_labels = [f"lg q_{el.name}" for el in CRAMS_ELEMENTS]
             all_inj_labels.extend(
                 [f"gamma_{el}" for el, _ in zip(CRAMS_ELEMENT_NAMES, self.injection.slopes[:-1])]
             )
             if len(self.injection.slopes) == len(CRAMS_ELEMENT_NAMES):
                 all_inj_labels.append(f"gamma_{CRAMS_ELEMENT_NAMES[-1]}")
+            elif len(self.injection.slopes) == 1:
+                all_inj_labels.append("gamma")
             else:
                 all_inj_labels.append("gamma_nuc")
             for feature in self.injection.features:
@@ -707,23 +723,30 @@ class CramsModel(Packable[CramsModelConfig]):
             for il, is_fitted in zip(all_inj_labels, self.config.is_fitted_injection)
             if is_fitted
         ]
+        if self.config.scale_nuclei_abundances:
+            if latex:
+                labels.append("\\lg K_\\text{nuc}")
+            else:
+                labels.append("lg K_nuc")
+
         labels = [self.population_prefix(latex) + label for label in labels]
         return labels
 
     def pack(self) -> np.ndarray:
-        return np.concatenate(
-            (
-                pack_propagation(self.propagation)[self.config.is_fitted_propagation],
-                pack_injection(self.injection)[self.config.is_fitted_injection],
-            )
-        )
+        components = [
+            pack_propagation(self.propagation)[self.config.is_fitted_propagation],
+            pack_injection(self.injection)[self.config.is_fitted_injection],
+        ]
+        if self.config.scale_nuclei_abundances:
+            components.append([np.log10(self.nuclei_abundance_scale)])  # type: ignore
+        return np.concatenate(components)
 
     def bounds(self) -> Sequence[tuple[float | None, float | None]]:
         injection_bounds = [
             (
-                (0.0, 300.0)
+                (-np.inf, np.log10(300.0))
                 if self.injection.abundances_are_precomputed_normalizations
-                else (0.0, 2.0)
+                else (-np.inf, np.log10(2.0))
             )
         ] * len(self.injection.abundances) + [
             (
@@ -734,7 +757,7 @@ class CramsModel(Packable[CramsModelConfig]):
                 else (4.001, 4.999)
             )
         ] * len(self.injection.slopes)
-        # no break is expected below TV range (DAMPE break is at ~13 TV)
+        # no feature is expected below TV range (DAMPE break is at ~13 TV)
         feature_position_bounds = (np.log10(5e3), np.log10(1e7))
         for feature in self.injection.features:
             if feature is not None:
@@ -760,18 +783,28 @@ class CramsModel(Packable[CramsModelConfig]):
                             (feature_position_bounds, (0.1, 3.0)),
                         )
 
-        return [
-            prop_bound
-            for prop_bound, is_fitted in zip(PROPAGATION_BOUNDS, self.config.is_fitted_propagation)
-            if is_fitted
-        ] + [
-            inj_bound
-            for inj_bound, is_fitted in zip(injection_bounds, self.config.is_fitted_injection)
-            if is_fitted
-        ]
+        return (
+            [
+                prop_bound
+                for prop_bound, is_fitted in zip(
+                    PROPAGATION_BOUNDS, self.config.is_fitted_propagation
+                )
+                if is_fitted
+            ]
+            + [
+                inj_bound
+                for inj_bound, is_fitted in zip(injection_bounds, self.config.is_fitted_injection)
+                if is_fitted
+            ]
+            + ([(None, None)] if self.config.scale_nuclei_abundances else [])
+        )
 
     def ndim(self) -> int:
-        return np.sum(self.config.is_fitted_injection) + np.sum(self.config.is_fitted_propagation)
+        return (
+            np.sum(self.config.is_fitted_injection)
+            + np.sum(self.config.is_fitted_propagation)
+            + (1 if self.config.scale_nuclei_abundances else 0)
+        )
 
     def layout_info(self) -> CramsModelConfig:
         return self.config
@@ -783,6 +816,10 @@ class CramsModel(Packable[CramsModelConfig]):
             "Attempted to unpack a CramsModel with shared propagation; "
             + "it is a placeholder which needs to be replaced with actual values before use"
         )
+        assert not config.has_shared_nuclei_injection(), (
+            "Attempted to unpack a CramsModel with shared nuclei injection; "
+            + "it is a placeholder which needs to be replaced with actual values before use"
+        )
 
         propagation_packed = config.frozen_propagation_packed
         n_prop = np.sum(config.is_fitted_propagation)
@@ -792,10 +829,16 @@ class CramsModel(Packable[CramsModelConfig]):
         n_inj = np.sum(config.is_fitted_injection)
         injection_packed[config.is_fitted_injection] = theta[n_prop : (n_prop + n_inj)]
 
+        if config.scale_nuclei_abundances:
+            nuclei_abundance_scale = 10 ** theta[n_prop + n_inj]
+        else:
+            nuclei_abundance_scale = 1.0
+
         return CramsModel(
             injection=layout_info.unpack_injection(injection_packed),
             propagation=unpack_propagation(propagation_packed),
             config=config,
+            nuclei_abundance_scale=nuclei_abundance_scale,  # type: ignore
         )
 
     # pheno model compatibility methods

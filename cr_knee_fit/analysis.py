@@ -542,9 +542,9 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
     model_sample = [
         Model.unpack(theta, layout_info=config.model) for theta in theta_sample[:subsample_size, :]
     ]
-    loglike_values = [logposterior(model, fit_data, config=config.model) for model in model_sample]
-    best_fit_idx = np.argmax(loglike_values)
-    print(f"Best-fitting model idx: {best_fit_idx}; loglike = {loglike_values[best_fit_idx]}")
+    logpost_values = [logposterior(model, fit_data, config=config.model) for model in model_sample]
+    best_fit_idx = np.argmax(logpost_values)
+    print(f"Best-fitting model idx: {best_fit_idx}; logpost = {logpost_values[best_fit_idx]}")
     posterior_best_model = model_sample[best_fit_idx]
 
     print_delim()

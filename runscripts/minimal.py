@@ -227,7 +227,7 @@ def run(
         name=analysis_name,
         fit_data=fit_data_config,
         mcmc=McmcConfig(
-            n_steps=30000,
+            n_steps=10000,
             n_walkers=128,
             processes=11,
             reuse_saved=True,

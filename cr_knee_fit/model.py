@@ -1,3 +1,4 @@
+import copy
 import dataclasses
 import itertools
 from typing import cast
@@ -98,22 +99,27 @@ class Model(Packable[ModelConfig]):
         # still, we do it to validate that the shared propagation is configured correctly
 
         last_crams_propagation: PropagationParams | None = None
+        last_crams_nuclei_injection: list[float] | None = None
 
         for pop in self.populations:
             if not isinstance(pop, CramsModel):
                 continue
 
             if pop.layout_info().has_shared_propagation():
-                is_shared_propagation = True
                 assert last_crams_propagation is not None, (
                     "Shared-propagation CRAMS population must come after another CRAMS population with defined propagation parameters"
                 )
                 pop.propagation = last_crams_propagation
             else:
-                is_shared_propagation = False
-
-            if not is_shared_propagation:
                 last_crams_propagation = pop.propagation
+
+            if pop.layout_info().has_shared_nuclei_injection():
+                assert last_crams_nuclei_injection is not None, (
+                    "Shared-nuclei-injection CRAMS population must come after another CRAMS population with defined nuclei injection"
+                )
+                pop.injection.abundances[2:] = last_crams_nuclei_injection
+            else:
+                last_crams_nuclei_injection = list(pop.injection.abundances[2:])
 
     @property
     def children(self) -> list[Packable | None]:
@@ -146,6 +152,7 @@ class Model(Packable[ModelConfig]):
 
         # share CRAMS propagation params with the following population specifying shared propagation
         last_crams_propagation: PropagationParams | None = None
+        last_crams_nuclei_injection: np.ndarray | None = None
 
         for pop_conf in layout_info.population_configs:
             match pop_conf:
@@ -159,14 +166,27 @@ class Model(Packable[ModelConfig]):
                         assert last_crams_propagation is not None, (
                             "Shared-propagation CRAMS population must come after another CRAMS population with defined propagation parameters"
                         )
-                        pop_conf = pop_conf.with_frozen_propagation(last_crams_propagation)
+                        pop_conf = copy.deepcopy(pop_conf)
+                        pop_conf.frozen_propagation = last_crams_propagation
                     else:
                         is_shared_propagation = False
+
+                    if pop_conf.has_shared_nuclei_injection():
+                        is_shared_nuclei_injection = True
+                        assert last_crams_nuclei_injection is not None, (
+                            "Shared-nuclei-injection CRAMS population must come after another CRAMS population with defined nuclei injection"
+                        )
+                        pop_conf = copy.deepcopy(pop_conf)
+                        pop_conf.frozen_injection.abundances[2:] = last_crams_nuclei_injection
+                    else:
+                        is_shared_nuclei_injection = False
 
                     population = CramsModel.unpack(theta[offset:], layout_info=pop_conf)
 
                     if not is_shared_propagation:
                         last_crams_propagation = population.propagation
+                    if not is_shared_nuclei_injection:
+                        last_crams_nuclei_injection = np.array(population.injection.abundances[2:])
                 case _:
                     raise ValueError(f"Unknown population config type: {type(pop_conf)}")
             offset += population.ndim()
