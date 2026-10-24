@@ -744,9 +744,9 @@ class CramsModel(Packable[CramsModelConfig]):
     def bounds(self) -> Sequence[tuple[float | None, float | None]]:
         injection_bounds = [
             (
-                (-np.inf, np.log10(300.0))
+                (-8.0, np.log10(300.0))
                 if self.injection.abundances_are_precomputed_normalizations
-                else (-np.inf, np.log10(2.0))
+                else (-8.0, np.log10(2.0))
             )
         ] * len(self.injection.abundances) + [
             (
@@ -774,13 +774,13 @@ class CramsModel(Packable[CramsModelConfig]):
                         injection_bounds.extend(
                             (
                                 feature_position_bounds,
-                                (0.1, 1.0),
+                                (0.1, 1.5),
                                 (-5, 5),
                             )
                         )
                     case InjectionExpCutoff():
                         injection_bounds.extend(
-                            (feature_position_bounds, (0.1, 3.0)),
+                            (feature_position_bounds, (0.3, 3.0)),
                         )
 
         return (
@@ -796,7 +796,7 @@ class CramsModel(Packable[CramsModelConfig]):
                 for inj_bound, is_fitted in zip(injection_bounds, self.config.is_fitted_injection)
                 if is_fitted
             ]
-            + ([(None, None)] if self.config.scale_nuclei_abundances else [])
+            + ([(-4, 2)] if self.config.scale_nuclei_abundances else [])
         )
 
     def ndim(self) -> int:
