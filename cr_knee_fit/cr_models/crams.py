@@ -746,7 +746,7 @@ class CramsModel(Packable[CramsModelConfig]):
             (
                 (-8.0, np.log10(300.0))
                 if self.injection.abundances_are_precomputed_normalizations
-                else (-8.0, np.log10(2.0))
+                else (-10.0, np.log10(2.0))
             )
         ] * len(self.injection.abundances) + [
             (
