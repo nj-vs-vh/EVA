@@ -66,7 +66,11 @@ def get_energy_scale_lg_uncertainty(exp: experiments.Experiment) -> float:
     return energy_scale_lg_uncertainties[exp]
 
 
+CRKNEE_VERBOSE_LOGPRIOR = os.environ.get("CRKNEE_VERBOSE_LOGPRIOR", "0") == "1"
+
+
 def logprior(model: Model, model_packed: np.ndarray | None, verbose: bool = False) -> float:
+    verbose = verbose or CRKNEE_VERBOSE_LOGPRIOR
     res = 0.0
 
     # parameter bounds check

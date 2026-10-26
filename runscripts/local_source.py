@@ -10,7 +10,7 @@ from cr_knee_fit.model import CRModel
 from runscripts.minimal import generate_minimal_populations, run
 
 
-def generate_populations() -> list[CRModel]:
+def generate_populations_with_bump() -> list[CRModel]:
     minimal = generate_minimal_populations()
 
     local_source_injection = init_injection(
@@ -53,5 +53,5 @@ if __name__ == "__main__":
         analysis_name=analysis_name,
         opts=opts,
         omit_detailed_plots=opts.args_raw.only_fast_plots,
-        generate_populations=generate_populations,
+        generate_populations=generate_populations_with_bump,
     )

@@ -757,7 +757,7 @@ class CramsModel(Packable[CramsModelConfig]):
                 else (4.001, 4.999)
             )
         ] * len(self.injection.slopes)
-        # no feature is expected below TV range (DAMPE break is at ~13 TV)
+        # no feature is expected below ~5 TV range (DAMPE break is at ~13 TV)
         feature_position_bounds = (np.log10(5e3), np.log10(1e7))
         for feature in self.injection.features:
             if feature is not None:
@@ -766,7 +766,7 @@ class CramsModel(Packable[CramsModelConfig]):
                         injection_bounds.extend(
                             (
                                 feature_position_bounds,
-                                (0.0, 2.0),  # break should harden the spectrum
+                                (-1.0, 4.0),
                                 (0.01, 1.0),
                             )
                         )

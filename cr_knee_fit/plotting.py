@@ -63,6 +63,7 @@ def plot_credible_band(
     cl: float = 0.9,
     alpha: float = 0.3,
     grid_override: np.ndarray | None = None,
+    fill_between_kwargs: dict[str, Any] | None = None,
 ) -> None:
     x_min, x_max = bounds
     x_grid = (
@@ -81,10 +82,15 @@ def plot_credible_band(
         x_grid,
         scale_factor * lower,
         scale_factor * upper,
-        color=color,
-        alpha=alpha,
-        edgecolor="none",
-        label=label,
+        **(
+            {
+                "color": color,
+                "alpha": alpha,
+                "edgecolor": "none",
+                "label": label,
+            }
+            | (fill_between_kwargs or {})
+        ),
     )
 
 
@@ -213,6 +219,8 @@ class PosteriorPlotConfig:
     max_margin_around_data: None | float = 0.5
     margin_around_fitted_data_only: bool = False
 
+    best_fit_plot_kwargs: dict = dataclasses.field(default_factory=dict)
+    band_plot_kwargs: dict = dataclasses.field(default_factory=dict)
     tricontourf_kwargs_override: dict = dataclasses.field(default_factory=dict)
 
     population_contribs_best_fit: bool = False
@@ -305,11 +313,16 @@ def plot_model_predictions(
             color=color,
             alpha=0.2,
             cl=plot_config.band_cl,
+            fill_between_kwargs=plot_config.band_plot_kwargs,
         )
     if plot_config.best_fit:
         E_grid = np.geomspace(*E_bounds, 100)
         E_factor = E_grid**scale
-        ax.plot(E_grid, E_factor * observable(best, E_grid), color=color)
+        ax.plot(
+            E_grid,
+            E_factor * observable(best, E_grid),
+            **({"color": color} | plot_config.best_fit_plot_kwargs),  # type: ignore
+        )
 
 
 POP_CONTRIB_LINEWIDTH = 0.75

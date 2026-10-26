@@ -109,10 +109,13 @@ def generate_minimal_populations() -> list[CRModel]:
     return [crams_LE, crams_HE]
 
 
+type LhaasoHim = Literal["sibyll", "qgsjet", "epos"]
+
+
 def run(
     analysis_name: str,
     opts: LocalRunOptions,
-    lhaaso_him: Literal["sibyll", "qgsjet", "epos"] = "sibyll",
+    lhaaso_him: LhaasoHim = "sibyll",
     chi2_method: Chi2Method = "correlated",
     is_lognormal_chi2: bool = True,
     lambda_syst: float = 1.0,

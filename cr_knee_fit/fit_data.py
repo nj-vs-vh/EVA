@@ -28,6 +28,7 @@ from cr_knee_fit.utils import (
     legend_with_added_items,
     q2q_factor,
     quantity_label,
+    quantity_symbol_latex,
     quantity_unit,
 )
 
@@ -270,6 +271,27 @@ class GenericExperimentData:
             custom_label=self.custom_label,
         )
 
+    def log_lerp(self, new_x: np.ndarray) -> "GenericExperimentData":
+        """Log-space linear interpolation, i.e. power-law interpolation"""
+
+        def _log_interp(value: np.ndarray) -> np.ndarray:
+            return np.exp(np.interp(np.log(new_x), np.log(self.x), np.log(value)))
+
+        y = _log_interp(self.y)
+        y_up_stat = _log_interp(self.y + self.err_stat[:, 1])
+        y_lo_stat = _log_interp(self.y - self.err_stat[:, 0])
+        y_up_syst = _log_interp(self.y + self.err_syst[:, 1])
+        y_lo_syst = _log_interp(self.y - self.err_syst[:, 0])
+
+        return GenericExperimentData(
+            x=new_x,
+            y=y,
+            err_stat=np.vstack((y - y_lo_stat, y_up_stat - y)).T,
+            err_syst=np.vstack((y - y_lo_syst, y_up_syst - y)).T,
+            experiment=self.experiment,
+            custom_label=self.custom_label,
+        )
+
 
 type AllparticleSpectrum = None
 type ElementSum = tuple[Element, ...]
@@ -454,13 +476,14 @@ class CRSpectrumData:
 
         axes.set_xlabel(quantity_label(self.quantity))
         unit = quantity_unit(self.quantity)
+        q = quantity_symbol_latex(self.quantity)
         if scale == 0:
             axes.set_ylabel(
                 f"$ I $ / $ \\text{{{unit}}}^{-1} \\; \\text{{m}}^{-2} \\; \\text{{s}}^{-1} \\; \\text{{sr}}^{-1} $"
             )
         else:
             axes.set_ylabel(
-                f"$ E^{{{scale}}} F $ / $ \\text{{{unit}}}^{{{scale - 1:.3g}}} \\; \\text{{m}}^{{-2}} \\; \\text{{s}}^{{-1}} \\; \\text{{sr}}^{{-1}} $"
+                f"$ {q}^{{{scale}}} F $ / $ \\text{{{unit}}}^{{{scale - 1:.3g}}} \\; \\text{{m}}^{{-2}} \\; \\text{{s}}^{{-1}} \\; \\text{{sr}}^{{-1}} $"
             )
         return axes
 
@@ -634,8 +657,8 @@ class FluxRatioData:
 
         Q = num.E
         Q = Q[(Q > denom.E[0]) & (Q < denom.E[-1])]
-        num_d = num.d.lerp(Q)
-        denom_d = denom.d.lerp(Q)
+        num_d = num.d.log_lerp(Q)
+        denom_d = denom.d.log_lerp(Q)
         R = num_d.y / denom_d.y
         match error_propagation:
             case "first-order":
@@ -675,7 +698,7 @@ class FluxRatioData:
                 err_stat=np.vstack((R_lower_stat, R_upper_stat)).T,
                 err_syst=np.vstack((R_lower_syst, R_upper_syst)).T,
                 experiment=num.experiment,
-                custom_label=" (from fluxes)",
+                custom_label=" (derived)",
             ),
             ratio=FluxRatio(num_el, denom_el),
             quantity=quantity,
