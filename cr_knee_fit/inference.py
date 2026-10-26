@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Literal
 
 import numpy as np
+from crams import InjectionLognormalDist
 from scipy import stats  # type: ignore
 
 from cr_knee_fit import experiments
@@ -101,6 +102,18 @@ def logprior(model: Model, model_packed: np.ndarray | None, verbose: bool = Fals
                     for ftr in population.injection.features
                     if isinstance(ftr, InjectionBreak)
                 ]
+
+                if population.config.sigma_lgR_max_gumbel_prior_params is not None:
+                    cutoff = [
+                        f
+                        for f in population.injection.features
+                        if isinstance(f, InjectionLognormalDist)
+                    ]
+                    if cutoff:
+                        res += stats.gumbel_r.logpdf(
+                            cutoff[0].sigma,
+                            *population.config.sigma_lgR_max_gumbel_prior_params,
+                        )
 
         if break_positions != sorted(break_positions):
             return -np.inf

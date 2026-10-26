@@ -84,10 +84,14 @@ def generate_2LE_pop() -> list[CRModel]:
                 )
             ],
         ),
-        population_meta=PopulationMetadata(name="LE2", linestyle=":"),
+        population_meta=PopulationMetadata(name="LE2", linestyle="-."),
     )
     crams_LE2.config.scale_nuclei_abundances = True
     crams_LE2.nuclei_abundance_scale = Param.fitted_relative(0.05, 0.01).sample()
+
+    # pessimistic case: 100 sources with exp cutoff -> prior constraints on the plausible cosmic variance of the observed cutoff shape
+    crams_LE1.config.sigma_lgR_max_gumbel_prior_params = (0.51, 0.057)
+    crams_LE2.config.sigma_lgR_max_gumbel_prior_params = (0.51, 0.057)
 
     return [crams_LE1, crams_LE2, crams_HE]
 

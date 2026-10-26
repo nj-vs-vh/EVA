@@ -480,12 +480,21 @@ def run_analysis(config: FitConfig, outdir: Path) -> None:
         print(f"Loglike: {loglike}")
     else:
         print("Running preliminary ML analysis...")
+        # initial_model = Model.load(
+        #     Path("/home/nj-vs-vh/Documents/Science/cr-knee-fit/out/phase-7/two_le/mle-wip.txt"),
+        #     config.model,
+        # )
+        initial_model = None
+        if initial_model is not None:
+            print(f"Starting from checkpoint:\n{initial_model}")
         mle_model = run_ml_analysis(
             config=config,
             fit_data=fit_data,
             freeze_shifts=False,
-            initial_model=None,
+            # initial_model=None,
             outdir=outdir,
+            # TEMP
+            initial_model=initial_model,
         )
         mle_model.save(
             mle_model_dump, header=[f"GoF: {GoodnessOfFit.compute(mle_model, fit_data)}"]

@@ -299,6 +299,10 @@ class CramsModelConfig(pydantic.BaseModel):
 
     scale_nuclei_abundances: bool = False  # NOTE: this is useful if nuclei abundances are frozen/shared, but need to be scaled coherently
 
+    # if set, and if the population has a erf-shaped cutoff, these values are used to specify Gumbel (R) prior
+    # see population_cutoff.ipynb for details on how population statistics is translated into the observed cutoff shape
+    sigma_lgR_max_gumbel_prior_params: tuple[float, float] | None = None
+
     @property
     def frozen_injection_packed(self) -> np.ndarray:
         return pack_injection(self.frozen_injection)
